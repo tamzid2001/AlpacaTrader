@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, boolean, timestamp, integer, json } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, boolean, timestamp, integer, json, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -68,6 +68,31 @@ export const supportMessages = pgTable("support_messages", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const csvUploads = pgTable("csv_uploads", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  filename: text("filename").notNull(),
+  fileSize: integer("file_size").notNull(),
+  columnCount: integer("column_count").notNull(),
+  rowCount: integer("row_count").notNull(),
+  status: text("status").notNull().default("uploaded"), // uploaded, processing, completed, error
+  timeSeriesData: json("time_series_data").notNull(), // Array of CSV row objects
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+  processedAt: timestamp("processed_at"),
+});
+
+export const anomalies = pgTable("anomalies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  uploadId: varchar("upload_id").notNull().references(() => csvUploads.id),
+  anomalyType: text("anomaly_type").notNull(), // p50_median_spike, p10_consecutive_low
+  detectedDate: text("detected_date").notNull(), // The date where anomaly was detected
+  weekBeforeValue: real("week_before_value"), // p90 value from week before anomaly
+  p90Value: real("p90_value"), // p90 value at time of anomaly
+  description: text("description").notNull(),
+  openaiAnalysis: text("openai_analysis"), // OpenAI analysis of the anomaly
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -100,6 +125,17 @@ export const insertSupportMessageSchema = createInsertSchema(supportMessages).om
   createdAt: true,
 });
 
+export const insertCsvUploadSchema = createInsertSchema(csvUploads).omit({
+  id: true,
+  uploadedAt: true,
+  processedAt: true,
+});
+
+export const insertAnomalySchema = createInsertSchema(anomalies).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -113,3 +149,7 @@ export type InsertQuizResult = z.infer<typeof insertQuizResultSchema>;
 export type QuizResult = typeof quizResults.$inferSelect;
 export type InsertSupportMessage = z.infer<typeof insertSupportMessageSchema>;
 export type SupportMessage = typeof supportMessages.$inferSelect;
+export type InsertCsvUpload = z.infer<typeof insertCsvUploadSchema>;
+export type CsvUpload = typeof csvUploads.$inferSelect;
+export type InsertAnomaly = z.infer<typeof insertAnomalySchema>;
+export type Anomaly = typeof anomalies.$inferSelect;

@@ -10,7 +10,11 @@ import {
   type QuizResult,
   type InsertQuizResult,
   type SupportMessage,
-  type InsertSupportMessage
+  type InsertSupportMessage,
+  type CsvUpload,
+  type InsertCsvUpload,
+  type Anomaly,
+  type InsertAnomaly
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -47,6 +51,18 @@ export interface IStorage {
   createSupportMessage(message: InsertSupportMessage): Promise<SupportMessage>;
   getAllSupportMessages(): Promise<SupportMessage[]>;
   updateSupportMessage(id: string, updates: Partial<SupportMessage>): Promise<SupportMessage | undefined>;
+
+  // CSV Uploads
+  createCsvUpload(upload: InsertCsvUpload): Promise<CsvUpload>;
+  getCsvUpload(id: string): Promise<CsvUpload | undefined>;
+  getUserCsvUploads(userId: string): Promise<CsvUpload[]>;
+  updateCsvUpload(id: string, updates: Partial<CsvUpload>): Promise<CsvUpload | undefined>;
+
+  // Anomalies
+  createAnomaly(anomaly: InsertAnomaly): Promise<Anomaly>;
+  getUploadAnomalies(uploadId: string): Promise<Anomaly[]>;
+  getUserAnomalies(userId: string): Promise<(Anomaly & { upload: CsvUpload })[]>;
+  getAllAnomalies(): Promise<(Anomaly & { upload: CsvUpload })[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -56,6 +72,8 @@ export class MemStorage implements IStorage {
   private quizzes: Map<string, Quiz> = new Map();
   private quizResults: Map<string, QuizResult> = new Map();
   private supportMessages: Map<string, SupportMessage> = new Map();
+  private csvUploads: Map<string, CsvUpload> = new Map();
+  private anomalies: Map<string, Anomaly> = new Map();
 
   constructor() {
     this.initializeData();
@@ -286,6 +304,75 @@ export class MemStorage implements IStorage {
     const updatedMessage = { ...message, ...updates };
     this.supportMessages.set(id, updatedMessage);
     return updatedMessage;
+  }
+
+  // CSV Uploads
+  async createCsvUpload(insertUpload: InsertCsvUpload): Promise<CsvUpload> {
+    const id = randomUUID();
+    const upload: CsvUpload = {
+      ...insertUpload,
+      id,
+      status: insertUpload.status ?? "uploaded",
+      uploadedAt: new Date(),
+      processedAt: insertUpload.processedAt ?? null,
+    };
+    this.csvUploads.set(id, upload);
+    return upload;
+  }
+
+  async getCsvUpload(id: string): Promise<CsvUpload | undefined> {
+    return this.csvUploads.get(id);
+  }
+
+  async getUserCsvUploads(userId: string): Promise<CsvUpload[]> {
+    return Array.from(this.csvUploads.values()).filter(upload => upload.userId === userId);
+  }
+
+  async updateCsvUpload(id: string, updates: Partial<CsvUpload>): Promise<CsvUpload | undefined> {
+    const upload = this.csvUploads.get(id);
+    if (!upload) return undefined;
+
+    const updatedUpload = { ...upload, ...updates };
+    this.csvUploads.set(id, updatedUpload);
+    return updatedUpload;
+  }
+
+  // Anomalies
+  async createAnomaly(insertAnomaly: InsertAnomaly): Promise<Anomaly> {
+    const id = randomUUID();
+    const anomaly: Anomaly = {
+      ...insertAnomaly,
+      id,
+      weekBeforeValue: insertAnomaly.weekBeforeValue ?? null,
+      p90Value: insertAnomaly.p90Value ?? null,
+      openaiAnalysis: insertAnomaly.openaiAnalysis ?? null,
+      createdAt: new Date(),
+    };
+    this.anomalies.set(id, anomaly);
+    return anomaly;
+  }
+
+  async getUploadAnomalies(uploadId: string): Promise<Anomaly[]> {
+    return Array.from(this.anomalies.values()).filter(anomaly => anomaly.uploadId === uploadId);
+  }
+
+  async getUserAnomalies(userId: string): Promise<(Anomaly & { upload: CsvUpload })[]> {
+    const userUploads = await this.getUserCsvUploads(userId);
+    const uploadIds = new Set(userUploads.map(u => u.id));
+    
+    return Array.from(this.anomalies.values())
+      .filter(anomaly => uploadIds.has(anomaly.uploadId))
+      .map(anomaly => ({
+        ...anomaly,
+        upload: this.csvUploads.get(anomaly.uploadId)!
+      }));
+  }
+
+  async getAllAnomalies(): Promise<(Anomaly & { upload: CsvUpload })[]> {
+    return Array.from(this.anomalies.values()).map(anomaly => ({
+      ...anomaly,
+      upload: this.csvUploads.get(anomaly.uploadId)!
+    })).filter(a => a.upload);
   }
 }
 
