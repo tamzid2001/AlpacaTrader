@@ -109,6 +109,21 @@ export const anomalies = pgTable("anomalies", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const sharedResults = pgTable("shared_results", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  csvUploadId: varchar("csv_upload_id").notNull().references(() => csvUploads.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  shareToken: varchar("share_token").notNull().unique(),
+  permissions: text("permissions").notNull().default("view_only"), // view_only, view_download
+  expiresAt: timestamp("expires_at"), // null means never expires
+  viewCount: integer("view_count").notNull().default(0),
+  accessLogs: json("access_logs").notNull().default('[]'), // Track access attempts for security
+  title: text("title"), // Optional custom title for the shared result
+  description: text("description"), // Optional description for the shared result
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -183,6 +198,15 @@ export const insertAnomalySchema = createInsertSchema(anomalies).omit({
   createdAt: true,
 });
 
+export const insertSharedResultSchema = createInsertSchema(sharedResults).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  permissions: z.enum(["view_only", "view_download"]).default("view_only"),
+  expirationOption: z.enum(["24h", "7d", "30d", "never"]).optional(),
+});
+
 // Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type UpsertUser = z.infer<typeof upsertUserSchema>;
@@ -201,3 +225,5 @@ export type InsertCsvUpload = z.infer<typeof insertCsvUploadSchema>;
 export type CsvUpload = typeof csvUploads.$inferSelect;
 export type InsertAnomaly = z.infer<typeof insertAnomalySchema>;
 export type Anomaly = typeof anomalies.$inferSelect;
+export type InsertSharedResult = z.infer<typeof insertSharedResultSchema>;
+export type SharedResult = typeof sharedResults.$inferSelect;

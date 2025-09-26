@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertSupportMessageSchema, insertQuizResultSchema, insertCsvUploadSchema, insertAnomalySchema } from "@shared/schema";
+import { insertSupportMessageSchema, insertQuizResultSchema, insertCsvUploadSchema, insertAnomalySchema, insertSharedResultSchema } from "@shared/schema";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import OpenAI from "openai";
 import * as XLSX from "xlsx";
@@ -819,6 +819,384 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Excel export error:", error);
       res.status(500).json({ error: "Failed to generate Excel export: " + error.message });
+    }
+  });
+
+  // ===== SHARING ROUTES =====
+  
+  // POST /api/share/results - Create shareable link for anomaly results
+  app.post("/api/share/results", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const shareData = insertSharedResultSchema.parse(req.body);
+
+      // Verify the CSV upload exists and belongs to the user
+      const upload = await storage.getCsvUpload(shareData.csvUploadId);
+      if (!upload) {
+        return res.status(404).json({ error: "CSV upload not found" });
+      }
+
+      if (upload.userId !== userId) {
+        return res.status(403).json({ error: "Access denied. You can only share your own files." });
+      }
+
+      // Check if anomalies exist for this upload
+      const anomalies = await storage.getUploadAnomalies(shareData.csvUploadId);
+      if (anomalies.length === 0) {
+        return res.status(400).json({ error: "No anomalies found for this upload. Please analyze the file first." });
+      }
+
+      // Create the shared result
+      const sharedResult = await storage.createSharedResult(shareData, userId);
+
+      // Log the creation for security monitoring
+      await storage.logAccess(sharedResult.id, {
+        ip: req.ip || req.connection.remoteAddress || 'unknown',
+        userAgent: req.get('User-Agent') || 'unknown',
+        timestamp: new Date(),
+      });
+
+      res.status(201).json({
+        id: sharedResult.id,
+        shareToken: sharedResult.shareToken,
+        shareUrl: `${req.protocol}://${req.get('host')}/shared/${sharedResult.shareToken}`,
+        permissions: sharedResult.permissions,
+        expiresAt: sharedResult.expiresAt,
+        createdAt: sharedResult.createdAt,
+      });
+
+    } catch (error: any) {
+      console.error("Share creation error:", error);
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // GET /api/share/:token - View shared results (public endpoint, no auth required)
+  app.get("/api/share/:token", async (req, res) => {
+    try {
+      const token = req.params.token;
+      
+      if (!token || typeof token !== 'string') {
+        return res.status(400).json({ error: "Invalid share token" });
+      }
+
+      const sharedData = await storage.getSharedResultByToken(token);
+      if (!sharedData) {
+        return res.status(404).json({ error: "Shared result not found or expired" });
+      }
+
+      // Get anomalies for this upload
+      const anomalies = await storage.getUploadAnomalies(sharedData.csvUploadId);
+
+      // Increment view count
+      await storage.incrementViewCount(sharedData.id);
+
+      // Log access for security monitoring
+      await storage.logAccess(sharedData.id, {
+        ip: req.ip || req.connection.remoteAddress || 'unknown',
+        userAgent: req.get('User-Agent') || 'unknown',
+        timestamp: new Date(),
+      });
+
+      // Return sanitized data for public viewing
+      res.json({
+        id: sharedData.id,
+        title: sharedData.title,
+        description: sharedData.description,
+        permissions: sharedData.permissions,
+        viewCount: sharedData.viewCount + 1, // Include the current view
+        upload: {
+          id: sharedData.upload.id,
+          filename: sharedData.upload.filename,
+          customFilename: sharedData.upload.customFilename,
+          rowCount: sharedData.upload.rowCount,
+          columnCount: sharedData.upload.columnCount,
+          uploadedAt: sharedData.upload.uploadedAt,
+          status: sharedData.upload.status,
+          timeSeriesData: sharedData.upload.timeSeriesData,
+        },
+        anomalies: anomalies.map(anomaly => ({
+          id: anomaly.id,
+          anomalyType: anomaly.anomalyType,
+          detectedDate: anomaly.detectedDate,
+          weekBeforeValue: anomaly.weekBeforeValue,
+          p90Value: anomaly.p90Value,
+          description: anomaly.description,
+          openaiAnalysis: anomaly.openaiAnalysis,
+          createdAt: anomaly.createdAt,
+        })),
+        sharedBy: {
+          firstName: sharedData.user.firstName,
+          lastName: sharedData.user.lastName,
+        },
+        sharedAt: sharedData.createdAt,
+      });
+
+    } catch (error: any) {
+      console.error("Share viewing error:", error);
+      res.status(500).json({ error: "Failed to load shared result" });
+    }
+  });
+
+  // GET /api/user/shared - Get user's shared results list
+  app.get("/api/user/shared", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const sharedResults = await storage.getUserSharedResults(userId);
+
+      res.json(sharedResults.map(shared => ({
+        id: shared.id,
+        shareToken: shared.shareToken,
+        title: shared.title,
+        description: shared.description,
+        permissions: shared.permissions,
+        expiresAt: shared.expiresAt,
+        viewCount: shared.viewCount,
+        createdAt: shared.createdAt,
+        updatedAt: shared.updatedAt,
+        upload: {
+          id: shared.upload.id,
+          filename: shared.upload.filename,
+          customFilename: shared.upload.customFilename,
+          uploadedAt: shared.upload.uploadedAt,
+        },
+        shareUrl: `${req.protocol}://${req.get('host')}/shared/${shared.shareToken}`,
+      })));
+
+    } catch (error: any) {
+      console.error("Get user shared results error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // PATCH /api/share/:id - Update sharing permissions/expiration
+  app.patch("/api/share/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const shareId = req.params.id;
+      const updates = req.body;
+
+      // Get the shared result and verify ownership
+      const sharedResult = await storage.getSharedResult(shareId);
+      if (!sharedResult) {
+        return res.status(404).json({ error: "Shared result not found" });
+      }
+
+      if (sharedResult.userId !== userId) {
+        return res.status(403).json({ error: "Access denied. You can only update your own shared results." });
+      }
+
+      // Validate and prepare updates
+      const allowedUpdates: any = {};
+      
+      if (updates.permissions && ['view_only', 'view_download'].includes(updates.permissions)) {
+        allowedUpdates.permissions = updates.permissions;
+      }
+      
+      if (updates.title !== undefined) {
+        allowedUpdates.title = updates.title;
+      }
+      
+      if (updates.description !== undefined) {
+        allowedUpdates.description = updates.description;
+      }
+
+      if (updates.expirationOption) {
+        const now = new Date();
+        switch (updates.expirationOption) {
+          case '24h':
+            allowedUpdates.expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+            break;
+          case '7d':
+            allowedUpdates.expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+            break;
+          case '30d':
+            allowedUpdates.expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+            break;
+          case 'never':
+            allowedUpdates.expiresAt = null;
+            break;
+        }
+      }
+
+      const updatedSharedResult = await storage.updateSharedResult(shareId, allowedUpdates);
+      
+      if (!updatedSharedResult) {
+        return res.status(404).json({ error: "Failed to update shared result" });
+      }
+
+      res.json({
+        id: updatedSharedResult.id,
+        permissions: updatedSharedResult.permissions,
+        expiresAt: updatedSharedResult.expiresAt,
+        title: updatedSharedResult.title,
+        description: updatedSharedResult.description,
+        updatedAt: updatedSharedResult.updatedAt,
+      });
+
+    } catch (error: any) {
+      console.error("Update shared result error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // DELETE /api/share/:id - Revoke sharing access
+  app.delete("/api/share/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const shareId = req.params.id;
+
+      // Get the shared result and verify ownership
+      const sharedResult = await storage.getSharedResult(shareId);
+      if (!sharedResult) {
+        return res.status(404).json({ error: "Shared result not found" });
+      }
+
+      if (sharedResult.userId !== userId) {
+        return res.status(403).json({ error: "Access denied. You can only delete your own shared results." });
+      }
+
+      const deleted = await storage.deleteSharedResult(shareId);
+      if (!deleted) {
+        return res.status(404).json({ error: "Failed to delete shared result" });
+      }
+
+      res.json({ message: "Shared result access revoked successfully" });
+
+    } catch (error: any) {
+      console.error("Delete shared result error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/share/:token/download - Download Excel export of shared results (if permitted)
+  app.get("/api/share/:token/download", async (req, res) => {
+    try {
+      const token = req.params.token;
+      
+      if (!token || typeof token !== 'string') {
+        return res.status(400).json({ error: "Invalid share token" });
+      }
+
+      const sharedData = await storage.getSharedResultByToken(token);
+      if (!sharedData) {
+        return res.status(404).json({ error: "Shared result not found or expired" });
+      }
+
+      // Check if download is permitted
+      if (sharedData.permissions !== 'view_download') {
+        return res.status(403).json({ error: "Download not permitted for this shared result" });
+      }
+
+      // Get anomalies for this upload
+      const anomalies = await storage.getUploadAnomalies(sharedData.csvUploadId);
+      if (anomalies.length === 0) {
+        return res.status(404).json({ error: "No anomalies found for this shared result" });
+      }
+
+      // Log access for security monitoring
+      await storage.logAccess(sharedData.id, {
+        ip: req.ip || req.connection.remoteAddress || 'unknown',
+        userAgent: req.get('User-Agent') || 'unknown',
+        timestamp: new Date(),
+      });
+
+      // Generate Excel file (reuse logic from existing export route)
+      const upload = sharedData.upload;
+      const ownerEmail = sharedData.user?.email || "unknown@example.com";
+
+      // Create new workbook
+      const workbook = XLSX.utils.book_new();
+
+      // Helper functions
+      const getPriority = (type: string): string => {
+        switch (type) {
+          case "p50_median_spike": return "High";
+          case "p10_consecutive_low": return "Medium";
+          default: return "Low";
+        }
+      };
+
+      const getProgress = (type: string): number => {
+        switch (type) {
+          case "p50_median_spike": return 25;
+          case "p10_consecutive_low": return 50;
+          default: return 10;
+        }
+      };
+
+      // 1. Create Summary Sheet
+      const summaryData = [
+        ["Shared Anomaly Analysis Report"],
+        [""],
+        ["Upload Information"],
+        ["File Name", upload.filename],
+        ["Upload Date", new Date(upload.uploadedAt).toLocaleDateString()],
+        ["Total Rows", upload.rowCount],
+        ["Total Columns", upload.columnCount],
+        [""],
+        ["Anomaly Statistics"],
+        ["Total Anomalies", anomalies.length],
+        ["P50 Median Spikes", anomalies.filter(a => a.anomalyType === "p50_median_spike").length],
+        ["P10 Consecutive Lows", anomalies.filter(a => a.anomalyType === "p10_consecutive_low").length],
+        [""],
+        ["Sharing Information"],
+        ["Shared By", `${sharedData.user.firstName || ''} ${sharedData.user.lastName || ''}`.trim()],
+        ["Shared Date", new Date(sharedData.createdAt).toLocaleString()],
+        ["Downloaded Date", new Date().toLocaleString()],
+      ];
+
+      const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+      summarySheet['!cols'] = [{ width: 20 }, { width: 30 }];
+      XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
+
+      // 2. Create All Anomalies Sheet
+      const allAnomaliesData = [
+        ["Task Name", "Priority", "Status", "Progress %", "Date Detected", "Type", "Description", "P90 Value", "Week Before P90", "Notes"]
+      ];
+
+      anomalies.forEach((anomaly, index) => {
+        allAnomaliesData.push([
+          `Anomaly ${index + 1}: ${anomaly.detectedDate}`,
+          getPriority(anomaly.anomalyType),
+          "Open",
+          getProgress(anomaly.anomalyType),
+          anomaly.detectedDate,
+          anomaly.anomalyType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          anomaly.description,
+          anomaly.p90Value?.toFixed(2) || "N/A",
+          anomaly.weekBeforeValue?.toFixed(2) || "N/A",
+          anomaly.openaiAnalysis || "No AI analysis available"
+        ]);
+      });
+
+      const allAnomaliesSheet = XLSX.utils.aoa_to_sheet(allAnomaliesData);
+      const colWidths = [
+        { width: 25 }, { width: 10 }, { width: 10 }, { width: 12 },
+        { width: 15 }, { width: 20 }, { width: 40 }, { width: 12 },
+        { width: 15 }, { width: 50 }
+      ];
+      allAnomaliesSheet['!cols'] = colWidths;
+      XLSX.utils.book_append_sheet(workbook, allAnomaliesSheet, "All Anomalies");
+
+      // Generate filename with timestamp
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+      const filename = `shared-anomaly-export-${upload.filename.replace('.csv', '')}-${timestamp}.xlsx`;
+
+      // Convert workbook to buffer
+      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+      // Set response headers for file download
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', buffer.length);
+
+      // Send the Excel file
+      res.send(buffer);
+
+    } catch (error: any) {
+      console.error("Shared Excel download error:", error);
+      res.status(500).json({ error: "Failed to download shared Excel export: " + error.message });
     }
   });
 

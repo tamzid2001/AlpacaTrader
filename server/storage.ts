@@ -15,7 +15,9 @@ import {
   type CsvUpload,
   type InsertCsvUpload,
   type Anomaly,
-  type InsertAnomaly
+  type InsertAnomaly,
+  type SharedResult,
+  type InsertSharedResult
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -66,6 +68,16 @@ export interface IStorage {
   getUserAnomalies(userId: string): Promise<(Anomaly & { upload: CsvUpload })[]>;
   getAllAnomalies(): Promise<(Anomaly & { upload: CsvUpload })[]>;
   deleteAnomaly(id: string): Promise<boolean>;
+
+  // Shared Results
+  createSharedResult(sharedResult: InsertSharedResult, userId: string): Promise<SharedResult>;
+  getSharedResult(id: string): Promise<SharedResult | undefined>;
+  getSharedResultByToken(token: string): Promise<(SharedResult & { upload: CsvUpload; user: User }) | undefined>;
+  getUserSharedResults(userId: string): Promise<(SharedResult & { upload: CsvUpload })[]>;
+  updateSharedResult(id: string, updates: Partial<SharedResult>): Promise<SharedResult | undefined>;
+  deleteSharedResult(id: string): Promise<boolean>;
+  incrementViewCount(id: string): Promise<void>;
+  logAccess(id: string, accessInfo: { ip: string; userAgent: string; timestamp: Date }): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -77,6 +89,7 @@ export class MemStorage implements IStorage {
   private supportMessages: Map<string, SupportMessage> = new Map();
   private csvUploads: Map<string, CsvUpload> = new Map();
   private anomalies: Map<string, Anomaly> = new Map();
+  private sharedResults: Map<string, SharedResult> = new Map();
 
   constructor() {
     this.initializeData();
@@ -428,6 +441,131 @@ export class MemStorage implements IStorage {
 
   async deleteAnomaly(id: string): Promise<boolean> {
     return this.anomalies.delete(id);
+  }
+
+  // Shared Results
+  async createSharedResult(insertSharedResult: InsertSharedResult, userId: string): Promise<SharedResult> {
+    const id = randomUUID();
+    
+    // Generate secure share token
+    const shareToken = randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '').substring(0, 16);
+    
+    // Calculate expiration date based on option
+    let expiresAt: Date | null = null;
+    if (insertSharedResult.expirationOption) {
+      const now = new Date();
+      switch (insertSharedResult.expirationOption) {
+        case '24h':
+          expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+          break;
+        case '7d':
+          expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+          break;
+        case '30d':
+          expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+          break;
+        case 'never':
+          expiresAt = null;
+          break;
+      }
+    }
+    
+    const sharedResult: SharedResult = {
+      id,
+      csvUploadId: insertSharedResult.csvUploadId,
+      userId,
+      shareToken,
+      permissions: insertSharedResult.permissions || "view_only",
+      expiresAt,
+      viewCount: 0,
+      accessLogs: [],
+      title: insertSharedResult.title || null,
+      description: insertSharedResult.description || null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    
+    this.sharedResults.set(id, sharedResult);
+    return sharedResult;
+  }
+
+  async getSharedResult(id: string): Promise<SharedResult | undefined> {
+    return this.sharedResults.get(id);
+  }
+
+  async getSharedResultByToken(token: string): Promise<(SharedResult & { upload: CsvUpload; user: User }) | undefined> {
+    const sharedResult = Array.from(this.sharedResults.values()).find(sr => sr.shareToken === token);
+    if (!sharedResult) return undefined;
+    
+    // Check if expired
+    if (sharedResult.expiresAt && new Date() > sharedResult.expiresAt) {
+      return undefined;
+    }
+    
+    const upload = this.csvUploads.get(sharedResult.csvUploadId);
+    const user = this.users.get(sharedResult.userId);
+    
+    if (!upload || !user) return undefined;
+    
+    return {
+      ...sharedResult,
+      upload,
+      user,
+    };
+  }
+
+  async getUserSharedResults(userId: string): Promise<(SharedResult & { upload: CsvUpload })[]> {
+    return Array.from(this.sharedResults.values())
+      .filter(sr => sr.userId === userId)
+      .map(sr => ({
+        ...sr,
+        upload: this.csvUploads.get(sr.csvUploadId)!
+      }))
+      .filter(sr => sr.upload);
+  }
+
+  async updateSharedResult(id: string, updates: Partial<SharedResult>): Promise<SharedResult | undefined> {
+    const sharedResult = this.sharedResults.get(id);
+    if (!sharedResult) return undefined;
+
+    const updatedSharedResult = {
+      ...sharedResult,
+      ...updates,
+      updatedAt: new Date(),
+    };
+    
+    this.sharedResults.set(id, updatedSharedResult);
+    return updatedSharedResult;
+  }
+
+  async deleteSharedResult(id: string): Promise<boolean> {
+    return this.sharedResults.delete(id);
+  }
+
+  async incrementViewCount(id: string): Promise<void> {
+    const sharedResult = this.sharedResults.get(id);
+    if (sharedResult) {
+      sharedResult.viewCount += 1;
+      sharedResult.updatedAt = new Date();
+      this.sharedResults.set(id, sharedResult);
+    }
+  }
+
+  async logAccess(id: string, accessInfo: { ip: string; userAgent: string; timestamp: Date }): Promise<void> {
+    const sharedResult = this.sharedResults.get(id);
+    if (sharedResult) {
+      const currentLogs = Array.isArray(sharedResult.accessLogs) ? sharedResult.accessLogs : [];
+      const updatedLogs = [...currentLogs, accessInfo];
+      
+      // Keep only the last 100 access logs to prevent unbounded growth
+      if (updatedLogs.length > 100) {
+        updatedLogs.splice(0, updatedLogs.length - 100);
+      }
+      
+      sharedResult.accessLogs = updatedLogs;
+      sharedResult.updatedAt = new Date();
+      this.sharedResults.set(id, sharedResult);
+    }
   }
 }
 

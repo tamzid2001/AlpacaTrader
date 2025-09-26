@@ -27,16 +27,28 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  Share2,
+  Eye,
+  Globe
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { deleteCsvFile, downloadCsvFile } from "@/lib/firebase-storage";
 import { formatDistanceToNow } from "date-fns";
+import ShareDialog from "./share-dialog";
 import type { CsvUpload } from "@shared/schema";
 
 interface CsvFileLibraryProps {
   onAnalyzeFile: (upload: CsvUpload) => void;
   onRefresh?: () => void;
+}
+
+interface SharedResult {
+  id: string;
+  csvUploadId: string;
+  viewCount: number;
+  permissions: "view_only" | "view_download";
+  expiresAt: string | null;
 }
 
 type SortField = 'customFilename' | 'uploadedAt' | 'fileSize' | 'status';
@@ -59,6 +71,8 @@ export function CsvFileLibrary({ onAnalyzeFile, onRefresh }: CsvFileLibraryProps
   const [selectedFile, setSelectedFile] = useState<CsvUpload | null>(null);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [newFilename, setNewFilename] = useState("");
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareUpload, setShareUpload] = useState<CsvUpload | null>(null);
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -67,6 +81,12 @@ export function CsvFileLibrary({ onAnalyzeFile, onRefresh }: CsvFileLibraryProps
   // Fetch user's CSV uploads
   const { data: uploads = [], isLoading, refetch } = useQuery<CsvUpload[]>({
     queryKey: ["/api/csv/uploads", user?.id],
+    enabled: !!user?.id,
+  });
+
+  // Fetch user's shared results
+  const { data: sharedResults = [] } = useQuery<SharedResult[]>({
+    queryKey: ["/api/user/shared", user?.id],
     enabled: !!user?.id,
   });
 
@@ -260,6 +280,65 @@ export function CsvFileLibrary({ onAnalyzeFile, onRefresh }: CsvFileLibraryProps
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  const getSharedResult = (uploadId: string): SharedResult | null => {
+    return sharedResults.find(result => result.csvUploadId === uploadId) || null;
+  };
+
+  const openShareDialog = (upload: CsvUpload) => {
+    setShareUpload(upload);
+    setShareDialogOpen(true);
+  };
+
+  const getSharedBadge = (uploadId: string) => {
+    const shared = getSharedResult(uploadId);
+    if (!shared) return null;
+
+    return (
+      <Badge variant="outline" className="gap-1 text-xs">
+        <Share2 className="h-3 w-3" />
+        {shared.permissions === "view_download" ? "Shared+" : "Shared"}
+      </Badge>
+    );
+  };
+
+  const getSharedStatus = (uploadId: string) => {
+    const shared = getSharedResult(uploadId);
+    if (!shared) {
+      return (
+        <span className="text-xs text-muted-foreground">Not shared</span>
+      );
+    }
+
+    const isExpired = shared.expiresAt && new Date(shared.expiresAt) < new Date();
+    
+    return (
+      <div className="space-y-1">
+        <div className="flex items-center gap-1 text-xs">
+          {shared.permissions === "view_download" ? (
+            <>
+              <Download className="h-3 w-3 text-blue-500" />
+              <span className="text-blue-600 font-medium">View + Download</span>
+            </>
+          ) : (
+            <>
+              <Globe className="h-3 w-3 text-green-500" />
+              <span className="text-green-600 font-medium">View Only</span>
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          <Eye className="h-3 w-3" />
+          {shared.viewCount} views
+        </div>
+        {isExpired && (
+          <Badge variant="destructive" className="text-xs">
+            Expired
+          </Badge>
+        )}
+      </div>
+    );
+  };
+
   if (!user) {
     return (
       <Card data-testid="card-auth-required-library">
@@ -396,6 +475,12 @@ export function CsvFileLibrary({ onAnalyzeFile, onRefresh }: CsvFileLibraryProps
                       )}
                     </div>
                   </TableHead>
+                  <TableHead>
+                    <div className="flex items-center gap-1">
+                      <Share2 className="h-4 w-4" />
+                      Sharing
+                    </div>
+                  </TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -418,7 +503,10 @@ export function CsvFileLibrary({ onAnalyzeFile, onRefresh }: CsvFileLibraryProps
                     <TableCell>
                       <div className="flex items-center gap-2">
                         {getStatusIcon(upload.status)}
-                        {getStatusBadge(upload.status)}
+                        <div className="space-y-1">
+                          {getStatusBadge(upload.status)}
+                          {getSharedBadge(upload.id)}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell data-testid={`text-filesize-${upload.id}`}>
@@ -426,6 +514,9 @@ export function CsvFileLibrary({ onAnalyzeFile, onRefresh }: CsvFileLibraryProps
                     </TableCell>
                     <TableCell data-testid={`text-upload-date-${upload.id}`}>
                       {formatDistanceToNow(new Date(upload.uploadedAt), { addSuffix: true })}
+                    </TableCell>
+                    <TableCell data-testid={`cell-sharing-status-${upload.id}`}>
+                      {getSharedStatus(upload.id)}
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>
@@ -439,6 +530,12 @@ export function CsvFileLibrary({ onAnalyzeFile, onRefresh }: CsvFileLibraryProps
                             <Play className="h-4 w-4 mr-2" />
                             Analyze
                           </DropdownMenuItem>
+                          {upload.status === 'completed' && (
+                            <DropdownMenuItem onClick={() => openShareDialog(upload)}>
+                              <Share2 className="h-4 w-4 mr-2" />
+                              Share Results
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem onClick={() => handleDownload(upload)}>
                             <Download className="h-4 w-4 mr-2" />
                             Download
@@ -530,6 +627,16 @@ export function CsvFileLibrary({ onAnalyzeFile, onRefresh }: CsvFileLibraryProps
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Share Dialog */}
+      <ShareDialog
+        csvUpload={shareUpload}
+        isOpen={shareDialogOpen}
+        onClose={() => {
+          setShareDialogOpen(false);
+          setShareUpload(null);
+        }}
+      />
     </div>
   );
 }

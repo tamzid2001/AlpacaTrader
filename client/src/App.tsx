@@ -9,6 +9,8 @@ import LandingPage from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import AdminDashboard from "@/pages/admin";
 import AnomalyDetection from "@/pages/anomaly-detection";
+import SharedResultsViewer from "@/pages/shared-results";
+import MySharedResults from "@/pages/my-shared-results";
 import PrivacyPage from "@/pages/privacy";
 import TermsPage from "@/pages/terms";
 import NotFound from "@/pages/not-found";
@@ -21,6 +23,7 @@ function Router() {
       {isLoading || !isAuthenticated ? (
         <>
           <Route path="/" component={LandingPage} />
+          <Route path="/shared/:token" component={SharedResultsViewer} />
           <Route path="/privacy" component={PrivacyPage} />
           <Route path="/terms" component={TermsPage} />
           <Route component={LandingPage} />
@@ -31,6 +34,8 @@ function Router() {
           <Route path="/dashboard" component={Dashboard} />
           <Route path="/admin" component={AdminDashboard} />
           <Route path="/anomaly-detection" component={AnomalyDetection} />
+          <Route path="/my-shared-results" component={MySharedResults} />
+          <Route path="/shared/:token" component={SharedResultsViewer} />
           <Route path="/privacy" component={PrivacyPage} />
           <Route path="/terms" component={TermsPage} />
           <Route component={NotFound} />

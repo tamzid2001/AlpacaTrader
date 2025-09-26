@@ -12,10 +12,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from "recharts";
-import { Upload, FileText, AlertTriangle, TrendingUp, Activity, Download, FolderOpen } from "lucide-react";
+import { Upload, FileText, AlertTriangle, TrendingUp, Activity, Download, FolderOpen, Share2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import EnhancedCsvUpload from "@/components/csv/enhanced-csv-upload";
 import CsvFileLibrary from "@/components/csv/csv-file-library";
+import ShareDialog from "@/components/csv/share-dialog";
 import type { CsvUpload, Anomaly } from "@shared/schema";
 
 
@@ -90,6 +91,8 @@ export default function AnomalyDetection() {
   const { user, isAuthenticated, isLoading } = useAuth();
   const [, setLocation] = useLocation();
   const [selectedUpload, setSelectedUpload] = useState<CsvUpload | null>(null);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareUpload, setShareUpload] = useState<CsvUpload | null>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -281,31 +284,58 @@ export default function AnomalyDetection() {
                   <div className="flex items-center justify-between">
                     <CardTitle>Detected Anomalies</CardTitle>
                     {anomalies && anomalies.length > 0 && uploads && uploads.length > 0 && (
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="gap-2"
-                        onClick={() => {
-                          // Find the most recent upload with anomalies
-                          const uploadsWithAnomalies = uploads.filter((upload: CsvUpload) => 
-                            anomalies.some((anomaly: Anomaly & { upload: CsvUpload }) => 
-                              anomaly.upload?.id === upload.id
-                            )
-                          );
-                          if (uploadsWithAnomalies.length > 0) {
-                            const latestUpload = uploadsWithAnomalies
-                              .sort((a: CsvUpload, b: CsvUpload) => 
-                                new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
-                              )[0];
-                            exportMutation.mutate(latestUpload.id);
-                          }
-                        }}
-                        disabled={exportMutation.isPending}
-                        data-testid="button-export-excel"
-                      >
-                        <Download className="h-4 w-4" />
-                        {exportMutation.isPending ? "Exporting..." : "Export to Monday.com"}
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="gap-2"
+                          onClick={() => {
+                            // Find the most recent upload with anomalies
+                            const uploadsWithAnomalies = uploads.filter((upload: CsvUpload) => 
+                              anomalies.some((anomaly: Anomaly & { upload: CsvUpload }) => 
+                                anomaly.upload?.id === upload.id
+                              )
+                            );
+                            if (uploadsWithAnomalies.length > 0) {
+                              const latestUpload = uploadsWithAnomalies
+                                .sort((a: CsvUpload, b: CsvUpload) => 
+                                  new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
+                                )[0];
+                              setShareUpload(latestUpload);
+                              setShareDialogOpen(true);
+                            }
+                          }}
+                          data-testid="button-share-results"
+                        >
+                          <Share2 className="h-4 w-4" />
+                          Share Results
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="gap-2"
+                          onClick={() => {
+                            // Find the most recent upload with anomalies
+                            const uploadsWithAnomalies = uploads.filter((upload: CsvUpload) => 
+                              anomalies.some((anomaly: Anomaly & { upload: CsvUpload }) => 
+                                anomaly.upload?.id === upload.id
+                              )
+                            );
+                            if (uploadsWithAnomalies.length > 0) {
+                              const latestUpload = uploadsWithAnomalies
+                                .sort((a: CsvUpload, b: CsvUpload) => 
+                                  new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
+                                )[0];
+                              exportMutation.mutate(latestUpload.id);
+                            }
+                          }}
+                          disabled={exportMutation.isPending}
+                          data-testid="button-export-excel"
+                        >
+                          <Download className="h-4 w-4" />
+                          {exportMutation.isPending ? "Exporting..." : "Export to Monday.com"}
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </CardHeader>
@@ -367,6 +397,16 @@ export default function AnomalyDetection() {
             </TabsContent>
           </Tabs>
         </div>
+
+        {/* Share Dialog */}
+        <ShareDialog
+          csvUpload={shareUpload}
+          isOpen={shareDialogOpen}
+          onClose={() => {
+            setShareDialogOpen(false);
+            setShareUpload(null);
+          }}
+        />
       </main>
     </div>
   );

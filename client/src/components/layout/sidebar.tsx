@@ -11,6 +11,7 @@ export default function Sidebar() {
     { href: "/dashboard", icon: "fas fa-home", label: "Dashboard" },
     { href: "/courses", icon: "fas fa-play", label: "My Courses" },
     { href: "/anomaly-detection", icon: "fas fa-chart-line", label: "Anomaly Detection" },
+    { href: "/my-shared-results", icon: "fas fa-share-alt", label: "My Shared Results" },
     { href: "/downloads", icon: "fas fa-download", label: "Downloads" },
     { href: "/quizzes", icon: "fas fa-quiz", label: "Quizzes" },
     { href: "/certificates", icon: "fas fa-certificate", label: "Certificates" },
