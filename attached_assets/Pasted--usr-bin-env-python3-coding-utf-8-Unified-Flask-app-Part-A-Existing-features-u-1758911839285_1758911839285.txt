@@ -1,0 +1,605 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+Unified Flask app
+
+Part A — Existing features (unchanged behavior):
+  - "/" -> renders index.html
+  - "/download" (POST) -> yfinance CSV (with second line removed)
+  - "/upload-sagemaker" (POST) -> accepts a SageMaker CSV, detects P10/P50/P90,
+    plots all rows, returns a horizontally scrollable SVG
+
+Part B — New "Scheduler" tab:
+  - OAuth2 login with Alpaca (authorize -> token exchange)
+  - Stores OAuth bearer token + account metadata in Firebase Firestore
+  - Schedule OPTIONS market orders by local datetime:
+      * inputs: ticker, CALL/PUT, buy/sell, strike, expiry, qty, env (paper/live)
+      * forced close datetime (DELETE /v2/positions/{occ_symbol})
+  - Worker enforces RTH for options market orders via /v2/clock,
+    deferring to next_open if needed.
+  - Shows account snapshot + user’s scheduled tasks.
+
+Docs referenced:
+- OAuth2 & Trading API overview and flows (authorize URL, token exchange).  (docs.alpaca.markets)  [1]
+- Working with /orders (payload examples).                                              (docs.alpaca.markets)  [2]
+- Close a Position DELETE /v2/positions/{symbol_or_asset_id}.                           (docs.alpaca.markets)  [3]
+- Market Clock /v2/clock for next_open/next_close.                                      (docs.alpaca.markets)  [4]
+
+[1] Using OAuth2 and Trading API
+[2] Working with /orders
+[3] Close a Position
+[4] Get Market Clock info
+"""
+
+# -------------------- Part A: your existing CSV + chart app --------------------
+from io import StringIO, BytesIO
+import os
+import warnings
+from datetime import datetime, timedelta
+
+import pandas as pd
+import yfinance as yf
+import matplotlib
+matplotlib.use("Agg")  # headless servers
+import matplotlib.pyplot as plt
+
+from flask import (
+    Flask, render_template, request, make_response, send_file, abort, redirect,
+    url_for, session, jsonify, flash
+)
+
+warnings.filterwarnings("ignore")
+
+# Single Flask app instance
+app = Flask(__name__)
+
+# ---- Helpers for Part A ----
+def _norm(s: str) -> str:
+    return s.lower().replace(" ", "").replace("_", "")
+
+def _find_col(df: pd.DataFrame, candidates):
+    """Find a column in df by normalized name or substring match."""
+    cols_norm = { _norm(c): c for c in df.columns }
+    # exact normalized matches first
+    for cand in candidates:
+        if cand in cols_norm:
+            return cols_norm[cand]
+    # then substring matches
+    for c in df.columns:
+        cn = _norm(c)
+        if any(cand in cn for cand in candidates):
+            return c
+    return None
+
+def _plot_quantiles_svg(df: pd.DataFrame) -> BytesIO:
+    """
+    Given a DataFrame containing date + P10/P50/P90 (any reasonable naming),
+    make a horizontally scrollable SVG with every point shown (markers on).
+    Returns an in-memory SVG (BytesIO).
+    """
+    # Detect columns
+    date_col = _find_col(df, ["date", "ds", "timestamp", "time"])
+    p10_col  = _find_col(df, ["p10", "q10", "10"])
+    p50_col  = _find_col(df, ["p50", "q50", "50", "median"])
+    p90_col  = _find_col(df, ["p90", "q90", "90"])
+
+    missing = [name for name, col in
+               [("P10", p10_col), ("P50", p50_col), ("P90", p90_col)]
+               if col is None]
+    if missing:
+        raise ValueError(f"Required quantile columns missing: {', '.join(missing)}")
+
+    # Parse/prepare dates or fallback to simple index
+    if date_col is not None:
+        df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+        x_label = "Date"
+    else:
+        date_col = "__row_index__"
+        df[date_col] = range(len(df))
+        x_label = "Index"
+
+    plot_df = df[[date_col, p10_col, p50_col, p90_col]].dropna().copy()
+    plot_df = plot_df.sort_values(by=date_col)
+
+    n = len(plot_df)
+    if n == 0:
+        raise ValueError("No valid rows to plot after cleaning.")
+
+    # Width scales with number of points, capped to keep files reasonable
+    width = max(18, min(300, 0.40 * n))  # inches
+    height = 6
+
+    fig = plt.figure(figsize=(width, height), dpi=100)
+    ax = plt.gca()
+
+    # Plot with markers so each row is visible; no explicit colors/styles
+    ax.plot(plot_df[date_col], plot_df[p10_col], marker="o", linewidth=1, markersize=3, label=p10_col)
+    ax.plot(plot_df[date_col], plot_df[p50_col], marker="o", linewidth=1, markersize=3, label=p50_col)
+    ax.plot(plot_df[date_col], plot_df[p90_col], marker="o", linewidth=1, markersize=3, label=p90_col)
+
+    ax.set_title("P10 / P50 / P90 (All rows from CSV)")
+    ax.set_xlabel(x_label)
+    ax.set_ylabel("Value")
+    ax.grid(True, axis="y", alpha=0.3)
+    ax.legend()
+
+    for label in ax.get_xticklabels():
+        label.set_rotation(45)
+        label.set_ha("right")
+
+    plt.tight_layout()
+
+    buf = BytesIO()
+    fig.savefig(buf, format="svg", bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+# ---- Routes (Part A) ----
+@app.route("/")
+def index():
+    resp = make_response(render_template("index.html"))
+    resp.headers["Cache-Control"] = "public, max-age=300, s-maxage=600"
+    return resp
+
+@app.route("/privacy")
+def index():
+    resp = make_response(render_template("privacy.html"))
+    resp.headers["Cache-Control"] = "public, max-age=300, s-maxage=600"
+    return resp
+
+@app.route("/terms")
+def index():
+    resp = make_response(render_template("terms.html"))
+    resp.headers["Cache-Control"] = "public, max-age=300, s-maxage=600"
+    return resp
+
+@app.route("/download", methods=["POST"])
+def download():
+    ticker     = request.form.get("ticker", "").upper().strip()
+    start_date = request.form.get("start_date")
+    end_date   = request.form.get("end_date")
+    interval   = request.form.get("interval", "1d")
+
+    if not ticker:
+        return "Ticker is required.", 400
+
+    # fetch data
+    df = yf.download(ticker, start=start_date, end=end_date, interval=interval)
+    if df.empty:
+        return "No data found for that symbol and date range.", 404
+
+    # prepare DataFrame
+    df = df[["Close"]].rename(columns={"Close": "Price"})
+    df.reset_index(inplace=True)
+    df.insert(0, "Item_Id", ticker.lower())
+
+    # stream CSV
+    buf = StringIO()
+    df.to_csv(buf, index=False)
+    buf.seek(0)
+
+    # --- Force-remove the second line of the CSV (regardless of content) ---
+    csv_text = buf.getvalue()
+    lines = csv_text.splitlines(True)  # keep line endings
+    if len(lines) > 1:
+        del lines[1]  # delete second line
+    csv_clean = "".join(lines)
+    # -----------------------------------------------------------------------
+
+    filename = f"{ticker}_{start_date}_{end_date}.csv"
+    response = make_response(csv_clean)
+    response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+    response.headers["Content-Type"]        = "text/csv"
+    return response
+
+@app.route("/upload-sagemaker", methods=["POST"])
+def upload_sagemaker():
+    """
+    Expects a multipart/form-data upload with a file field named 'sagemaker_csv'.
+    Returns a downloadable SVG plotting P10/P50/P90 across all rows.
+    """
+    if "sagemaker_csv" not in request.files:
+        return "No file part named 'sagemaker_csv' found.", 400
+
+    file = request.files["sagemaker_csv"]
+    if not file or file.filename.strip() == "":
+        return "No file selected.", 400
+
+    try:
+        df = pd.read_csv(file)
+        svg_bytes = _plot_quantiles_svg(df)
+        base = os.path.splitext(os.path.basename(file.filename))[0] or "chart"
+        dl_name = f"{base}_p10_p50_p90.svg"
+        return send_file(
+            svg_bytes,
+            mimetype="image/svg+xml",
+            as_attachment=True,
+            download_name=dl_name,
+        )
+    except Exception as e:
+        return f"Failed to generate SVG: {e}", 400
+
+# -------------------- Part B: Scheduler (OAuth2 + Firestore + worker) --------------------
+import json, secrets, time
+from urllib.parse import urlencode
+from functools import wraps
+
+import pytz
+import requests
+
+# Firestore (Firebase Admin)
+import firebase_admin
+from firebase_admin import credentials, firestore
+
+from apscheduler.schedulers.background import BackgroundScheduler
+
+# ---- Config ----
+ALPACA_CLIENT_ID     = os.getenv("ALPACA_CLIENT_ID", "98955329020d4b1d472e681e566f8374")
+ALPACA_CLIENT_SECRET = os.getenv("ALPACA_CLIENT_SECRET", "a3b49969959c5b4fa6d6f86b7f1c8528d8e3657d")
+OAUTH_REDIRECT_URI   = os.getenv("OAUTH_REDIRECT_URI", "http://localhost:8080/oauth/callback")
+DEFAULT_ENV          = os.getenv("ALPACA_ENV", "paper")  # 'paper' or 'live'
+FLASK_SECRET_KEY     = os.getenv("FLASK_SECRET_KEY", secrets.token_hex(16))
+SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "./differentialmarketreactions-firebase-adminsdk-fbsvc-05db06426b.json")  # path to Firebase service account JSON
+
+SCOPES = "account:write trading data"  # requested OAuth scopes (account write, trading, data) [1]
+AUTH_BASE   = "https://app.alpaca.markets/oauth/authorize"           # [1]
+TOKEN_URL   = "https://api.alpaca.markets/oauth/token"               # [1]
+
+BASES = {
+    "live":  "https://api.alpaca.markets",
+    "paper": "https://paper-api.alpaca.markets"
+}
+
+# Timezone for scheduling UI defaults
+DEFAULT_TZ = os.getenv("DEFAULT_TIMEZONE", "US/Eastern")
+
+# Apply Flask secret key
+app.secret_key = FLASK_SECRET_KEY
+
+# ---- Firestore init ----
+if not firebase_admin._apps:
+    if not SERVICE_ACCOUNT_JSON:
+        raise RuntimeError("Set GOOGLE_APPLICATION_CREDENTIALS to your Firebase service account JSON path.")
+    cred = credentials.Certificate(SERVICE_ACCOUNT_JSON)
+    firebase_admin.initialize_app(cred)
+
+db = firestore.client()
+USERS_COL     = db.collection("users")            # doc_id: user_key (account_id:env)
+SCHEDULES_COL = db.collection("option_schedules")
+
+# ---- Helpers (Oauth/session, Alpaca REST) ----
+def user_required(f):
+    @wraps(f)
+    def wrap(*args, **kwargs):
+        if "user_key" not in session:
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return wrap
+
+def build_user_key(account_id: str, env: str) -> str:
+    return f"{account_id}:{env}"
+
+def alpaca_get(env: str, path: str, token: str):
+    base = BASES[env]
+    r = requests.get(f"{base}{path}", headers={"Authorization": f"Bearer {token}"}, timeout=15)
+    if r.status_code == 401:
+        raise PermissionError("Token expired or unauthorized")
+    r.raise_for_status()
+    return r.json()
+
+def alpaca_post(env: str, path: str, token: str, payload: dict):
+    base = BASES[env]
+    r = requests.post(f"{base}{path}", headers={
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }, data=json.dumps(payload), timeout=20)
+    if r.status_code == 401:
+        raise PermissionError("Token expired or unauthorized")
+    r.raise_for_status()
+    return r.json()
+
+def alpaca_delete(env: str, path: str, token: str):
+    base = BASES[env]
+    r = requests.delete(f"{base}{path}", headers={"Authorization": f"Bearer {token}"}, timeout=20)
+    if r.status_code == 401:
+        raise PermissionError("Token expired or unauthorized")
+    r.raise_for_status()
+    return r.json() if r.text else {}
+
+def get_clock(env: str, token: str):
+    # GET /v2/clock: is_open, next_open, next_close  [4]
+    return alpaca_get(env, "/v2/clock", token)
+
+def occ_symbol(ticker: str, expiry_yyyymmdd: str, call_put: str, strike: float) -> str:
+    """
+    OCC format: ROOT + YYMMDD + (C|P) + strike*1000 (8 digits).
+    Example: AAPL 2025-10-03 CALL 240.00 -> AAPL251003C00240000
+    """
+    y = expiry_yyyymmdd[2:4]
+    m = expiry_yyyymmdd[5:7]
+    d = expiry_yyyymmdd[8:10]
+    cp = "C" if call_put.upper().startswith("C") else "P"
+    k = int(round(float(strike) * 1000))
+    k_str = f"{k:08d}"
+    return f"{ticker.upper()}{y}{m}{d}{cp}{k_str}"
+
+def parse_local_to_utc(dt_str: str, tz_name: str) -> datetime:
+    # dt_str like "YYYY-MM-DDTHH:MM"
+    tzobj = pytz.timezone(tz_name)
+    naive = datetime.strptime(dt_str, "%Y-%m-%dT%H:%M")
+    return tzobj.localize(naive).astimezone(pytz.UTC)
+
+def ensure_rth_or_delay(env: str, token: str, when_utc: datetime) -> datetime:
+    clk = get_clock(env, token)
+    is_open = bool(clk.get("is_open"))
+    if is_open:
+        return when_utc
+    nxt = datetime.fromisoformat(clk["next_open"].replace("Z", "+00:00"))
+    # If scheduled time is outside RTH, move it to just after next_open
+    return max(when_utc, nxt + timedelta(seconds=5))
+
+def fetch_account(env: str, token: str):
+    # /v2/account using Bearer token  [1]
+    return alpaca_get(env, "/v2/account", token)
+
+@app.route("/login")
+def login():
+    state = secrets.token_urlsafe(16)
+    session["oauth_state"] = state
+    env = request.args.get("env", DEFAULT_ENV)
+    params = {
+        "response_type": "code",
+        "client_id": ALPACA_CLIENT_ID,
+        "redirect_uri": OAUTH_REDIRECT_URI,
+        "state": state,
+        "scope": SCOPES,
+        "env": env,  # 'live' or 'paper'
+    }
+    # Redirect to Alpaca’s consent screen
+    return redirect(f"{AUTH_BASE}?{urlencode(params)}")
+
+@app.route("/oauth/callback")
+def oauth_callback():
+    # Validate state
+    if request.args.get("state") != session.get("oauth_state"):
+        return "Invalid OAuth state", 400
+    code = request.args.get("code")
+    if not code:
+        return "Missing code", 400
+
+    # Exchange authorization code → access token (server-side form POST) [1]
+    form = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "client_id": ALPACA_CLIENT_ID,
+        "client_secret": ALPACA_CLIENT_SECRET,
+        "redirect_uri": OAUTH_REDIRECT_URI
+    }
+    r = requests.post(TOKEN_URL, data=form, timeout=15)
+    if r.status_code != 200:
+        return f"Token exchange failed: {r.text}", 400
+    tok = r.json()  # {'access_token': '...', 'token_type':'bearer', 'scope': '...'}
+    access_token = tok.get("access_token")
+    if not access_token:
+        return "No access token returned", 400
+
+    # Discover which env(s) this token can access; store each (paper/live)
+    envs = ["paper", "live"]
+    linked = []
+    for env in envs:
+        try:
+            acct = fetch_account(env, access_token)
+            acct_id = acct.get("id") or acct.get("account_id") or ""
+            if acct_id:
+                user_key = build_user_key(acct_id, env)
+                USERS_COL.document(user_key).set({
+                    "account": acct,
+                    "env": env,
+                    "token": access_token,
+                    "scopes": tok.get("scope", ""),
+                    "token_obtained_at": datetime.utcnow().isoformat() + "Z"
+                }, merge=True)
+                linked.append({"env": env, "account_id": acct_id})
+                # Default session to first discovered
+                session["user_key"] = user_key
+        except Exception:
+            pass
+
+    if not linked:
+        flash("OAuth succeeded, but no accessible account found. Reconnect and ensure you select the requested env.", "error")
+    return redirect(url_for("scheduler"))
+
+# ---- Scheduler UI routes ----
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("scheduler"))
+
+@app.route("/scheduler")
+def scheduler():
+    user_key = session.get("user_key")
+    account = None
+    schedules = []
+    if user_key:
+        user_doc = USERS_COL.document(user_key).get()
+        if user_doc.exists:
+            user = user_doc.to_dict()
+            token = user.get("token")
+            env = user.get("env", DEFAULT_ENV)
+            try:
+                account = fetch_account(env, token)
+            except Exception as e:
+                flash(f"Failed to fetch account ({env}). Please reconnect. {e}", "error")
+        # user schedules ordered by time
+        schedules = [ {**d.to_dict(), "id": d.id} for d in
+                      SCHEDULES_COL.where("user_key", "==", user_key).order_by("scheduled_at_utc").stream() ]
+    # expects a 'scheduler.html' template (from your prior step)
+    return render_template("scheduler.html",
+                           account=account,
+                           schedules=schedules,
+                           default_env=DEFAULT_ENV,
+                           default_tz=DEFAULT_TZ,
+                           logged_in=bool(user_key))
+
+@app.post("/scheduler/create")
+@user_required
+def create_schedule():
+    user_key = session["user_key"]
+    user = USERS_COL.document(user_key).get().to_dict()
+    env = request.form.get("env") or user.get("env", DEFAULT_ENV)
+
+    ticker   = (request.form.get("ticker") or "").upper().strip()
+    action   = (request.form.get("action") or "buy").lower()  # buy or sell
+    cp       = (request.form.get("cp") or "call").lower()     # call or put
+    strike   = float(request.form.get("strike"))
+    expiry   = request.form.get("expiry")                     # YYYY-MM-DD
+    qty      = int(request.form.get("qty") or "1")
+    sched_at = request.form.get("scheduled_at")               # "YYYY-MM-DDTHH:MM"
+    close_at = request.form.get("close_at") or ""
+    tz_name  = request.form.get("tz") or DEFAULT_TZ
+
+    # Build OCC symbol
+    occ = occ_symbol(ticker, expiry, cp, strike)
+
+    # Persist schedule
+    doc = {
+        "user_key": user_key,
+        "env": env,
+        "ticker": ticker,
+        "occ_symbol": occ,
+        "cp": cp,
+        "action": action,
+        "qty": qty,
+        "strike": strike,
+        "expiry": expiry,
+        "tz": tz_name,
+        "scheduled_at_local": sched_at,
+        "scheduled_at_utc": parse_local_to_utc(sched_at, tz_name).isoformat().replace("+00:00", "Z"),
+        "close_at_local": close_at if close_at else None,
+        "close_at_utc": (parse_local_to_utc(close_at, tz_name).isoformat().replace("+00:00", "Z")
+                         if close_at else None),
+        "status": "pending",
+        "open_order_id": None,
+        "close_status": "pending" if close_at else None,
+        "error": None,
+        "created_at": datetime.utcnow().isoformat() + "Z"
+    }
+    SCHEDULES_COL.add(doc)
+    return redirect(url_for("scheduler"))
+
+@app.post("/scheduler/delete")
+@user_required
+def delete_schedule():
+    sched_id = request.form.get("id")
+    if sched_id:
+        SCHEDULES_COL.document(sched_id).delete()
+    return redirect(url_for("scheduler"))
+
+# ---- Worker: submit & force-close ----
+def place_option_market(env: str, token: str, symbol: str, side: str, qty: int):
+    # Simple options market order payload (see "Working with /orders")  [2]
+    payload = {
+        "symbol": symbol,
+        "qty": str(qty),
+        "side": "buy" if side == "buy" else "sell",
+        "type": "market",
+        "time_in_force": "day"
+    }
+    return alpaca_post(env, "/v2/orders", token, payload)
+
+def close_position(env: str, token: str, symbol: str):
+    # DELETE /v2/positions/{symbol_or_asset_id}  [3]
+    return alpaca_delete(env, f"/v2/positions/{symbol}", token)
+
+def tick_worker():
+    # Open tasks
+    now_utc = datetime.utcnow()
+    due = SCHEDULES_COL.where("status", "==", "pending").stream()
+    for snap in due:
+        d = snap.to_dict()
+        when = datetime.fromisoformat(d["scheduled_at_utc"].replace("Z", "+00:00"))
+        if when > now_utc:
+            continue
+
+        user = USERS_COL.document(d["user_key"]).get().to_dict()
+        if not user:
+            SCHEDULES_COL.document(snap.id).update({"status": "error", "error": "Missing user."})
+            continue
+
+        env, token = user["env"], user["token"]
+
+        try:
+            # Ensure RTH for options market orders via clock [4]
+            aligned_when = ensure_rth_or_delay(env, token, when)
+            if aligned_when > now_utc + timedelta(seconds=10):
+                # Move schedule to aligned_when
+                SCHEDULES_COL.document(snap.id).update({
+                    "scheduled_at_utc": aligned_when.isoformat().replace("+00:00", "Z"),
+                    "status": "pending",
+                    "note": "Shifted to next market open for options market order."
+                })
+                continue
+
+            # Place order
+            res = place_option_market(env, token, d["occ_symbol"], d["action"], int(d["qty"]))
+            SCHEDULES_COL.document(snap.id).update({
+                "status": "opened",
+                "open_order_id": res.get("id"),
+                "opened_at": datetime.utcnow().isoformat() + "Z",
+                "note": None
+            })
+        except PermissionError:
+            SCHEDULES_COL.document(snap.id).update({
+                "status": "auth_error",
+                "error": "Token unauthorized or expired. Re-connect via Login."
+            })
+        except requests.HTTPError as e:
+            SCHEDULES_COL.document(snap.id).update({"status": "error", "error": f"HTTP {e.response.status_code}: {e.response.text[:400]}"})
+        except Exception as e:
+            SCHEDULES_COL.document(snap.id).update({"status": "error", "error": str(e)})
+
+    # Forced closes
+    closing = SCHEDULES_COL.where("close_status", "==", "pending").stream()
+    for snap in closing:
+        d = snap.to_dict()
+        if not d.get("close_at_utc"):
+            continue
+        when_close = datetime.fromisoformat(d["close_at_utc"].replace("Z", "+00:00"))
+        if when_close > now_utc:
+            continue
+
+        user = USERS_COL.document(d["user_key"]).get().to_dict()
+        if not user:
+            SCHEDULES_COL.document(snap.id).update({"close_status": "error", "error": "Missing user."})
+            continue
+
+        env, token = user["env"], user["token"]
+
+        try:
+            res = close_position(env, token, d["occ_symbol"])
+            SCHEDULES_COL.document(snap.id).update({
+                "close_status": "closed",
+                "closed_at": datetime.utcnow().isoformat() + "Z",
+                "close_resp": res
+            })
+        except PermissionError:
+            SCHEDULES_COL.document(snap.id).update({
+                "close_status": "auth_error",
+                "error": "Token unauthorized or expired. Re-connect via Login."
+            })
+        except requests.HTTPError as e:
+            SCHEDULES_COL.document(snap.id).update({"close_status": "error", "error": f"HTTP {e.response.status_code}: {e.response.text[:400]}"})
+        except Exception as e:
+            SCHEDULES_COL.document(snap.id).update({"close_status": "error", "error": str(e)})
+
+# Start background scheduler (daemon)
+scheduler = BackgroundScheduler(daemon=True)
+scheduler.add_job(tick_worker, "interval", seconds=15, max_instances=1)
+scheduler.start()
+
+# -------------------- Run --------------------
+if __name__ == "__main__":
+    # Keep your original port (8080). Change as needed.
+    app.run(host="0.0.0.0", port=8080, debug=False)

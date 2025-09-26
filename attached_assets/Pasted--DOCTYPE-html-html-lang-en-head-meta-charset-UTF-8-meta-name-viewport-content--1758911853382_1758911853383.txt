@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/styles.css" />
+  <title>Download Historical Stock Data (yfinance)</title>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <div class="logo"><a href="/" class="logo-link">Historical Stock Data Tool (yfinance)</a></div>
+      <nav class="main-nav">
+        <ul>
+          <li><a href="/privacy.html">Privacy Policy</a></li>
+          <li><a href="/terms.html">Terms &amp; Conditions</a></li>
+        </ul>
+      </nav>
+      <button class="nav-toggle" aria-label="Open navigation">☰</button>
+    </div>
+  </header>
+
+  <section id="hero" class="hero-section">
+    <div class="hero-content container">
+      <h1 class="hero-title">Build Multi-Period Binomial Models using Amazon Sagemaker Canvas</h1>
+      <p class="hero-subtitle">State-of-the-art end to end machine learning pipeline</p>
+      <div class="hero-ctas">
+        <a href="https://docs.aws.amazon.com/forecast/latest/dg/metrics.html" class="btn btn-primary" target="_blank">Evaluate Predictor Accuracy - Amazon Forecast</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- STOCK DOWNLOADER SECTION -->
+  <section id="stock-downloader" class="stock-downloader-section">
+    <div class="container">
+      <h2>Download Historical Stock Data</h2>
+      <form action="{{ url_for('download') }}" method="POST" class="stock-form">
+        <div>
+          <label for="ticker">Ticker Symbol</label>
+          <input type="text" id="ticker" name="ticker" placeholder="e.g. AAPL" required />
+        </div>
+        <div>
+          <label for="start_date">Start Date</label>
+          <input type="date" id="start_date" name="start_date" required />
+        </div>
+        <div>
+          <label for="end_date">End Date</label>
+          <input type="date" id="end_date" name="end_date" required />
+        </div>
+        <div>
+          <label for="interval">Interval</label>
+          <select id="interval" name="interval">
+            <option value="1m">1 Minute</option>
+            <option value="5m">5 Minutes</option>
+            <option value="15m">15 Minutes</option>
+            <option value="30m">30 Minutes</option>
+            <option value="60m">60 Minutes</option>
+            <option value="90m">90 Minutes</option>
+            <option value="1d" selected>Daily</option>
+            <option value="1wk">Weekly</option>
+            <option value="1mo">Monthly</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary">Download CSV</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- Add somewhere inside your existing index.html -->
+<section style="margin-top:2rem;">
+  <h2>Upload SageMaker CSV → Download SVG</h2>
+  <form action="/upload-sagemaker" method="POST" enctype="multipart/form-data">
+    <input type="file" name="sagemaker_csv" accept=".csv" required />
+    <button type="submit">Generate SVG</button>
+  </form>
+  <p style="font-size:0.9rem;opacity:0.8;">
+    Your CSV should include columns named like <code>P10</code>, <code>P50</code>, <code>P90</code>
+    (case/space-insensitive). A date column (e.g., <code>Date</code>, <code>ds</code>) is optional.
+  </p>
+</section>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <p>&copy; 2025 PropFarming Pro. All rights reserved.</p>
+      <div class="footer-links">
+        <a href="/privacy.html">Privacy Policy</a>
+        <a href="/terms.html">Terms &amp; Conditions</a>
+        <a href="/contact.html">Contact Us</a>
+      </div>
+      <div class="social-icons">
+        <a href="https://linkedin.com/in/tamzidullah">LinkedIn</a>
+        <a href="https://twitter.com/tamzidullah">Twitter</a>
+        <a href="https://github.com/tamzidullah">GitHub</a>
+        <a href="https://youtube.com/tamzidullah">YouTube</a>
+      </div>
+      <p class="footer-note">Made with ❤️ by Tamzid Ullah</p>
+    </div>
+  </footer>
+
+  <script>
+    // mobile menu toggle
+    document.querySelector('.nav-toggle').addEventListener('click', () => {
+      document.querySelector('.main-nav').classList.toggle('open');
+    });
+  </script>
+</body>
+</html>

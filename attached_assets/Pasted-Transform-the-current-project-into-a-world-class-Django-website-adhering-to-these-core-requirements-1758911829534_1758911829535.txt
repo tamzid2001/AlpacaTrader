@@ -1,0 +1,10 @@
+Transform the current project into a world-class Django website, adhering to these core requirements:
+- Design and implement a clear side navigation system accessible exclusively to logged-in users.
+- Integrate Firebase authentication, supporting both email/password and Google sign-in. The authentication flow must include full sign-up and sign-in processes with 'Remember Me' and 'Forgot Password' options.
+- Restrict full access to users authenticated via Firebase and explicitly approved in the Django admin panel.
+- Add and organize a comprehensive video course section. This section must include the ability for users to download videos, slides, and supplementary documents/content, as well as a dedicated quiz section for each course/module.
+- Craft a visually appealing UI for both the login page and the customer-facing landing page. These pages must include a footer and legal disclosure sections.
+- Implement a conspicuous and attractive support agent icon available on all pages, allowing users to either: (a) chat directly with an AI support agent using OpenAI, or (b) contact the support team via a form. The form must include full validation (e.g., email format, required fields) and inform users that the team will respond within 1-2 business days. The support interface must feature an amazing, user-friendly UI seamlessly integrated into the website experience.
+Begin with a concise checklist (3-7 bullets) outlining the conceptual approach before providing the solution.
+Base the solution on the specific folder structure provided in the referenced image. The response must include the complete and correct code for app.py, all other Python files, comprehensive instructions to run the Django program, and the full UI code for the HTML files located in the templates directory.
+After outlining your approach and solution, validate that all requirements and constraints have been fully addressed. If a requirement cannot be satisfied within the constraints, explicitly note and propose an alternative.
