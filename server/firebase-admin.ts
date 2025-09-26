@@ -1,5 +1,6 @@
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getStorage } from "firebase-admin/storage";
+import { getAuth } from "firebase-admin/auth";
 
 // Firebase configuration for server-side uploads
 const firebaseConfig = {
@@ -33,14 +34,172 @@ if (getApps().length === 0) {
   adminApp = getApps()[0];
 }
 
-// Get storage instance
+// Get storage and auth instances
 export const adminStorage = adminApp ? getStorage(adminApp) : null;
+export const adminAuth = adminApp ? getAuth(adminApp) : null;
 
 export interface ServerUploadResult {
   downloadURL: string;
   fullPath: string;
   name: string;
   size: number;
+}
+
+export interface CustomFirebaseToken {
+  token: string;
+  expires: number;
+}
+
+/**
+ * Generate a custom Firebase Auth token based on Replit Auth session
+ * This bridges Replit Auth with Firebase Storage security rules
+ * @param userId - The user ID from Replit Auth
+ * @param email - User email from Replit Auth
+ * @param role - User role (user, admin)
+ * @returns Promise with custom Firebase Auth token
+ */
+export async function generateCustomFirebaseToken(
+  userId: string,
+  email: string,
+  role: string = 'user'
+): Promise<CustomFirebaseToken> {
+  if (!adminAuth) {
+    throw new Error("Firebase Admin Auth not initialized. Please check Firebase configuration.");
+  }
+
+  try {
+    // Create custom claims for role-based access control
+    const customClaims = {
+      email: email,
+      role: role,
+      email_verified: true, // Replit Auth handles email verification
+      replit_auth: true, // Flag to identify Replit Auth origin
+      created_at: Date.now()
+    };
+
+    // Generate custom token with user ID and claims
+    const customToken = await adminAuth.createCustomToken(userId, customClaims);
+    
+    // Calculate expiration (1 hour from now)
+    const expires = Date.now() + (60 * 60 * 1000);
+
+    console.log(`Generated custom Firebase token for user ${userId} (${email}) with role: ${role}`);
+    
+    return {
+      token: customToken,
+      expires: expires
+    };
+  } catch (error: any) {
+    console.error('Firebase custom token generation error:', error);
+    throw new Error(`Failed to generate custom Firebase token: ${error.message}`);
+  }
+}
+
+/**
+ * Create or update Firebase Auth user record for Replit Auth users
+ * This ensures user exists in Firebase Auth for consistent token generation
+ * @param userId - The user ID from Replit Auth
+ * @param email - User email
+ * @param firstName - User first name
+ * @param lastName - User last name
+ * @param role - User role
+ * @returns Promise that resolves when user is created/updated
+ */
+export async function createOrUpdateFirebaseUser(
+  userId: string,
+  email: string,
+  firstName?: string,
+  lastName?: string,
+  role: string = 'user'
+): Promise<void> {
+  if (!adminAuth) {
+    throw new Error("Firebase Admin Auth not initialized.");
+  }
+
+  try {
+    // Check if user already exists
+    let userRecord;
+    try {
+      userRecord = await adminAuth.getUser(userId);
+    } catch (error: any) {
+      if (error.code === 'auth/user-not-found') {
+        // User doesn't exist, create new user
+        userRecord = await adminAuth.createUser({
+          uid: userId,
+          email: email,
+          emailVerified: true, // Replit Auth handles verification
+          displayName: firstName && lastName ? `${firstName} ${lastName}` : email,
+        });
+        console.log(`Created Firebase Auth user for ${email}`);
+      } else {
+        throw error;
+      }
+    }
+
+    // Set custom claims for role-based access control
+    const customClaims = {
+      email: email,
+      role: role,
+      email_verified: true,
+      replit_auth: true,
+      updated_at: Date.now()
+    };
+
+    await adminAuth.setCustomUserClaims(userId, customClaims);
+    console.log(`Updated custom claims for user ${userId} with role: ${role}`);
+    
+  } catch (error: any) {
+    console.error('Firebase user creation/update error:', error);
+    throw new Error(`Failed to create/update Firebase user: ${error.message}`);
+  }
+}
+
+/**
+ * Verify and refresh a Firebase custom token if needed
+ * @param token - The custom Firebase token to verify
+ * @param userId - The user ID
+ * @returns Promise with verification result and new token if refreshed
+ */
+export async function verifyAndRefreshFirebaseToken(
+  token: string,
+  userId: string
+): Promise<{ valid: boolean; token?: string; expires?: number }> {
+  if (!adminAuth) {
+    throw new Error("Firebase Admin Auth not initialized.");
+  }
+
+  try {
+    // Verify the token (this will decode it and check signature)
+    const decodedToken = await adminAuth.verifyIdToken(token);
+    
+    // Check if token is close to expiring (refresh if less than 10 minutes remaining)
+    const now = Math.floor(Date.now() / 1000);
+    const timeUntilExpiry = decodedToken.exp - now;
+    
+    if (timeUntilExpiry < 600) { // Less than 10 minutes
+      // Get user record to refresh token
+      const userRecord = await adminAuth.getUser(userId);
+      if (userRecord.customClaims) {
+        const newTokenData = await generateCustomFirebaseToken(
+          userId,
+          userRecord.customClaims.email as string,
+          userRecord.customClaims.role as string
+        );
+        
+        return {
+          valid: true,
+          token: newTokenData.token,
+          expires: newTokenData.expires
+        };
+      }
+    }
+    
+    return { valid: true };
+    
+  } catch (error: any) {
+    console.error('Firebase token verification error:', error);
+    return { valid: false };
+  }
 }
 
 /**

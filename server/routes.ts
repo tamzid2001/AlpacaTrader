@@ -6,7 +6,15 @@ import { setupAuth, isAuthenticated } from "./replitAuth";
 import OpenAI from "openai";
 import * as XLSX from "xlsx";
 import multer from "multer";
-import { uploadCsvFileServerSide, deleteCsvFileServerSide, getSignedDownloadURL, parseCsvFileServerSide } from "./firebase-admin";
+import { 
+  uploadCsvFileServerSide, 
+  deleteCsvFileServerSide, 
+  getSignedDownloadURL, 
+  parseCsvFileServerSide,
+  generateCustomFirebaseToken,
+  createOrUpdateFirebaseUser,
+  verifyAndRefreshFirebaseToken 
+} from "./firebase-admin";
 
 // Initialize OpenAI with error handling for missing API key
 let openai: OpenAI | null = null;
@@ -53,6 +61,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
+  // Firebase Auth Token Generation Routes
+  // These routes bridge Replit Auth with Firebase Storage security rules
+  app.get('/api/auth/firebase-token', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const userEmail = req.user.claims.email;
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Create or update Firebase Auth user record
+      await createOrUpdateFirebaseUser(
+        userId, 
+        userEmail, 
+        req.user.claims.first_name, 
+        req.user.claims.last_name,
+        user.role
+      );
+
+      // Generate custom Firebase token
+      const tokenData = await generateCustomFirebaseToken(
+        userId,
+        userEmail,
+        user.role
+      );
+
+      res.json({
+        firebaseToken: tokenData.token,
+        expires: tokenData.expires,
+        userId: userId,
+        role: user.role
+      });
+    } catch (error: any) {
+      console.error("Error generating Firebase token:", error);
+      res.status(500).json({ message: "Failed to generate Firebase token", error: error.message });
+    }
+  });
+
+  app.post('/api/auth/firebase-token/verify', isAuthenticated, async (req: any, res) => {
+    try {
+      const { token } = req.body;
+      const userId = req.user.claims.sub;
+      
+      if (!token) {
+        return res.status(400).json({ message: "Firebase token is required" });
+      }
+
+      const verificationResult = await verifyAndRefreshFirebaseToken(token, userId);
+      res.json(verificationResult);
+    } catch (error: any) {
+      console.error("Error verifying Firebase token:", error);
+      res.status(500).json({ message: "Failed to verify Firebase token", error: error.message });
     }
   });
 

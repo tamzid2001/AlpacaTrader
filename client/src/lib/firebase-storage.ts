@@ -7,6 +7,12 @@ import {
   deleteObject, 
   type StorageReference 
 } from "firebase/storage";
+import { 
+  getAuth, 
+  signInWithCustomToken, 
+  signOut,
+  type User 
+} from "firebase/auth";
 
 // Firebase configuration using environment variables
 const firebaseConfig = {
@@ -19,8 +25,13 @@ const firebaseConfig = {
 // Initialize Firebase app
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firebase Storage
+// Initialize Firebase Storage and Auth
 const storage = getStorage(app);
+const auth = getAuth(app);
+
+// Cache for Firebase auth token
+let cachedFirebaseToken: string | null = null;
+let tokenExpires: number | null = null;
 
 export interface FirebaseUploadResult {
   downloadURL: string;
@@ -38,6 +49,131 @@ export interface CsvFileMetadata {
   userId: string;
 }
 
+export interface FirebaseAuthStatus {
+  isAuthenticated: boolean;
+  user: User | null;
+  token: string | null;
+  expires: number | null;
+}
+
+/**
+ * Get custom Firebase auth token from server (bridges Replit Auth with Firebase)
+ * @returns Promise with Firebase custom token
+ */
+export async function getFirebaseAuthToken(): Promise<{ token: string; expires: number }> {
+  // Check if we have a cached valid token
+  if (cachedFirebaseToken && tokenExpires && Date.now() < tokenExpires - 60000) { // 1 minute buffer
+    return { token: cachedFirebaseToken, expires: tokenExpires };
+  }
+
+  try {
+    const response = await fetch('/api/auth/firebase-token', {
+      method: 'GET',
+      credentials: 'include', // Include Replit Auth session cookies
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get Firebase token: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    // Cache the token
+    cachedFirebaseToken = data.firebaseToken;
+    tokenExpires = data.expires;
+
+    return { token: data.firebaseToken, expires: data.expires };
+  } catch (error: any) {
+    console.error('Error fetching Firebase auth token:', error);
+    throw new Error(`Authentication failed: ${error.message}`);
+  }
+}
+
+/**
+ * Authenticate with Firebase using custom token
+ * @returns Promise with Firebase auth status
+ */
+export async function authenticateWithFirebase(): Promise<FirebaseAuthStatus> {
+  try {
+    // Get custom Firebase token from server
+    const { token } = await getFirebaseAuthToken();
+    
+    // Sign in with custom token
+    const userCredential = await signInWithCustomToken(auth, token);
+    
+    console.log('Successfully authenticated with Firebase Storage');
+    
+    return {
+      isAuthenticated: true,
+      user: userCredential.user,
+      token: token,
+      expires: tokenExpires,
+    };
+  } catch (error: any) {
+    console.error('Firebase authentication failed:', error);
+    return {
+      isAuthenticated: false,
+      user: null,
+      token: null,
+      expires: null,
+    };
+  }
+}
+
+/**
+ * Sign out from Firebase Auth
+ */
+export async function signOutFromFirebase(): Promise<void> {
+  try {
+    await signOut(auth);
+    cachedFirebaseToken = null;
+    tokenExpires = null;
+    console.log('Signed out from Firebase');
+  } catch (error: any) {
+    console.error('Error signing out from Firebase:', error);
+  }
+}
+
+/**
+ * Check current Firebase authentication status
+ */
+export function getFirebaseAuthStatus(): FirebaseAuthStatus {
+  const currentUser = auth.currentUser;
+  return {
+    isAuthenticated: !!currentUser,
+    user: currentUser,
+    token: cachedFirebaseToken,
+    expires: tokenExpires,
+  };
+}
+
+/**
+ * Ensure user is authenticated with Firebase before storage operations
+ * @returns Promise that resolves when authenticated
+ */
+async function ensureFirebaseAuthenticated(): Promise<void> {
+  const currentUser = auth.currentUser;
+  
+  if (!currentUser) {
+    const authStatus = await authenticateWithFirebase();
+    if (!authStatus.isAuthenticated) {
+      throw new Error('Failed to authenticate with Firebase Storage. Please check your login status.');
+    }
+  }
+  
+  // Check if token needs refresh
+  if (tokenExpires && Date.now() >= tokenExpires - 300000) { // 5 minutes buffer
+    try {
+      await authenticateWithFirebase(); // Refresh token
+    } catch (error) {
+      console.warn('Token refresh failed, continuing with existing authentication');
+    }
+  }
+}
+
 /**
  * Upload a CSV file to Firebase Storage in user-specific folder
  * @param file - The CSV file to upload
@@ -51,14 +187,17 @@ export async function uploadCsvFile(
   customFilename: string
 ): Promise<FirebaseUploadResult> {
   try {
+    // Ensure user is authenticated with Firebase before upload
+    await ensureFirebaseAuthenticated();
+
     // Validate file type
     if (!file.type.includes('csv') && !file.name.toLowerCase().endsWith('.csv')) {
       throw new Error('File must be a CSV file');
     }
 
-    // Validate file size (50MB limit)
-    if (file.size > 50 * 1024 * 1024) {
-      throw new Error('File size must be less than 50MB');
+    // Validate file size (100MB limit to match security rules)
+    if (file.size > 100 * 1024 * 1024) {
+      throw new Error('File size must be less than 100MB');
     }
 
     // Ensure custom filename has .csv extension
@@ -66,23 +205,27 @@ export async function uploadCsvFile(
       ? customFilename 
       : `${customFilename}.csv`;
 
-    // Create storage reference with user-specific path
+    // Create storage reference with user-specific path (matching security rules)
     const timestamp = Date.now();
-    const storageRef = ref(storage, `users/${userId}/csvs/${timestamp}-${filename}`);
+    const storageRef = ref(storage, `users/${userId}/csvs/${filename}_${timestamp}`);
 
-    // Upload file
+    // Upload file with required metadata for security rules
     const uploadResult = await uploadBytes(storageRef, file, {
       contentType: 'text/csv',
       customMetadata: {
         originalFilename: file.name,
         customFilename: filename,
         uploadDate: new Date().toISOString(),
-        userId: userId,
+        userId: userId, // Required by security rules
+        uploadedBy: 'client',
+        fileSize: file.size.toString(),
       }
     });
 
     // Get download URL
     const downloadURL = await getDownloadURL(uploadResult.ref);
+
+    console.log(`Successfully uploaded ${filename} to Firebase Storage with security rules`);
 
     return {
       downloadURL,
@@ -103,8 +246,14 @@ export async function uploadCsvFile(
  */
 export async function downloadCsvFile(filePath: string): Promise<string> {
   try {
+    // Ensure user is authenticated with Firebase before download
+    await ensureFirebaseAuthenticated();
+
     const fileRef = ref(storage, filePath);
-    return await getDownloadURL(fileRef);
+    const downloadURL = await getDownloadURL(fileRef);
+    
+    console.log(`Successfully retrieved download URL for ${filePath}`);
+    return downloadURL;
   } catch (error: any) {
     console.error('Firebase Storage download error:', error);
     throw new Error(`Failed to get download URL: ${error.message}`);
@@ -118,8 +267,13 @@ export async function downloadCsvFile(filePath: string): Promise<string> {
  */
 export async function deleteCsvFile(filePath: string): Promise<void> {
   try {
+    // Ensure user is authenticated with Firebase before deletion
+    await ensureFirebaseAuthenticated();
+
     const fileRef = ref(storage, filePath);
     await deleteObject(fileRef);
+    
+    console.log(`Successfully deleted ${filePath} from Firebase Storage`);
   } catch (error: any) {
     console.error('Firebase Storage delete error:', error);
     throw new Error(`Failed to delete file: ${error.message}`);
