@@ -1,0 +1,207 @@
+import { useAuth } from "@/hooks/use-auth";
+import { useLocation } from "wouter";
+import { useEffect } from "react";
+import { useUserEnrollments } from "@/hooks/use-courses";
+import Sidebar from "@/components/layout/sidebar";
+import SupportChat from "@/components/support/support-chat";
+import VideoPlayer from "@/components/courses/video-player";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
+
+export default function Dashboard() {
+  const { firebaseUser, user, isApproved } = useAuth();
+  const [, setLocation] = useLocation();
+  const { data: enrollments } = useUserEnrollments(user?.id || "");
+
+  useEffect(() => {
+    if (!firebaseUser) {
+      setLocation("/");
+      return;
+    }
+    
+    if (!isApproved) {
+      // User is not approved, show pending approval message
+      return;
+    }
+  }, [firebaseUser, isApproved, setLocation]);
+
+  if (!firebaseUser) {
+    return null;
+  }
+
+  if (!isApproved) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Card className="max-w-md w-full mx-4">
+          <CardHeader>
+            <CardTitle className="text-center">Approval Pending</CardTitle>
+          </CardHeader>
+          <CardContent className="text-center">
+            <p className="text-muted-foreground mb-4">
+              Your account is currently pending approval from our admin team. 
+              You'll receive access to the platform once approved.
+            </p>
+            <Button onClick={() => setLocation("/")} variant="outline">
+              Return to Home
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background flex">
+      <Sidebar />
+      
+      <main className="flex-1 ml-64 p-8" data-testid="dashboard-main">
+        {/* Top Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground" data-testid="text-welcome">
+              Welcome back, {user?.displayName || 'Student'}!
+            </h1>
+            <p className="text-muted-foreground" data-testid="text-subtitle">
+              Continue your learning journey
+            </p>
+          </div>
+          <div className="flex items-center space-x-4">
+            <Button variant="outline" size="icon" data-testid="button-notifications">
+              <i className="fas fa-bell text-muted-foreground"></i>
+            </Button>
+            <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center" data-testid="avatar-user">
+              <span className="text-primary-foreground font-semibold">
+                {user?.displayName?.charAt(0) || 'U'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid md:grid-cols-4 gap-6 mb-8">
+          <Card data-testid="card-enrolled">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-muted-foreground text-sm">Courses Enrolled</p>
+                  <p className="text-2xl font-bold text-foreground" data-testid="text-enrolled-count">
+                    {enrollments?.length || 0}
+                  </p>
+                </div>
+                <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
+                  <i className="fas fa-book text-primary"></i>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card data-testid="card-completed">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-muted-foreground text-sm">Completed</p>
+                  <p className="text-2xl font-bold text-foreground" data-testid="text-completed-count">
+                    {enrollments?.filter(e => e.completed).length || 0}
+                  </p>
+                </div>
+                <div className="w-12 h-12 bg-emerald-100 rounded-lg flex items-center justify-center">
+                  <i className="fas fa-check text-emerald-600"></i>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card data-testid="card-hours">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-muted-foreground text-sm">Learning Hours</p>
+                  <p className="text-2xl font-bold text-foreground" data-testid="text-hours">
+                    {Math.floor(Math.random() * 200) + 50}
+                  </p>
+                </div>
+                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <i className="fas fa-clock text-blue-600"></i>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card data-testid="card-certificates">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-muted-foreground text-sm">Certificates</p>
+                  <p className="text-2xl font-bold text-foreground" data-testid="text-certificates">
+                    {enrollments?.filter(e => e.completed).length || 0}
+                  </p>
+                </div>
+                <div className="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center">
+                  <i className="fas fa-award text-amber-600"></i>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Current Courses */}
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold text-foreground mb-6" data-testid="text-continue-learning">
+            Continue Learning
+          </h2>
+          <div className="grid md:grid-cols-2 gap-6">
+            {enrollments?.slice(0, 2).map((enrollment) => (
+              <Card key={enrollment.id} className="overflow-hidden" data-testid={`card-enrollment-${enrollment.id}`}>
+                <img 
+                  src={enrollment.course.imageUrl || ""} 
+                  alt={enrollment.course.title}
+                  className="w-full h-40 object-cover"
+                  data-testid={`img-course-${enrollment.id}`}
+                />
+                <CardContent className="p-6">
+                  <h3 className="text-xl font-semibold mb-2" data-testid={`text-course-title-${enrollment.id}`}>
+                    {enrollment.course.title}
+                  </h3>
+                  <p className="text-muted-foreground mb-4" data-testid={`text-course-module-${enrollment.id}`}>
+                    Current Progress
+                  </p>
+                  <div className="flex items-center justify-between mb-4">
+                    <Progress value={enrollment.progress || 0} className="flex-1 mr-4" data-testid={`progress-${enrollment.id}`} />
+                    <span className="text-sm text-muted-foreground" data-testid={`text-progress-${enrollment.id}`}>
+                      {enrollment.progress || 0}%
+                    </span>
+                  </div>
+                  <Button className="w-full hover:bg-primary/90" data-testid={`button-continue-${enrollment.id}`}>
+                    Continue Learning
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+            
+            {(!enrollments || enrollments.length === 0) && (
+              <Card className="md:col-span-2" data-testid="card-no-enrollments">
+                <CardContent className="p-8 text-center">
+                  <i className="fas fa-graduation-cap text-4xl text-muted-foreground mb-4"></i>
+                  <h3 className="text-xl font-semibold mb-2">No courses enrolled yet</h3>
+                  <p className="text-muted-foreground mb-4">Start your learning journey by enrolling in a course</p>
+                  <Button onClick={() => setLocation("/")} data-testid="button-browse-courses">
+                    Browse Courses
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
+
+        {/* Video Course Section */}
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold text-foreground mb-6" data-testid="text-latest-content">
+            Latest Course Content
+          </h2>
+          <VideoPlayer />
+        </div>
+      </main>
+      
+      <SupportChat />
+    </div>
+  );
+}

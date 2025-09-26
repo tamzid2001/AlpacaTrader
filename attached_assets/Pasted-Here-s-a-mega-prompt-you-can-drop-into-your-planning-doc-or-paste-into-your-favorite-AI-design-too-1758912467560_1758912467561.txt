@@ -1,0 +1,133 @@
+Here’s a “mega-prompt” you can drop into your planning doc or paste into your favorite AI/design tool. It’s deliberately exhaustive, covering product/UX, engineering, security, compliance, and ops—so the output you get back pushes the app toward a truly world-class standard.
+
+---
+
+## Master Improvement Prompt — MarketDifferentials (Django + Firebase + Courses + Scheduler)
+
+**Role:** You are a senior staff-level product & platform engineer, acting as a cross-functional architect (PM + UX + Security + SRE).
+**Goal:** Produce a concrete, prioritized, end-to-end improvement plan and high-fidelity specs that elevate the app across **all** use cases. Generate wireframes/storyboards, acceptance criteria, API/DB schemas, test plans, and risk/spend tradeoffs.
+
+### 1) Context & constraints
+
+* Tech: Django backend, Firebase Web Auth (email+Google), Firestore, OpenAI support chat, course library (videos/slides/docs), quizzes, option-trade scheduler UI.
+* Hard requirements:
+
+  1. Side navigation available only to authenticated users; admin approval gate.
+  2. Accessibility target: WCAG 2.2 AA or better (note the 9 new success criteria and backward-compatibility with 2.1/2.0). ([W3C][1])
+  3. Security target: implement roadmap aligned to **OWASP ASVS** controls (authZ, session mgmt, crypto, data validation, logging). ([OWASP][2])
+  4. Data protection: follow GDPR/UK-GDPR core principles (lawfulness, minimization, storage limitation, etc.). ([ICO][3])
+  5. Firebase: formalize **Security Rules** and role-based access; pair Rules with Auth. ([Firebase][4])
+  6. Django hardening: follow the official **deployment & security** checklist. ([Django Project][5])
+
+### 2) Audiences & personas (expand with real names/quotes)
+
+* **New Learner**: wants a frictionless sign-up (email/Google), quick course preview, bite-size lessons, and an assurance of data privacy.
+* **Active Subscriber**: tracks progress, downloads slides/docs offline, takes quizzes, earns certificates/badges, asks AI support targeted questions.
+* **Options Trader**: schedules options with guardrails (market hours enforcement, confirmations, notifications), audit logs, and rescind/edit flow.
+* **Instructor/Admin**: uploads content, builds quizzes, manages cohorts, sees analytics, approves users, sets access tiers.
+* **Compliance/Security**: requests logs, policy views, data retention settings, DPIA checklist, consent records export.
+
+### 3) End-to-end use cases & storyboard prompts
+
+For each flow below, produce: **journey map** (screens, states, empty/loading/error), **copy text**, **edge cases**, **metrics**, and **test cases**.
+
+**Auth & account**
+
+1. Email sign-up w/ “Remember me”, email verification, password reset, and Google sign-in; smooth re-entry via Firebase **session cookies**; pending-approval interstitial. (UX for throttled attempts, weak password hints, blocked accounts.)
+2. Session lifecycle: idle timeout vs persistent session; single-device logout; device/session list; revoke sessions from admin panel.
+3. Consent center: marketing consent, cookie categories, data export/delete (self-service tickets).
+
+**Navigation & layout**
+4. Logged-in shell with left nav (Courses, Scheduler, Support, Profile, Settings); nav badges (e.g., pending quiz, scheduled action today).
+5. Guest landing: benefits, short demo, pricing tiers, legal footers; lighthouse-grade performance and accessible color contrast.
+
+**Courses**
+6. Catalog discovery: search, filters (level, topic, length), saved items, last watched.
+7. Lesson page: video player (resume point), transcript, resources (slides/docs), take-notes side panel, offline download controls.
+8. Quiz flow: single/multi-select, review mode, explanations, per-objective scores, certificate issue; retries with cooldowns; anti-cheat hints.
+9. Instructor upload: drag-drop large media, transcoding status, accessibility artifacts (captions, alt text), versioning, publish/rollback.
+
+**Scheduler (options)**
+10. Connect OAuth to brokerage; select **ticker**, **call/put**, **strike**, **expiry**, **quantity**, **place-on date/time**; **close-on date/time** regardless of expiry; **market-hours validation** + warnings; dry-run estimator.
+11. Modify/cancel: pending orders editable; activity log; notification channels (email/push) with throttling.
+12. Portfolio snapshot: open positions, P&L, risk and exposure visualization; “why this failed” explanations (e.g., market-hours restriction).
+13. Guardrails: confirmation dialogues on high notional risk; togglable two-person approval for larger trades.
+*(Note: keep server-side enforcement for rules, market hours, and permissions.)*
+
+**Support**
+14. **AI chat** context: personalize with user progress and last errors; graceful fallback if OpenAI unavailable.
+15. Contact form: validated email/subject/message; show SLA “1–2 business days”; create ticket ID; allow file attachments; send confirmation.
+
+**Admin back-office**
+16. User approval queue; bulk approve/deny with reasons; audit trail.
+17. Content QA: broken link checks, caption coverage, WCAG issues backlog.
+18. Security center: secrets inventory, Rules linter, ASVS checklist progress, Django deploy checks, error budget.
+
+### 4) Non-functional requirements (make these verifiable)
+
+* **Accessibility:** Provide WCAG 2.2 AA mapping per screen; write 10–20 automated a11y tests; ensure focus order, target sizes, error messaging per 2.2 new criteria. ([W3C][1])
+* **Security:** Map features to **OWASP ASVS** controls (e.g., session mgmt V2, authN V1, access control V4, cryptography V7, logging V10). Output a gap list with priorities. ([OWASP][2])
+* **Data protection:** Document GDPR/UK-GDPR principles and retention schedule; data minimization in Firestore docs/collections; surface a “why we store this” panel to users. ([ICO][3])
+* **Firebase Rules:** Provide explicit read/write predicates for each collection (users, schedules, lessons, submissions). Include unit tests (emulators). ([Firebase][4])
+* **Django hardening:** Follow official security & deployment checklist (HTTPS, CSRF, `SECURE_*` headers, `check --deploy`, secret management). ([Django Project][5])
+* **Observability:** Structured logs, request IDs, audit logs on sensitive actions, privacy-preserving analytics.
+
+### 5) Deliverables the AI/tool must return
+
+1. **Information architecture** and **sitemap** with roles/permissions.
+2. **Wireframes** (mobile/desktop) for the 18 flows above, with WCAG notes per component.
+3. **Domain model & schemas**: Django models, Firestore collections, indexes, and Rules for every read/write path.
+4. **API specs** (OpenAPI): endpoints for courses, quizzes, scheduler, support; include error contracts.
+5. **State charts** for auth, scheduler orders, quiz attempts.
+6. **Migration plan**: data seeding, backfills, and rollout/rollback.
+7. **Test plan**: unit/integration/e2e; a11y checks; security tests aligned to ASVS sections; load test budgets.
+8. **Risk register** with mitigations (e.g., streaming costs, rate limits, fraud/abuse, lock-in).
+9. **Roadmap**: 30-60-90 day plan with measurable KPIs (activation rate, lesson completion, quiz pass rate, scheduler success, support CSAT).
+
+### 6) Example acceptance criteria (copy & adapt)
+
+* **A11y:** Every interactive control is reachable with keyboard; visible focus; meets WCAG 2.2 AA contrast and target size; automated checks have **0 violations** in CI. ([W3C][6])
+* **Security:** Session cookies are **HttpOnly + Secure + SameSite=Lax/Strict**; rate-limit login and order submission; all secrets are externalized; ASVS V2/V4/V10 items verified in CI. ([OWASP][2])
+* **Data:** Firestore Rules deny by default; reads/writes are attribute-based; unit tests pass in emulator; least-privilege IAM. ([Firebase][7])
+* **Compliance:** A “Privacy & Data Controls” page demonstrates GDPR principles and retention, with links to policy docs. ([ICO][3])
+* **Django deploy:** `python manage.py check --deploy` passes; CSP & HSTS enabled; HTTPS enforced in prod. ([Django Project][5])
+
+### 7) Stretch ideas (ask the AI to spec if in scope)
+
+* **Learning features:** spaced repetition reviews; AI-generated summaries and flashcards; skill maps; cohort study rooms.
+* **Monetization:** coupons, teams/seat licensing, Stripe billing; usage-based pricing for AI features.
+* **Trust & Safety:** abuse detection, prompt-injection filters on AI chat; PII scrubbing before model calls.
+* **Performance:** HLS/DASH adaptive streaming, prefetching lesson assets, background uploads, offline mode.
+* **Internationalization:** RTL, locale-aware formatting, translated captions; regional data residency plan.
+* **Mobile:** PWA install, push notifications, background sync; native wrappers as a phase-2.
+
+---
+
+### What the assistant should output when you use this prompt
+
+* A **prioritized backlog** with estimates and team swimlanes (frontend, backend, platform).
+* **Wireframes** or component specs for key screens, including a11y annotations.
+* **Schemas**, **API contracts**, and **Rules** with examples and tests.
+* Security & compliance matrices tied to **OWASP ASVS**, **WCAG 2.2**, **GDPR**, **Firebase Rules**, and **Django deploy** checklists—explicitly citing which controls/criteria are met and how. ([OWASP][2])
+
+---
+
+#### Sources
+
+* WCAG 2.2 overview & changes (backwards-compatible with 2.1/2.0). ([W3C][8])
+* OWASP ASVS (scope & sections for security verification). ([OWASP][2])
+* Firebase Security Rules & Firestore best practices. ([Firebase][4])
+* GDPR/UK-GDPR core principles (lawfulness, minimization, storage limitation, accountability). ([ICO][3])
+* Django security & deployment checklists. ([Django Project][9])
+
+Use this prompt as a reusable blueprint: paste it into your AI tool or share with your team to generate detailed plans, designs, and checklists for the next iteration.
+
+[1]: https://www.w3.org/WAI/standards-guidelines/wcag/new-in-22/?utm_source=chatgpt.com "What's New in WCAG 2.2 | Web Accessibility Initiative (WAI)"
+[2]: https://owasp.org/www-project-application-security-verification-standard/?utm_source=chatgpt.com "OWASP Application Security Verification Standard (ASVS)"
+[3]: https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/data-protection-principles/a-guide-to-the-data-protection-principles/?utm_source=chatgpt.com "A guide to the data protection principles"
+[4]: https://firebase.google.com/docs/rules?utm_source=chatgpt.com "Firebase Security Rules - Google"
+[5]: https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/?utm_source=chatgpt.com "Deployment checklist"
+[6]: https://www.w3.org/TR/WCAG22/?utm_source=chatgpt.com "Web Content Accessibility Guidelines (WCAG) 2.2"
+[7]: https://firebase.google.com/docs/firestore/security/get-started?utm_source=chatgpt.com "Get started with Cloud Firestore Security Rules - Firebase"
+[8]: https://www.w3.org/WAI/standards-guidelines/wcag/?utm_source=chatgpt.com "WCAG 2 Overview | Web Accessibility Initiative (WAI)"
+[9]: https://docs.djangoproject.com/en/5.2/topics/security/?utm_source=chatgpt.com "Security in Django"
