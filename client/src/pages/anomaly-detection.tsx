@@ -12,7 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from "recharts";
-import { Upload, FileText, AlertTriangle, TrendingUp, Activity } from "lucide-react";
+import { Upload, FileText, AlertTriangle, TrendingUp, Activity, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { CsvUpload, Anomaly } from "@shared/schema";
 
@@ -337,6 +337,60 @@ export default function AnomalyDetection() {
     },
   });
 
+  const exportMutation = useMutation({
+    mutationFn: async (uploadId: string) => {
+      const response = await fetch(`/api/anomalies/${uploadId}/export-excel?userId=${user?.id}`, {
+        method: 'GET',
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Export failed');
+      }
+      
+      return response;
+    },
+    onSuccess: async (response, uploadId) => {
+      try {
+        // Get the filename from the response headers
+        const contentDisposition = response.headers.get('Content-Disposition');
+        const filename = contentDisposition 
+          ? contentDisposition.split('filename=')[1]?.replace(/['"]/g, '') || 'anomaly-export.xlsx'
+          : 'anomaly-export.xlsx';
+
+        // Create blob and download
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+        toast({
+          title: "Export successful",
+          description: "Excel file has been downloaded successfully. Ready for Monday.com import!",
+        });
+      } catch (error) {
+        toast({
+          title: "Download failed",
+          description: "Failed to download the exported file.",
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Export failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   if (!firebaseUser) {
     return null;
   }
@@ -476,7 +530,36 @@ export default function AnomalyDetection() {
             <TabsContent value="anomalies" className="space-y-4">
               <Card data-testid="card-anomalies-table">
                 <CardHeader>
-                  <CardTitle>Detected Anomalies</CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle>Detected Anomalies</CardTitle>
+                    {anomalies && anomalies.length > 0 && uploads && uploads.length > 0 && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="gap-2"
+                        onClick={() => {
+                          // Find the most recent upload with anomalies
+                          const uploadsWithAnomalies = uploads.filter((upload: CsvUpload) => 
+                            anomalies.some((anomaly: Anomaly & { upload: CsvUpload }) => 
+                              anomaly.upload?.id === upload.id
+                            )
+                          );
+                          if (uploadsWithAnomalies.length > 0) {
+                            const latestUpload = uploadsWithAnomalies
+                              .sort((a: CsvUpload, b: CsvUpload) => 
+                                new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
+                              )[0];
+                            exportMutation.mutate(latestUpload.id);
+                          }
+                        }}
+                        disabled={exportMutation.isPending}
+                        data-testid="button-export-excel"
+                      >
+                        <Download className="h-4 w-4" />
+                        {exportMutation.isPending ? "Exporting..." : "Export to Monday.com"}
+                      </Button>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {anomalies && anomalies.length > 0 ? (
