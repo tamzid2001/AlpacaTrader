@@ -17,7 +17,18 @@ import {
   type Anomaly,
   type InsertAnomaly,
   type SharedResult,
-  type InsertSharedResult
+  type InsertSharedResult,
+  type UserConsent,
+  type InsertUserConsent,
+  type AnonymousConsent,
+  type InsertAnonymousConsent,
+  type DataProcessingLog,
+  type InsertDataProcessingLog,
+  type ConsentType,
+  type LegalBasis,
+  type ProcessingAction,
+  type DataType,
+  type ProcessingPurpose
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -78,6 +89,66 @@ export interface IStorage {
   deleteSharedResult(id: string): Promise<boolean>;
   incrementViewCount(id: string): Promise<void>;
   logAccess(id: string, accessInfo: { ip: string; userAgent: string; timestamp: Date }): Promise<void>;
+
+  // GDPR Compliance - Consent Management
+  createUserConsent(consent: InsertUserConsent): Promise<UserConsent>;
+  getUserConsent(userId: string, consentType?: ConsentType): Promise<UserConsent[]>;
+  updateUserConsent(userId: string, consentType: ConsentType, consentGiven: boolean, metadata?: { ipAddress?: string; userAgent?: string }): Promise<UserConsent>;
+  withdrawConsent(userId: string, consentType: ConsentType, metadata?: { ipAddress?: string; userAgent?: string }): Promise<UserConsent>;
+  getUserConsentStatus(userId: string): Promise<Record<ConsentType, boolean>>;
+
+  // GDPR Compliance - Anonymous Consent Management (for unauthenticated users)
+  createAnonymousConsent(consent: InsertAnonymousConsent): Promise<AnonymousConsent>;
+  getAnonymousConsent(email: string, consentType?: ConsentType): Promise<AnonymousConsent[]>;
+  updateAnonymousConsent(email: string, consentType: ConsentType, consentGiven: boolean, metadata?: { ipAddress?: string; userAgent?: string }): Promise<AnonymousConsent>;
+  linkAnonymousConsentToUser(email: string, userId: string): Promise<number>; // Returns number of records linked
+
+  // GDPR Compliance - Data Processing Audit
+  logDataProcessing(log: InsertDataProcessingLog): Promise<DataProcessingLog>;
+  getUserProcessingLogs(userId: string, limit?: number): Promise<DataProcessingLog[]>;
+  getProcessingLogsByAction(action: ProcessingAction, limit?: number): Promise<DataProcessingLog[]>;
+  getProcessingLogsByDataType(dataType: DataType, limit?: number): Promise<DataProcessingLog[]>;
+
+  // GDPR Compliance - Data Portability (Right to Data Portability - Article 20)
+  exportUserData(userId: string): Promise<{
+    user: User;
+    consents: UserConsent[];
+    csvUploads: CsvUpload[];
+    courseEnrollments: (CourseEnrollment & { course: Course })[];
+    quizResults: QuizResult[];
+    supportMessages: SupportMessage[];
+    sharedResults: SharedResult[];
+    processingLogs: DataProcessingLog[];
+  }>;
+
+  // GDPR Compliance - Right to Erasure (Right to be Forgotten - Article 17)
+  deleteUserData(userId: string, options?: {
+    keepAuditLogs?: boolean;
+    keepAnonymizedData?: boolean;
+    reason?: string;
+  }): Promise<{
+    deletedRecords: Record<string, number>;
+    retainedRecords: Record<string, number>;
+    auditLog: DataProcessingLog;
+  }>;
+
+  // GDPR Compliance - Data Retention Management
+  applyRetentionPolicies(): Promise<{
+    usersAffected: number;
+    recordsDeleted: Record<string, number>;
+    errors: string[];
+  }>;
+  setUserRetention(userId: string, retentionUntil: Date, reason: string): Promise<User | undefined>;
+
+  // GDPR Compliance - Access Rights (Right of Access - Article 15)
+  getUserAccessReport(userId: string): Promise<{
+    personalData: any;
+    processingPurposes: string[];
+    dataCategories: string[];
+    recipients: string[];
+    retentionPeriod: string;
+    rights: string[];
+  }>;
 }
 
 export class MemStorage implements IStorage {
@@ -90,6 +161,10 @@ export class MemStorage implements IStorage {
   private csvUploads: Map<string, CsvUpload> = new Map();
   private anomalies: Map<string, Anomaly> = new Map();
   private sharedResults: Map<string, SharedResult> = new Map();
+  // GDPR storage
+  private userConsents: Map<string, UserConsent> = new Map();
+  private anonymousConsents: Map<string, AnonymousConsent> = new Map();
+  private dataProcessingLogs: Map<string, DataProcessingLog> = new Map();
 
   constructor() {
     this.initializeData();
@@ -566,6 +641,541 @@ export class MemStorage implements IStorage {
       sharedResult.updatedAt = new Date();
       this.sharedResults.set(id, sharedResult);
     }
+  }
+
+  // GDPR Compliance Methods
+  
+  // Consent Management
+  async createUserConsent(consent: InsertUserConsent): Promise<UserConsent> {
+    const id = randomUUID();
+    const userConsent: UserConsent = {
+      ...consent,
+      id,
+      consentDate: consent.consentDate || new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      withdrawnAt: consent.withdrawnAt || null,
+      purpose: consent.purpose || null,
+      legalBasis: consent.legalBasis || null,
+      ipAddress: consent.ipAddress || null,
+      userAgent: consent.userAgent || null,
+    };
+    this.userConsents.set(id, userConsent);
+    
+    // Log the consent action
+    await this.logDataProcessing({
+      userId: consent.userId,
+      action: "create",
+      dataType: "consent",
+      recordId: id,
+      ipAddress: consent.ipAddress,
+      userAgent: consent.userAgent,
+      requestDetails: `User ${consent.consentGiven ? 'granted' : 'denied'} consent for ${consent.consentType}`,
+      legalBasis: "consent",
+      processingPurpose: "compliance",
+    });
+    
+    return userConsent;
+  }
+
+  async getUserConsent(userId: string, consentType?: ConsentType): Promise<UserConsent[]> {
+    const consents = Array.from(this.userConsents.values())
+      .filter(consent => consent.userId === userId);
+      
+    if (consentType) {
+      return consents.filter(consent => consent.consentType === consentType);
+    }
+    
+    return consents;
+  }
+
+  async updateUserConsent(userId: string, consentType: ConsentType, consentGiven: boolean, metadata?: { ipAddress?: string; userAgent?: string }): Promise<UserConsent> {
+    // Find existing consent or create new one
+    const existingConsents = await this.getUserConsent(userId, consentType);
+    const existingConsent = existingConsents.find(c => !c.withdrawnAt);
+    
+    if (existingConsent) {
+      existingConsent.consentGiven = consentGiven;
+      existingConsent.consentDate = new Date();
+      existingConsent.updatedAt = new Date();
+      if (metadata?.ipAddress) existingConsent.ipAddress = metadata.ipAddress;
+      if (metadata?.userAgent) existingConsent.userAgent = metadata.userAgent;
+      this.userConsents.set(existingConsent.id, existingConsent);
+      
+      await this.logDataProcessing({
+        userId,
+        action: "modify",
+        dataType: "consent",
+        recordId: existingConsent.id,
+        ipAddress: metadata?.ipAddress,
+        userAgent: metadata?.userAgent,
+        requestDetails: `User ${consentGiven ? 'granted' : 'denied'} consent for ${consentType}`,
+        legalBasis: "consent",
+        processingPurpose: "compliance",
+      });
+      
+      return existingConsent;
+    } else {
+      // Create new consent
+      return await this.createUserConsent({
+        userId,
+        consentType,
+        consentGiven,
+        ipAddress: metadata?.ipAddress,
+        userAgent: metadata?.userAgent,
+      });
+    }
+  }
+
+  async withdrawConsent(userId: string, consentType: ConsentType, metadata?: { ipAddress?: string; userAgent?: string }): Promise<UserConsent> {
+    const existingConsents = await this.getUserConsent(userId, consentType);
+    const activeConsent = existingConsents.find(c => !c.withdrawnAt);
+    
+    if (!activeConsent) {
+      throw new Error(`No active consent found for user ${userId} and type ${consentType}`);
+    }
+    
+    activeConsent.withdrawnAt = new Date();
+    activeConsent.consentGiven = false;
+    activeConsent.updatedAt = new Date();
+    if (metadata?.ipAddress) activeConsent.ipAddress = metadata.ipAddress;
+    if (metadata?.userAgent) activeConsent.userAgent = metadata.userAgent;
+    
+    this.userConsents.set(activeConsent.id, activeConsent);
+    
+    await this.logDataProcessing({
+      userId,
+      action: "modify",
+      dataType: "consent",
+      recordId: activeConsent.id,
+      ipAddress: metadata?.ipAddress,
+      userAgent: metadata?.userAgent,
+      requestDetails: `User withdrew consent for ${consentType}`,
+      legalBasis: "consent",
+      processingPurpose: "compliance",
+    });
+    
+    return activeConsent;
+  }
+
+  async getUserConsentStatus(userId: string): Promise<Record<ConsentType, boolean>> {
+    const consents = await this.getUserConsent(userId);
+    const status: Record<ConsentType, boolean> = {
+      marketing: false,
+      analytics: false,
+      essential: true, // Essential cookies are typically required
+      cookies: false,
+    };
+    
+    // Get the latest consent for each type
+    consents.forEach(consent => {
+      if (!consent.withdrawnAt && consent.consentGiven) {
+        status[consent.consentType as ConsentType] = true;
+      }
+    });
+    
+    return status;
+  }
+
+  // Anonymous Consent Management (for unauthenticated users)
+  async createAnonymousConsent(consent: InsertAnonymousConsent): Promise<AnonymousConsent> {
+    const id = randomUUID();
+    const anonymousConsent: AnonymousConsent = {
+      ...consent,
+      id,
+      consentDate: consent.consentDate || new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      withdrawnAt: consent.withdrawnAt || null,
+      purpose: consent.purpose || null,
+      legalBasis: consent.legalBasis || "consent",
+      processingActivity: consent.processingActivity || null,
+      linkedUserId: consent.linkedUserId || null,
+      ipAddress: consent.ipAddress || null,
+      userAgent: consent.userAgent || null,
+    };
+    
+    this.anonymousConsents.set(id, anonymousConsent);
+    
+    // Log the anonymous consent creation for audit trail
+    await this.logDataProcessing({
+      userId: `anonymous:${consent.email}`, // Use email as anonymous identifier
+      action: "create",
+      dataType: "consent",
+      recordId: id,
+      ipAddress: consent.ipAddress,
+      userAgent: consent.userAgent,
+      requestDetails: `Anonymous user ${consent.email} ${consent.consentGiven ? 'granted' : 'denied'} consent for ${consent.consentType} (${consent.processingActivity || 'general'})`,
+      legalBasis: consent.legalBasis || "consent",
+      processingPurpose: "compliance",
+    });
+    
+    return anonymousConsent;
+  }
+
+  async getAnonymousConsent(email: string, consentType?: ConsentType): Promise<AnonymousConsent[]> {
+    const consents = Array.from(this.anonymousConsents.values())
+      .filter(consent => consent.email === email && !consent.withdrawnAt);
+      
+    if (consentType) {
+      return consents.filter(consent => consent.consentType === consentType);
+    }
+    
+    return consents;
+  }
+
+  async updateAnonymousConsent(email: string, consentType: ConsentType, consentGiven: boolean, metadata?: { ipAddress?: string; userAgent?: string }): Promise<AnonymousConsent> {
+    // Find existing consent or create new one
+    const existingConsents = await this.getAnonymousConsent(email, consentType);
+    const existingConsent = existingConsents.find(c => !c.withdrawnAt);
+    
+    if (existingConsent) {
+      existingConsent.consentGiven = consentGiven;
+      existingConsent.consentDate = new Date();
+      existingConsent.updatedAt = new Date();
+      if (metadata?.ipAddress) existingConsent.ipAddress = metadata.ipAddress;
+      if (metadata?.userAgent) existingConsent.userAgent = metadata.userAgent;
+      this.anonymousConsents.set(existingConsent.id, existingConsent);
+      
+      await this.logDataProcessing({
+        userId: `anonymous:${email}`,
+        action: "modify",
+        dataType: "consent",
+        recordId: existingConsent.id,
+        ipAddress: metadata?.ipAddress,
+        userAgent: metadata?.userAgent,
+        requestDetails: `Anonymous user ${email} ${consentGiven ? 'granted' : 'denied'} consent for ${consentType}`,
+        legalBasis: "consent",
+        processingPurpose: "compliance",
+      });
+      
+      return existingConsent;
+    } else {
+      // Create new consent
+      return await this.createAnonymousConsent({
+        email,
+        consentType,
+        consentGiven,
+        ipAddress: metadata?.ipAddress,
+        userAgent: metadata?.userAgent,
+        legalBasis: "consent",
+      });
+    }
+  }
+
+  async linkAnonymousConsentToUser(email: string, userId: string): Promise<number> {
+    const anonymousConsents = Array.from(this.anonymousConsents.values())
+      .filter(consent => consent.email === email && !consent.linkedUserId);
+    
+    let linkedCount = 0;
+    for (const consent of anonymousConsents) {
+      consent.linkedUserId = userId;
+      consent.updatedAt = new Date();
+      this.anonymousConsents.set(consent.id, consent);
+      linkedCount++;
+      
+      // Log the linking for audit trail
+      await this.logDataProcessing({
+        userId,
+        action: "modify",
+        dataType: "consent",
+        recordId: consent.id,
+        requestDetails: `Linked anonymous consent for ${email} to user account ${userId}`,
+        legalBasis: "contract",
+        processingPurpose: "service_provision",
+      });
+    }
+    
+    return linkedCount;
+  }
+
+  // Data Processing Audit
+  async logDataProcessing(log: InsertDataProcessingLog): Promise<DataProcessingLog> {
+    const id = randomUUID();
+    const dataLog: DataProcessingLog = {
+      ...log,
+      id,
+      timestamp: new Date(),
+      ipAddress: log.ipAddress || null,
+      userAgent: log.userAgent || null,
+      recordId: log.recordId || null,
+      requestDetails: log.requestDetails || null,
+      legalBasis: log.legalBasis || null,
+      processingPurpose: log.processingPurpose || null,
+      dataSubjects: log.dataSubjects || null,
+      retentionPeriod: log.retentionPeriod || null,
+    };
+    
+    this.dataProcessingLogs.set(id, dataLog);
+    return dataLog;
+  }
+
+  async getUserProcessingLogs(userId: string, limit = 100): Promise<DataProcessingLog[]> {
+    return Array.from(this.dataProcessingLogs.values())
+      .filter(log => log.userId === userId)
+      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+      .slice(0, limit);
+  }
+
+  async getProcessingLogsByAction(action: ProcessingAction, limit = 100): Promise<DataProcessingLog[]> {
+    return Array.from(this.dataProcessingLogs.values())
+      .filter(log => log.action === action)
+      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+      .slice(0, limit);
+  }
+
+  async getProcessingLogsByDataType(dataType: DataType, limit = 100): Promise<DataProcessingLog[]> {
+    return Array.from(this.dataProcessingLogs.values())
+      .filter(log => log.dataType === dataType)
+      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+      .slice(0, limit);
+  }
+
+  // Data Portability
+  async exportUserData(userId: string): Promise<{
+    user: User;
+    consents: UserConsent[];
+    csvUploads: CsvUpload[];
+    courseEnrollments: (CourseEnrollment & { course: Course })[];
+    quizResults: QuizResult[];
+    supportMessages: SupportMessage[];
+    sharedResults: SharedResult[];
+    processingLogs: DataProcessingLog[];
+  }> {
+    await this.logDataProcessing({
+      userId,
+      action: "export",
+      dataType: "profile",
+      requestDetails: "User requested data export (GDPR Article 20)",
+      legalBasis: "legitimate_interest",
+      processingPurpose: "compliance",
+    });
+    
+    const user = await this.getUser(userId);
+    if (!user) {
+      throw new Error(`User ${userId} not found`);
+    }
+    
+    return {
+      user,
+      consents: await this.getUserConsent(userId),
+      csvUploads: await this.getUserCsvUploads(userId),
+      courseEnrollments: await this.getUserEnrollments(userId),
+      quizResults: await this.getUserQuizResults(userId),
+      supportMessages: Array.from(this.supportMessages.values()).filter(msg => msg.userId === userId),
+      sharedResults: await this.getUserSharedResults(userId),
+      processingLogs: await this.getUserProcessingLogs(userId),
+    };
+  }
+
+  // Right to Erasure (Right to be Forgotten)
+  async deleteUserData(userId: string, options?: {
+    keepAuditLogs?: boolean;
+    keepAnonymizedData?: boolean;
+    reason?: string;
+  }): Promise<{
+    deletedRecords: Record<string, number>;
+    retainedRecords: Record<string, number>;
+    auditLog: DataProcessingLog;
+  }> {
+    const deletedRecords: Record<string, number> = {};
+    const retainedRecords: Record<string, number> = {};
+    
+    // Delete user data from all tables
+    
+    // Delete CSV uploads
+    const userCsvs = await this.getUserCsvUploads(userId);
+    for (const csv of userCsvs) {
+      await this.deleteCsvUpload(csv.id);
+    }
+    deletedRecords.csvUploads = userCsvs.length;
+    
+    // Delete shared results
+    const userShares = await this.getUserSharedResults(userId);
+    for (const share of userShares) {
+      await this.deleteSharedResult(share.id);
+    }
+    deletedRecords.sharedResults = userShares.length;
+    
+    // Delete enrollments
+    const enrollments = Array.from(this.enrollments.values()).filter(e => e.userId === userId);
+    enrollments.forEach(enrollment => this.enrollments.delete(enrollment.id));
+    deletedRecords.courseEnrollments = enrollments.length;
+    
+    // Delete quiz results
+    const quizResults = Array.from(this.quizResults.values()).filter(q => q.userId === userId);
+    quizResults.forEach(result => this.quizResults.delete(result.id));
+    deletedRecords.quizResults = quizResults.length;
+    
+    // Delete support messages
+    const supportMsgs = Array.from(this.supportMessages.values()).filter(msg => msg.userId === userId);
+    supportMsgs.forEach(msg => this.supportMessages.delete(msg.id));
+    deletedRecords.supportMessages = supportMsgs.length;
+    
+    // Delete anomalies (through CSV deletion cascade)
+    const anomalies = Array.from(this.anomalies.values()).filter(a => {
+      const upload = this.csvUploads.get(a.uploadId);
+      return upload?.userId === userId;
+    });
+    anomalies.forEach(anomaly => this.anomalies.delete(anomaly.id));
+    deletedRecords.anomalies = anomalies.length;
+    
+    // Delete consents
+    const consents = Array.from(this.userConsents.values()).filter(c => c.userId === userId);
+    if (!options?.keepAuditLogs) {
+      consents.forEach(consent => this.userConsents.delete(consent.id));
+      deletedRecords.userConsents = consents.length;
+    } else {
+      retainedRecords.userConsents = consents.length;
+    }
+    
+    // Handle processing logs
+    const processingLogs = Array.from(this.dataProcessingLogs.values()).filter(log => log.userId === userId);
+    if (!options?.keepAuditLogs) {
+      processingLogs.forEach(log => this.dataProcessingLogs.delete(log.id));
+      deletedRecords.dataProcessingLogs = processingLogs.length;
+    } else {
+      retainedRecords.dataProcessingLogs = processingLogs.length;
+    }
+    
+    // Delete user record
+    const userDeleted = this.users.delete(userId);
+    deletedRecords.users = userDeleted ? 1 : 0;
+    
+    // Create audit log for the deletion
+    const auditLog = await this.logDataProcessing({
+      userId,
+      action: "delete",
+      dataType: "profile",
+      requestDetails: `User data deletion completed. Reason: ${options?.reason || 'User request'}`,
+      legalBasis: "consent",
+      processingPurpose: "compliance",
+      dataSubjects: [{ userId, deletedRecords, retainedRecords }],
+    });
+    
+    return {
+      deletedRecords,
+      retainedRecords,
+      auditLog,
+    };
+  }
+
+  // Data Retention Management
+  async applyRetentionPolicies(): Promise<{
+    usersAffected: number;
+    recordsDeleted: Record<string, number>;
+    errors: string[];
+  }> {
+    const result = {
+      usersAffected: 0,
+      recordsDeleted: {} as Record<string, number>,
+      errors: [] as string[],
+    };
+    
+    const now = new Date();
+    const usersToDelete = Array.from(this.users.values())
+      .filter(user => user.dataRetentionUntil && user.dataRetentionUntil < now);
+    
+    for (const user of usersToDelete) {
+      try {
+        const deletion = await this.deleteUserData(user.id, {
+          keepAuditLogs: true,
+          reason: 'Automatic retention policy cleanup',
+        });
+        
+        Object.keys(deletion.deletedRecords).forEach(key => {
+          result.recordsDeleted[key] = (result.recordsDeleted[key] || 0) + deletion.deletedRecords[key];
+        });
+        
+        result.usersAffected++;
+      } catch (error: any) {
+        result.errors.push(`Failed to delete user ${user.id}: ${error.message}`);
+      }
+    }
+    
+    return result;
+  }
+
+  async setUserRetention(userId: string, retentionUntil: Date, reason: string): Promise<User | undefined> {
+    const user = await this.updateUser(userId, { dataRetentionUntil: retentionUntil });
+    
+    if (user) {
+      await this.logDataProcessing({
+        userId,
+        action: "modify",
+        dataType: "profile",
+        requestDetails: `Data retention period set until ${retentionUntil.toISOString()}. Reason: ${reason}`,
+        legalBasis: "legitimate_interest",
+        processingPurpose: "compliance",
+      });
+    }
+    
+    return user;
+  }
+
+  // Access Rights Report
+  async getUserAccessReport(userId: string): Promise<{
+    personalData: any;
+    processingPurposes: string[];
+    dataCategories: string[];
+    recipients: string[];
+    retentionPeriod: string;
+    rights: string[];
+  }> {
+    await this.logDataProcessing({
+      userId,
+      action: "access",
+      dataType: "profile",
+      requestDetails: "User requested access report (GDPR Article 15)",
+      legalBasis: "legitimate_interest",
+      processingPurpose: "compliance",
+    });
+    
+    const userData = await this.exportUserData(userId);
+    
+    return {
+      personalData: {
+        profile: userData.user,
+        consents: userData.consents,
+        fileUploads: userData.csvUploads.length,
+        courseEnrollments: userData.courseEnrollments.length,
+        quizResults: userData.quizResults.length,
+        supportMessages: userData.supportMessages.length,
+        sharedResults: userData.sharedResults.length,
+      },
+      processingPurposes: [
+        "Service provision (contract)",
+        "User analytics (consent)",
+        "Marketing communications (consent)",
+        "Legal compliance (legal obligation)",
+        "Security and fraud prevention (legitimate interest)",
+      ],
+      dataCategories: [
+        "Identity data (name, email)",
+        "Profile data (preferences, settings)",
+        "Usage data (course progress, file uploads)",
+        "Technical data (IP address, browser info)",
+        "Communication data (support messages)",
+      ],
+      recipients: [
+        "Replit (authentication provider)",
+        "Firebase/Google (file storage)",
+        "OpenAI (AI support chat)",
+        "Neon Database (data storage)",
+      ],
+      retentionPeriod: userData.user.dataRetentionUntil 
+        ? `Until ${userData.user.dataRetentionUntil.toISOString()}`
+        : "Indefinite (until account deletion)",
+      rights: [
+        "Right to access your data",
+        "Right to rectify inaccurate data",
+        "Right to erase your data",
+        "Right to restrict processing",
+        "Right to data portability",
+        "Right to object to processing",
+        "Right to withdraw consent",
+      ],
+    };
   }
 }
 

@@ -14,7 +14,7 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)]
 );
 
-// Users table updated for Replit Auth
+// Users table updated for Replit Auth with GDPR fields
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: varchar("email").unique(),
@@ -23,6 +23,12 @@ export const users = pgTable("users", {
   profileImageUrl: varchar("profile_image_url"),
   role: text("role").notNull().default("user"), // user, admin
   isApproved: boolean("is_approved").notNull().default(false),
+  // GDPR Compliance Fields
+  dataRetentionUntil: timestamp("data_retention_until"),
+  marketingConsent: boolean("marketing_consent").default(false),
+  analyticsConsent: boolean("analytics_consent").default(false),
+  dataProcessingBasis: varchar("data_processing_basis"), // contract, consent, legitimate_interest
+  lastConsentUpdate: timestamp("last_consent_update"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -124,6 +130,56 @@ export const sharedResults = pgTable("shared_results", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// GDPR Compliance Tables
+export const userConsent = pgTable("user_consent", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  consentType: varchar("consent_type").notNull(), // marketing, analytics, essential, cookies
+  consentGiven: boolean("consent_given").notNull(),
+  consentDate: timestamp("consent_date").notNull().defaultNow(),
+  ipAddress: varchar("ip_address"),
+  userAgent: varchar("user_agent"),
+  withdrawnAt: timestamp("withdrawn_at"),
+  purpose: text("purpose"), // Detailed purpose description
+  legalBasis: varchar("legal_basis"), // contract, consent, legitimate_interest, vital_interests, public_task, legal_obligation
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Anonymous consent table for unauthenticated users (GDPR compliance)
+export const anonymousConsent = pgTable("anonymous_consent", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: varchar("email").notNull(), // Email as identifier for anonymous users
+  consentType: varchar("consent_type").notNull(), // marketing, analytics, essential, cookies, data_processing
+  consentGiven: boolean("consent_given").notNull(),
+  consentDate: timestamp("consent_date").notNull().defaultNow(),
+  ipAddress: varchar("ip_address"),
+  userAgent: varchar("user_agent"),
+  purpose: text("purpose"), // Detailed purpose description
+  legalBasis: varchar("legal_basis"), // contract, consent, legitimate_interest, vital_interests, public_task, legal_obligation
+  processingActivity: varchar("processing_activity"), // contact_form, newsletter_signup, etc.
+  withdrawnAt: timestamp("withdrawn_at"),
+  linkedUserId: varchar("linked_user_id").references(() => users.id), // Link to user account when they register later
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const dataProcessingLog = pgTable("data_processing_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  action: varchar("action").notNull(), // access, modify, export, delete, create, share
+  dataType: varchar("data_type").notNull(), // profile, csv, sharing, course, quiz, support
+  recordId: varchar("record_id"), // ID of the specific record being processed
+  timestamp: timestamp("timestamp").notNull().defaultNow(),
+  ipAddress: varchar("ip_address"),
+  userAgent: varchar("user_agent"),
+  requestDetails: text("request_details"), // Additional context about the action
+  legalBasis: varchar("legal_basis"), // contract, consent, legitimate_interest, etc.
+  processingPurpose: varchar("processing_purpose"), // service_provision, analytics, marketing, support
+  dataSubjects: json("data_subjects"), // Array of affected data subjects (for bulk operations)
+  retentionPeriod: varchar("retention_period"), // How long this log should be kept
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -207,6 +263,35 @@ export const insertSharedResultSchema = createInsertSchema(sharedResults).omit({
   expirationOption: z.enum(["24h", "7d", "30d", "never"]).optional(),
 });
 
+// GDPR Insert Schemas
+export const insertUserConsentSchema = createInsertSchema(userConsent).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  consentType: z.enum(["marketing", "analytics", "essential", "cookies"]),
+  legalBasis: z.enum(["contract", "consent", "legitimate_interest", "vital_interests", "public_task", "legal_obligation"]).optional(),
+});
+
+export const insertAnonymousConsentSchema = createInsertSchema(anonymousConsent).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  consentType: z.enum(["marketing", "analytics", "essential", "cookies", "data_processing"]),
+  legalBasis: z.enum(["contract", "consent", "legitimate_interest", "vital_interests", "public_task", "legal_obligation"]).optional(),
+});
+
+export const insertDataProcessingLogSchema = createInsertSchema(dataProcessingLog).omit({
+  id: true,
+  timestamp: true,
+}).extend({
+  action: z.enum(["access", "modify", "export", "delete", "create", "share"]),
+  dataType: z.enum(["profile", "csv", "sharing", "course", "quiz", "support", "consent"]),
+  legalBasis: z.enum(["contract", "consent", "legitimate_interest", "vital_interests", "public_task", "legal_obligation"]).optional(),
+  processingPurpose: z.enum(["service_provision", "analytics", "marketing", "support", "compliance", "security"]).optional(),
+});
+
 // Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type UpsertUser = z.infer<typeof upsertUserSchema>;
@@ -227,3 +312,24 @@ export type InsertAnomaly = z.infer<typeof insertAnomalySchema>;
 export type Anomaly = typeof anomalies.$inferSelect;
 export type InsertSharedResult = z.infer<typeof insertSharedResultSchema>;
 export type SharedResult = typeof sharedResults.$inferSelect;
+
+// GDPR Types
+export type InsertUserConsent = z.infer<typeof insertUserConsentSchema>;
+export type UserConsent = typeof userConsent.$inferSelect;
+export type InsertAnonymousConsent = z.infer<typeof insertAnonymousConsentSchema>;
+export type AnonymousConsent = typeof anonymousConsent.$inferSelect;
+export type InsertDataProcessingLog = z.infer<typeof insertDataProcessingLogSchema>;
+export type DataProcessingLog = typeof dataProcessingLog.$inferSelect;
+
+// GDPR Enums for type safety
+export const CONSENT_TYPES = ["marketing", "analytics", "essential", "cookies", "data_processing"] as const;
+export const LEGAL_BASIS = ["contract", "consent", "legitimate_interest", "vital_interests", "public_task", "legal_obligation"] as const;
+export const PROCESSING_ACTIONS = ["access", "modify", "export", "delete", "create", "share"] as const;
+export const DATA_TYPES = ["profile", "csv", "sharing", "course", "quiz", "support", "consent"] as const;
+export const PROCESSING_PURPOSES = ["service_provision", "analytics", "marketing", "support", "compliance", "security"] as const;
+
+export type ConsentType = typeof CONSENT_TYPES[number];
+export type LegalBasis = typeof LEGAL_BASIS[number];
+export type ProcessingAction = typeof PROCESSING_ACTIONS[number];
+export type DataType = typeof DATA_TYPES[number];
+export type ProcessingPurpose = typeof PROCESSING_PURPOSES[number];

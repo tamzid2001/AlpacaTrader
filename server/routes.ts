@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertSupportMessageSchema, insertQuizResultSchema, insertCsvUploadSchema, insertAnomalySchema, insertSharedResultSchema } from "@shared/schema";
+import { insertSupportMessageSchema, insertQuizResultSchema, insertCsvUploadSchema, insertAnomalySchema, insertSharedResultSchema, insertAnonymousConsentSchema } from "@shared/schema";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import OpenAI from "openai";
 import * as XLSX from "xlsx";
@@ -296,6 +296,397 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(messages);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ===================
+  // GDPR COMPLIANCE API ROUTES
+  // ===================
+
+  // GDPR Consent Management Routes
+  app.post('/api/gdpr/consent', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { consentType, consentGiven, purpose, legalBasis = 'consent' } = req.body;
+      
+      if (!consentType || typeof consentGiven !== 'boolean') {
+        return res.status(400).json({ error: 'consentType and consentGiven are required' });
+      }
+
+      const userAgent = req.get('User-Agent');
+      const ipAddress = req.ip || req.connection.remoteAddress;
+
+      const consent = await storage.updateUserConsent(
+        userId,
+        consentType,
+        consentGiven,
+        { ipAddress, userAgent }
+      );
+
+      res.json(consent);
+    } catch (error: any) {
+      console.error('Error updating consent:', error);
+      res.status(500).json({ error: 'Failed to update consent' });
+    }
+  });
+
+  // GDPR Anonymous Consent Route (for unauthenticated users)
+  app.post('/api/gdpr/anonymous-consent', async (req, res) => {
+    try {
+      const { email, consentType, consentGiven, purpose, legalBasis = 'consent', processingActivity } = req.body;
+      
+      // Validate required fields
+      if (!email || !consentType || typeof consentGiven !== 'boolean') {
+        return res.status(400).json({ error: 'email, consentType, and consentGiven are required' });
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ error: 'Invalid email format' });
+      }
+
+      const userAgent = req.get('User-Agent');
+      const ipAddress = req.ip || req.connection.remoteAddress;
+
+      // Validate the consent data using the schema
+      const consentData = insertAnonymousConsentSchema.parse({
+        email,
+        consentType,
+        consentGiven,
+        purpose,
+        legalBasis,
+        processingActivity,
+        ipAddress,
+        userAgent,
+      });
+
+      const consent = await storage.createAnonymousConsent(consentData);
+
+      console.log(`✅ Anonymous consent recorded: ${email} ${consentGiven ? 'granted' : 'denied'} consent for ${consentType} (${processingActivity || 'general'})`);
+
+      res.json({ 
+        success: true,
+        consentId: consent.id,
+        message: 'Consent recorded successfully',
+        consent: {
+          email: consent.email,
+          consentType: consent.consentType,
+          consentGiven: consent.consentGiven,
+          consentDate: consent.consentDate,
+          processingActivity: consent.processingActivity,
+        }
+      });
+    } catch (error: any) {
+      console.error('❌ Error recording anonymous consent:', error);
+      res.status(500).json({ error: 'Failed to record consent' });
+    }
+  });
+
+  app.get('/api/gdpr/consent-history', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const consents = await storage.getUserConsent(userId);
+      
+      // Log data access
+      await storage.logDataProcessing({
+        userId,
+        action: 'access',
+        dataType: 'consent',
+        ipAddress: req.ip,
+        userAgent: req.get('User-Agent'),
+        requestDetails: 'User accessed consent history',
+        legalBasis: 'contract',
+        processingPurpose: 'service_provision'
+      });
+
+      res.json(consents);
+    } catch (error: any) {
+      console.error('Error fetching consent history:', error);
+      res.status(500).json({ error: 'Failed to fetch consent history' });
+    }
+  });
+
+  app.get('/api/gdpr/processing-history', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const limit = parseInt(req.query.limit as string) || 100;
+      
+      const logs = await storage.getUserProcessingLogs(userId, limit);
+      
+      // Log this access
+      await storage.logDataProcessing({
+        userId,
+        action: 'access',
+        dataType: 'profile',
+        ipAddress: req.ip,
+        userAgent: req.get('User-Agent'),
+        requestDetails: 'User accessed processing history',
+        legalBasis: 'contract',
+        processingPurpose: 'service_provision'
+      });
+
+      res.json(logs);
+    } catch (error: any) {
+      console.error('Error fetching processing history:', error);
+      res.status(500).json({ error: 'Failed to fetch processing history' });
+    }
+  });
+
+  app.get('/api/gdpr/preferences', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const consentStatus = await storage.getUserConsentStatus(userId);
+      
+      res.json(consentStatus);
+    } catch (error: any) {
+      console.error('Error fetching GDPR preferences:', error);
+      res.status(500).json({ error: 'Failed to fetch preferences' });
+    }
+  });
+
+  // Article 15: Right to Access - Get all personal data
+  app.get('/api/gdpr/personal-data', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      
+      // Get comprehensive user data export
+      const userData = await storage.exportUserData(userId);
+      
+      // Format for frontend display
+      const formattedData = {
+        profile: userData.user,
+        courses: userData.courseEnrollments,
+        quizResults: userData.quizResults,
+        csvUploads: userData.csvUploads,
+        sharedResults: userData.sharedResults,
+        supportMessages: userData.supportMessages,
+        consentRecords: userData.consents
+      };
+
+      // Log data access
+      await storage.logDataProcessing({
+        userId,
+        action: 'access',
+        dataType: 'profile',
+        ipAddress: req.ip,
+        userAgent: req.get('User-Agent'),
+        requestDetails: 'User accessed all personal data (Article 15)',
+        legalBasis: 'contract',
+        processingPurpose: 'service_provision'
+      });
+
+      res.json(formattedData);
+    } catch (error: any) {
+      console.error('Error fetching personal data:', error);
+      res.status(500).json({ error: 'Failed to fetch personal data' });
+    }
+  });
+
+  // Article 20: Right to Data Portability - Export user data
+  app.get('/api/gdpr/export', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      
+      const userData = await storage.exportUserData(userId);
+      
+      // Create a comprehensive export with metadata
+      const exportData = {
+        metadata: {
+          exportDate: new Date().toISOString(),
+          exportedBy: userId,
+          dataSubject: userData.user.email,
+          exportType: 'complete_personal_data',
+          gdprArticle: 'Article 20 - Right to Data Portability'
+        },
+        personalData: userData
+      };
+
+      // Log the export action
+      await storage.logDataProcessing({
+        userId,
+        action: 'export',
+        dataType: 'profile',
+        ipAddress: req.ip,
+        userAgent: req.get('User-Agent'),
+        requestDetails: 'User exported personal data (Article 20)',
+        legalBasis: 'contract',
+        processingPurpose: 'service_provision'
+      });
+
+      // Set headers for file download
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `attachment; filename="personal-data-export-${new Date().toISOString().split('T')[0]}.json"`);
+      
+      res.json(exportData);
+    } catch (error: any) {
+      console.error('Error exporting user data:', error);
+      res.status(500).json({ error: 'Failed to export user data' });
+    }
+  });
+
+  // Article 16: Right to Rectification - Update profile information
+  app.patch('/api/gdpr/rectification', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { firstName, lastName, email } = req.body;
+      
+      // Validate input
+      if (!firstName || !lastName || !email) {
+        return res.status(400).json({ error: 'firstName, lastName, and email are required' });
+      }
+
+      // Email validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ error: 'Invalid email format' });
+      }
+
+      // Update user profile
+      const updatedUser = await storage.updateUser(userId, {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email.trim()
+      });
+
+      if (!updatedUser) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Log the rectification action
+      await storage.logDataProcessing({
+        userId,
+        action: 'modify',
+        dataType: 'profile',
+        ipAddress: req.ip,
+        userAgent: req.get('User-Agent'),
+        requestDetails: 'User updated profile information (Article 16)',
+        legalBasis: 'contract',
+        processingPurpose: 'service_provision'
+      });
+
+      res.json(updatedUser);
+    } catch (error: any) {
+      console.error('Error updating profile:', error);
+      res.status(500).json({ error: 'Failed to update profile' });
+    }
+  });
+
+  // Article 17: Right to Erasure - Delete user account
+  app.post('/api/gdpr/delete', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { reason = 'User requested account deletion' } = req.body;
+      
+      // Perform soft delete with audit logging
+      const deletionResult = await storage.deleteUserData(userId, {
+        keepAuditLogs: true,
+        keepAnonymizedData: false,
+        reason: reason
+      });
+
+      // Log the deletion request
+      await storage.logDataProcessing({
+        userId,
+        action: 'delete',
+        dataType: 'profile',
+        ipAddress: req.ip,
+        userAgent: req.get('User-Agent'),
+        requestDetails: `User requested account deletion (Article 17): ${reason}`,
+        legalBasis: 'contract',
+        processingPurpose: 'compliance'
+      });
+
+      res.json({
+        message: 'Account deletion request processed',
+        deletionResult,
+        note: 'Your account has been scheduled for deletion. You have 30 days to recover your account by logging in again.'
+      });
+    } catch (error: any) {
+      console.error('Error processing deletion request:', error);
+      res.status(500).json({ error: 'Failed to process deletion request' });
+    }
+  });
+
+  // Article 21: Right to Object - Object to data processing
+  app.post('/api/gdpr/objection', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { reason, processingTypes = [] } = req.body;
+      
+      if (!reason || !reason.trim()) {
+        return res.status(400).json({ error: 'Reason for objection is required' });
+      }
+
+      // Log the objection
+      await storage.logDataProcessing({
+        userId,
+        action: 'modify',
+        dataType: 'consent',
+        ipAddress: req.ip,
+        userAgent: req.get('User-Agent'),
+        requestDetails: `User objected to processing (Article 21): ${reason.trim()}`,
+        legalBasis: 'legitimate_interest',
+        processingPurpose: 'compliance'
+      });
+
+      // Update consent for specified processing types
+      for (const processingType of processingTypes) {
+        await storage.updateUserConsent(
+          userId,
+          processingType,
+          false,
+          { 
+            ipAddress: req.ip, 
+            userAgent: req.get('User-Agent')
+          }
+        );
+      }
+
+      // Create support message for manual review
+      await storage.createSupportMessage({
+        userId,
+        name: 'GDPR Objection',
+        email: req.user.claims.email,
+        subject: 'Article 21 - Right to Object',
+        message: `User has objected to data processing. Reason: ${reason.trim()}. Processing types affected: ${processingTypes.join(', ')}`
+      });
+
+      res.json({
+        message: 'Your objection has been recorded and will be reviewed within 30 days',
+        reference: 'GDPR-OBJ-' + Date.now(),
+        affectedProcessing: processingTypes
+      });
+    } catch (error: any) {
+      console.error('Error processing objection:', error);
+      res.status(500).json({ error: 'Failed to process objection' });
+    }
+  });
+
+  // Audit log access for transparency
+  app.get('/api/gdpr/audit-log', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const limit = parseInt(req.query.limit as string) || 50;
+      
+      const auditLogs = await storage.getUserProcessingLogs(userId, limit);
+      
+      // Log this access
+      await storage.logDataProcessing({
+        userId,
+        action: 'access',
+        dataType: 'profile',
+        ipAddress: req.ip,
+        userAgent: req.get('User-Agent'),
+        requestDetails: 'User accessed audit logs',
+        legalBasis: 'contract',
+        processingPurpose: 'service_provision'
+      });
+
+      res.json(auditLogs);
+    } catch (error: any) {
+      console.error('Error fetching audit logs:', error);
+      res.status(500).json({ error: 'Failed to fetch audit logs' });
     }
   });
 

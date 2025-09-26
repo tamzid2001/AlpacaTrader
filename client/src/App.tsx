@@ -13,8 +13,10 @@ import AnomalyDetection from "@/pages/anomaly-detection";
 import SharedResultsViewer from "@/pages/shared-results";
 import MySharedResults from "@/pages/my-shared-results";
 import PrivacyPage from "@/pages/privacy";
+import PrivacySettings from "@/pages/privacy-settings";
 import TermsPage from "@/pages/terms";
 import NotFound from "@/pages/not-found";
+import { CookieConsent } from "@/components/gdpr/cookie-consent";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -38,6 +40,7 @@ function Router() {
           <Route path="/my-shared-results" component={MySharedResults} />
           <Route path="/shared/:token" component={SharedResultsViewer} />
           <Route path="/privacy" component={PrivacyPage} />
+          <Route path="/privacy-settings" component={PrivacySettings} />
           <Route path="/terms" component={TermsPage} />
           <Route component={NotFound} />
         </>
@@ -54,6 +57,7 @@ function App() {
           <AccessibilityTesting />
           <Toaster />
           <Router />
+          <CookieConsent />
         </TooltipProvider>
       </AuthProvider>
     </QueryClientProvider>
