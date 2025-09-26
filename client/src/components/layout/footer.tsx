@@ -1,4 +1,7 @@
 import { Link } from "wouter";
+import { TrendingUp } from "lucide-react";
+import { SiX, SiLinkedin, SiGithub, SiYoutube } from "react-icons/si";
+import { EnhancedIcon } from "@/components/icons/enhanced-icon";
 
 export default function Footer() {
   return (
@@ -8,7 +11,11 @@ export default function Footer() {
           <div className="col-span-2">
             <div className="flex items-center space-x-2 mb-4">
               <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <i className="fas fa-chart-line text-primary-foreground text-sm"></i>
+                <TrendingUp 
+                  size={16} 
+                  color="hsl(var(--primary-foreground))" 
+                  aria-hidden="true"
+                />
               </div>
               <span className="text-xl font-bold" data-testid="text-footer-brand">PropFarming Pro</span>
             </div>
@@ -22,8 +29,12 @@ export default function Footer() {
                 target="_blank"
                 rel="noopener noreferrer"
                 data-testid="link-twitter"
+                aria-label="Follow us on Twitter"
               >
-                <i className="fab fa-twitter"></i>
+                <SiX 
+                  size={20} 
+                  aria-hidden="true"
+                />
               </a>
               <a 
                 href="https://linkedin.com/in/tamzidullah" 
@@ -31,8 +42,12 @@ export default function Footer() {
                 target="_blank"
                 rel="noopener noreferrer"
                 data-testid="link-linkedin"
+                aria-label="Connect with us on LinkedIn"
               >
-                <i className="fab fa-linkedin"></i>
+                <SiLinkedin 
+                  size={20} 
+                  aria-hidden="true"
+                />
               </a>
               <a 
                 href="https://github.com/tamzidullah" 
@@ -40,8 +55,12 @@ export default function Footer() {
                 target="_blank"
                 rel="noopener noreferrer"
                 data-testid="link-github"
+                aria-label="View our GitHub repository"
               >
-                <i className="fab fa-github"></i>
+                <SiGithub 
+                  size={20} 
+                  aria-hidden="true"
+                />
               </a>
               <a 
                 href="https://youtube.com/tamzidullah" 
@@ -49,8 +68,12 @@ export default function Footer() {
                 target="_blank"
                 rel="noopener noreferrer"
                 data-testid="link-youtube"
+                aria-label="Subscribe to our YouTube channel"
               >
-                <i className="fab fa-youtube"></i>
+                <SiYoutube 
+                  size={20} 
+                  aria-hidden="true"
+                />
               </a>
             </div>
           </div>

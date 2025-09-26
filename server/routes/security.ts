@@ -191,7 +191,7 @@ export function registerSecurityRoutes(app: Express) {
           securityLevel: metrics.highRiskEvents > 10 ? 'HIGH_RISK' : 
                         metrics.suspiciousEvents > 5 ? 'ELEVATED' : 'NORMAL',
           metrics,
-          recommendations: [],
+          recommendations: [] as string[],
           timestamp: new Date().toISOString()
         };
         

@@ -16,6 +16,7 @@ import PrivacyPage from "@/pages/privacy";
 import PrivacySettings from "@/pages/privacy-settings";
 import TermsPage from "@/pages/terms";
 import NotFound from "@/pages/not-found";
+import IconGeneratorPage from "@/pages/icon-generator";
 import { CookieConsent } from "@/components/gdpr/cookie-consent";
 
 function Router() {
@@ -36,6 +37,7 @@ function Router() {
           <Route path="/" component={Dashboard} />
           <Route path="/dashboard" component={Dashboard} />
           <Route path="/admin" component={AdminDashboard} />
+          <Route path="/icon-generator" component={IconGeneratorPage} />
           <Route path="/anomaly-detection" component={AnomalyDetection} />
           <Route path="/my-shared-results" component={MySharedResults} />
           <Route path="/shared/:token" component={SharedResultsViewer} />

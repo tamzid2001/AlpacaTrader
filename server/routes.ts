@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { insertSupportMessageSchema, insertQuizResultSchema, insertCsvUploadSchema, insertAnomalySchema, insertSharedResultSchema, insertAnonymousConsentSchema } from "@shared/schema";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { registerSecurityRoutes } from "./routes/security";
+import iconRoutes from "./routes/icons";
 import OpenAI from "openai";
 import * as XLSX from "xlsx";
 import multer from "multer";
@@ -35,6 +36,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register security routes
   registerSecurityRoutes(app);
+  
+  // Register icon routes
+  app.use('/api/icons', iconRoutes);
   
   // Configure multer for file uploads (memory storage for processing)
   const upload = multer({

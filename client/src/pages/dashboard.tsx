@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { EnhancedIcon } from "@/components/icons/enhanced-icon";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 
 export default function Dashboard() {
@@ -107,7 +108,12 @@ export default function Dashboard() {
           </div>
           <div className="flex items-center space-x-4">
             <Button variant="outline" size="icon" data-testid="button-notifications">
-              <i className="fas fa-bell text-muted-foreground"></i>
+              <EnhancedIcon 
+                name="Bell" 
+                size={16} 
+                className="text-muted-foreground" 
+                aria-hidden="true"
+              />
             </Button>
             <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center" data-testid="avatar-user">
               <span className="text-primary-foreground font-semibold">
@@ -130,7 +136,12 @@ export default function Dashboard() {
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
-                  <i className="fas fa-book text-primary"></i>
+                  <EnhancedIcon 
+                    name="BookOpen" 
+                    size={20} 
+                    color="hsl(var(--primary))" 
+                    aria-hidden="true"
+                  />
                 </div>
               </div>
             </CardContent>
@@ -145,7 +156,12 @@ export default function Dashboard() {
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-emerald-100 rounded-lg flex items-center justify-center">
-                  <i className="fas fa-check text-emerald-600"></i>
+                  <EnhancedIcon 
+                    name="Check" 
+                    size={20} 
+                    color="rgb(5 150 105)" 
+                    aria-hidden="true"
+                  />
                 </div>
               </div>
             </CardContent>

@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { storage } from '../storage';
+import type { User } from '@shared/schema';
 
 // Enhanced role hierarchy
 const ROLE_HIERARCHY = {
@@ -153,7 +154,7 @@ export const checkOwnership = (resourceIdParam: string = 'id') => {
       }
       
       // Admins and superadmins can access any resource
-      if (['admin', 'superadmin'].includes(userData.role)) {
+      if (['admin', 'superadmin'].includes((userData as User).role)) {
         return next();
       }
       

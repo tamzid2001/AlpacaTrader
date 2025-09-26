@@ -7,6 +7,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { FcGoogle } from "react-icons/fc";
 import { SiGithub, SiReplit } from "react-icons/si";
+import { TrendingUp } from "lucide-react";
+import { EnhancedIcon } from "@/components/icons/enhanced-icon";
 import SkipNavigation from "@/components/accessibility/skip-navigation";
 
 export default function Header() {
@@ -31,7 +33,11 @@ export default function Header() {
           <div className="flex items-center space-x-4">
             <Link href="/" className="flex items-center space-x-2" data-testid="link-home">
               <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <i className="fas fa-chart-line text-primary-foreground text-sm"></i>
+                <TrendingUp 
+                  size={16} 
+                  color="hsl(var(--primary-foreground))" 
+                  aria-hidden="true"
+                />
               </div>
               <span className="text-xl font-bold text-foreground">PropFarming Pro</span>
             </Link>

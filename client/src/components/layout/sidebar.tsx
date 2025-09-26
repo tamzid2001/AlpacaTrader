@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
+import { EnhancedIcon } from "@/components/icons/enhanced-icon";
 import { cn } from "@/lib/utils";
 
 export default function Sidebar() {
@@ -8,14 +9,15 @@ export default function Sidebar() {
   const [location] = useLocation();
 
   const navItems = [
-    { href: "/dashboard", icon: "fas fa-home", label: "Dashboard" },
-    { href: "/courses", icon: "fas fa-play", label: "My Courses" },
-    { href: "/anomaly-detection", icon: "fas fa-chart-line", label: "Anomaly Detection" },
-    { href: "/my-shared-results", icon: "fas fa-share-alt", label: "My Shared Results" },
-    { href: "/downloads", icon: "fas fa-download", label: "Downloads" },
-    { href: "/quizzes", icon: "fas fa-quiz", label: "Quizzes" },
-    { href: "/certificates", icon: "fas fa-certificate", label: "Certificates" },
-    { href: "/profile", icon: "fas fa-user", label: "Profile" },
+    { href: "/dashboard", icon: "LayoutDashboard", label: "Dashboard" },
+    { href: "/courses", icon: "Play", label: "My Courses" },
+    { href: "/anomaly-detection", icon: "TrendingUp", label: "Anomaly Detection" },
+    { href: "/icon-generator", icon: "Palette", label: "Icon Generator" },
+    { href: "/my-shared-results", icon: "Share2", label: "My Shared Results" },
+    { href: "/downloads", icon: "Download", label: "Downloads" },
+    { href: "/quizzes", icon: "HelpCircle", label: "Quizzes" },
+    { href: "/certificates", icon: "Award", label: "Certificates" },
+    { href: "/profile", icon: "User", label: "Profile" },
   ];
 
   return (
@@ -27,7 +29,12 @@ export default function Sidebar() {
       <div className="p-6">
         <div className="flex items-center space-x-2 mb-8">
           <div className="w-8 h-8 bg-sidebar-primary rounded-lg flex items-center justify-center">
-            <i className="fas fa-chart-line text-sidebar-primary-foreground text-sm"></i>
+            <EnhancedIcon 
+              name="TrendingUp" 
+              size={16} 
+              color="hsl(var(--sidebar-primary-foreground))" 
+              aria-hidden="true"
+            />
           </div>
           <span className="text-xl font-bold text-sidebar-foreground" data-testid="text-sidebar-title">
             PropFarming Pro
@@ -49,7 +56,11 @@ export default function Sidebar() {
                   aria-current={location === item.href ? 'page' : undefined}
                   aria-label={`Navigate to ${item.label}`}
                 >
-                  <i className={`${item.icon} w-5`} aria-hidden="true"></i>
+                  <EnhancedIcon 
+                    name={item.icon} 
+                    size={20} 
+                    aria-hidden="true"
+                  />
                   <span>{item.label}</span>
                 </a>
               </Link>
@@ -63,7 +74,11 @@ export default function Sidebar() {
                 data-testid="link-settings"
                 aria-label="Navigate to settings"
               >
-                <i className="fas fa-cog w-5" aria-hidden="true"></i>
+                <EnhancedIcon 
+                  name="Settings" 
+                  size={20} 
+                  aria-hidden="true"
+                />
                 <span>Settings</span>
               </a>
             </Link>
@@ -77,7 +92,11 @@ export default function Sidebar() {
                 data-testid="button-logout"
                 aria-label="Sign out of your account"
               >
-                <i className="fas fa-sign-out-alt w-5" aria-hidden="true"></i>
+                <EnhancedIcon 
+                  name="LogOut" 
+                  size={20} 
+                  aria-hidden="true"
+                />
                 <span>Logout</span>
               </Button>
             </a>

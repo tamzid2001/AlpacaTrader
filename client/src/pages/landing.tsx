@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { useCourses } from "@/hooks/use-courses";
 import { FcGoogle } from "react-icons/fc";
 import { SiGithub, SiReplit } from "react-icons/si";
+import { EnhancedIcon } from "@/components/icons/enhanced-icon";
 
 export default function LandingPage() {
   const { user, isAuthenticated } = useAuth();
@@ -100,7 +101,12 @@ export default function LandingPage() {
             <Card className="hover:shadow-lg transition-shadow" data-testid="card-feature-videos">
               <CardContent className="p-8">
                 <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-6">
-                  <i className="fas fa-video text-primary text-xl"></i>
+                  <EnhancedIcon 
+                    name="Video" 
+                    size={24} 
+                    color="hsl(var(--primary))" 
+                    aria-hidden="true"
+                  />
                 </div>
                 <h3 className="text-xl font-semibold mb-4">Video Courses</h3>
                 <p className="text-muted-foreground">Comprehensive video library with downloadable content, slides, and supplementary materials.</p>
@@ -109,7 +115,12 @@ export default function LandingPage() {
             <Card className="hover:shadow-lg transition-shadow" data-testid="card-feature-ai">
               <CardContent className="p-8">
                 <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-6">
-                  <i className="fas fa-brain text-primary text-xl"></i>
+                  <EnhancedIcon 
+                    name="Brain" 
+                    size={24} 
+                    color="hsl(var(--primary))" 
+                    aria-hidden="true"
+                  />
                 </div>
                 <h3 className="text-xl font-semibold mb-4">AI Support</h3>
                 <p className="text-muted-foreground">24/7 AI-powered support agent to answer questions and provide guidance throughout your learning journey.</p>
@@ -118,7 +129,12 @@ export default function LandingPage() {
             <Card className="hover:shadow-lg transition-shadow" data-testid="card-feature-quizzes">
               <CardContent className="p-8">
                 <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-6">
-                  <i className="fas fa-quiz text-primary text-xl"></i>
+                  <EnhancedIcon 
+                    name="HelpCircle" 
+                    size={24} 
+                    color="hsl(var(--primary))" 
+                    aria-hidden="true"
+                  />
                 </div>
                 <h3 className="text-xl font-semibold mb-4">Interactive Quizzes</h3>
                 <p className="text-muted-foreground">Test your knowledge with module-specific quizzes and track your progress in real-time.</p>
