@@ -10,9 +10,34 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 
 export default function Dashboard() {
   const { user, isAuthenticated, isLoading } = useAuth();
+  
+  // Keyboard shortcuts for dashboard
+  useKeyboardShortcuts({
+    shortcuts: [
+      {
+        key: 'c',
+        altKey: true,
+        action: () => {
+          const coursesSection = document.querySelector('[aria-labelledby="current-courses-heading"]');
+          coursesSection?.scrollIntoView({ behavior: 'smooth' });
+        },
+        description: 'Jump to current courses section',
+      },
+      {
+        key: 's',
+        altKey: true,
+        action: () => {
+          const statsSection = document.querySelector('[aria-labelledby="stats-heading"]');
+          statsSection?.scrollIntoView({ behavior: 'smooth' });
+        },
+        description: 'Jump to statistics section',
+      },
+    ],
+  });
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { data: enrollments } = useUserEnrollments(user?.id || "");
@@ -69,7 +94,7 @@ export default function Dashboard() {
     <div className="min-h-screen bg-background flex">
       <Sidebar />
       
-      <main className="flex-1 ml-64 p-8" data-testid="dashboard-main">
+      <main className="flex-1 ml-64 p-8" data-testid="dashboard-main" role="main" id="main-content">
         {/* Top Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -93,12 +118,13 @@ export default function Dashboard() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid md:grid-cols-4 gap-6 mb-8">
-          <Card data-testid="card-enrolled">
+        <div className="grid md:grid-cols-4 gap-6 mb-8" role="region" aria-labelledby="stats-heading">
+          <h2 id="stats-heading" className="sr-only">Learning Statistics</h2>
+          <Card data-testid="card-enrolled" role="article" aria-labelledby="enrolled-heading">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-muted-foreground text-sm">Courses Enrolled</p>
+                  <p className="text-muted-foreground text-sm" id="enrolled-heading">Courses Enrolled</p>
                   <p className="text-2xl font-bold text-foreground" data-testid="text-enrolled-count">
                     {enrollments?.length || 0}
                   </p>
@@ -109,11 +135,11 @@ export default function Dashboard() {
               </div>
             </CardContent>
           </Card>
-          <Card data-testid="card-completed">
+          <Card data-testid="card-completed" role="article" aria-labelledby="completed-heading">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-muted-foreground text-sm">Completed</p>
+                  <p className="text-muted-foreground text-sm" id="completed-heading">Completed</p>
                   <p className="text-2xl font-bold text-foreground" data-testid="text-completed-count">
                     {enrollments?.filter(e => e.completed).length || 0}
                   </p>
@@ -124,11 +150,11 @@ export default function Dashboard() {
               </div>
             </CardContent>
           </Card>
-          <Card data-testid="card-hours">
+          <Card data-testid="card-hours" role="article" aria-labelledby="hours-heading">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-muted-foreground text-sm">Learning Hours</p>
+                  <p className="text-muted-foreground text-sm" id="hours-heading">Learning Hours</p>
                   <p className="text-2xl font-bold text-foreground" data-testid="text-hours">
                     {Math.floor(Math.random() * 200) + 50}
                   </p>
@@ -139,11 +165,11 @@ export default function Dashboard() {
               </div>
             </CardContent>
           </Card>
-          <Card data-testid="card-certificates">
+          <Card data-testid="card-certificates" role="article" aria-labelledby="certificates-heading">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-muted-foreground text-sm">Certificates</p>
+                  <p className="text-muted-foreground text-sm" id="certificates-heading">Certificates</p>
                   <p className="text-2xl font-bold text-foreground" data-testid="text-certificates">
                     {enrollments?.filter(e => e.completed).length || 0}
                   </p>
@@ -157,13 +183,13 @@ export default function Dashboard() {
         </div>
 
         {/* Current Courses */}
-        <div className="mb-8">
+        <div className="mb-8" role="region" aria-labelledby="current-courses-heading">
           <h2 className="text-2xl font-bold text-foreground mb-6" data-testid="text-continue-learning">
             Continue Learning
           </h2>
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="grid md:grid-cols-2 gap-6" role="list">
             {enrollments?.slice(0, 2).map((enrollment) => (
-              <Card key={enrollment.id} className="overflow-hidden" data-testid={`card-enrollment-${enrollment.id}`}>
+              <Card key={enrollment.id} className="overflow-hidden" data-testid={`card-enrollment-${enrollment.id}`} role="listitem">
                 <img 
                   src={enrollment.course.imageUrl || ""} 
                   alt={enrollment.course.title}
@@ -191,7 +217,7 @@ export default function Dashboard() {
             ))}
             
             {(!enrollments || enrollments.length === 0) && (
-              <Card className="md:col-span-2" data-testid="card-no-enrollments">
+              <Card className="md:col-span-2" data-testid="card-no-enrollments" role="listitem">
                 <CardContent className="p-8 text-center">
                   <i className="fas fa-graduation-cap text-4xl text-muted-foreground mb-4"></i>
                   <h3 className="text-xl font-semibold mb-2">No courses enrolled yet</h3>
@@ -206,7 +232,7 @@ export default function Dashboard() {
         </div>
 
         {/* Video Course Section */}
-        <div className="mb-8">
+        <div className="mb-8" role="region" aria-labelledby="latest-content-heading">
           <h2 className="text-2xl font-bold text-foreground mb-6" data-testid="text-latest-content">
             Latest Course Content
           </h2>

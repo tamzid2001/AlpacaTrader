@@ -30,8 +30,10 @@ export default function LandingPage() {
     <div className="min-h-screen">
       <Header />
       
-      {/* Hero Section */}
-      <section className="gradient-bg text-white relative overflow-hidden">
+      {/* Main Content */}
+      <main id="main-content" role="main">
+        {/* Hero Section */}
+        <section className="gradient-bg text-white relative overflow-hidden">
         <div className="absolute inset-0 bg-black/20"></div>
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 lg:py-32">
           <div className="text-center">
@@ -56,9 +58,9 @@ export default function LandingPage() {
                   data-testid="button-start-learning"
                 >
                   <div className="flex items-center gap-1">
-                    <FcGoogle className="w-5 h-5" />
-                    <SiGithub className="w-4 h-4" />
-                    <SiReplit className="w-4 h-4 text-orange-500" />
+                    <FcGoogle className="w-5 h-5" role="img" aria-label="Google" />
+                    <SiGithub className="w-4 h-4" role="img" aria-label="GitHub" />
+                    <SiReplit className="w-4 h-4 text-orange-500" role="img" aria-label="Replit" />
                   </div>
                   Sign in with Google & More
                 </Button>
@@ -75,10 +77,10 @@ export default function LandingPage() {
             </div>
           </div>
         </div>
-      </section>
+        </section>
 
-      {/* Features Section */}
-      <section id="features" className="py-24 bg-secondary/30">
+        {/* Features Section */}
+        <section id="features" className="py-24 bg-secondary/30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 
@@ -124,10 +126,10 @@ export default function LandingPage() {
             </Card>
           </div>
         </div>
-      </section>
+        </section>
 
-      {/* Courses Preview */}
-      <section id="courses" className="py-24">
+        {/* Courses Preview */}
+        <section id="courses" className="py-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 
@@ -191,7 +193,7 @@ export default function LandingPage() {
                         className="hover:bg-primary/90 flex items-center gap-2"
                         data-testid={`button-enroll-${course.id}`}
                       >
-                        <SiReplit className="w-4 h-4" />
+                        <SiReplit className="w-4 h-4" role="img" aria-label="Replit" />
                         Enroll Now
                       </Button>
                     </a>
@@ -201,7 +203,8 @@ export default function LandingPage() {
             ))}
           </div>
         </div>
-      </section>
+        </section>
+      </main>
 
       <Footer />
       <SupportChat />

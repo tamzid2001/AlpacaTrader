@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/auth-context";
+import { AccessibilityTesting } from "@/lib/accessibility-testing";
 import { useAuth } from "@/hooks/use-auth";
 import LandingPage from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
@@ -50,6 +51,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <TooltipProvider>
+          <AccessibilityTesting />
           <Toaster />
           <Router />
         </TooltipProvider>

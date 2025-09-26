@@ -102,7 +102,7 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-background flex">
       {/* Admin Sidebar */}
-      <nav className="w-64 bg-card border-r border-border fixed h-full z-30 overflow-y-auto">
+      <nav className="w-64 bg-card border-r border-border fixed h-full z-30 overflow-y-auto" role="navigation" aria-label="Admin navigation">
         <div className="p-6">
           <div className="flex items-center space-x-2 mb-8">
             <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center">
@@ -156,7 +156,7 @@ export default function AdminDashboard() {
       </nav>
 
       {/* Admin Main Content */}
-      <main className="flex-1 ml-64 p-8">
+      <main className="flex-1 ml-64 p-8" role="main" id="main-content">
         <h1 className="text-3xl font-bold mb-8" data-testid="text-admin-dashboard-title">
           User Approval Dashboard
         </h1>

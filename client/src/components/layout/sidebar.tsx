@@ -19,7 +19,11 @@ export default function Sidebar() {
   ];
 
   return (
-    <nav className="sidebar-nav w-64 bg-sidebar border-r border-sidebar-border fixed h-full z-30 overflow-y-auto">
+    <nav 
+      className="sidebar-nav w-64 bg-sidebar border-r border-sidebar-border fixed h-full z-30 overflow-y-auto"
+      role="navigation"
+      aria-label="Main sidebar navigation"
+    >
       <div className="p-6">
         <div className="flex items-center space-x-2 mb-8">
           <div className="w-8 h-8 bg-sidebar-primary rounded-lg flex items-center justify-center">
@@ -30,9 +34,9 @@ export default function Sidebar() {
           </span>
         </div>
         
-        <ul className="space-y-2">
+        <ul className="space-y-2" role="list">
           {navItems.map((item) => (
-            <li key={item.href}>
+            <li key={item.href} role="listitem">
               <Link href={item.href}>
                 <a
                   className={cn(
@@ -42,34 +46,38 @@ export default function Sidebar() {
                       : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                   )}
                   data-testid={`link-${item.label.toLowerCase().replace(' ', '-')}`}
+                  aria-current={location === item.href ? 'page' : undefined}
+                  aria-label={`Navigate to ${item.label}`}
                 >
-                  <i className={`${item.icon} w-5`}></i>
+                  <i className={`${item.icon} w-5`} aria-hidden="true"></i>
                   <span>{item.label}</span>
                 </a>
               </Link>
             </li>
           ))}
           
-          <li className="pt-4 border-t border-sidebar-border">
+          <li className="pt-4 border-t border-sidebar-border" role="listitem">
             <Link href="/settings">
               <a
                 className="flex items-center space-x-3 p-3 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
                 data-testid="link-settings"
+                aria-label="Navigate to settings"
               >
-                <i className="fas fa-cog w-5"></i>
+                <i className="fas fa-cog w-5" aria-hidden="true"></i>
                 <span>Settings</span>
               </a>
             </Link>
           </li>
           
-          <li>
+          <li role="listitem">
             <a href="/api/logout" className="block">
               <Button
                 variant="ghost"
                 className="w-full justify-start space-x-3 p-3 text-sidebar-foreground hover:bg-destructive hover:text-destructive-foreground"
                 data-testid="button-logout"
+                aria-label="Sign out of your account"
               >
-                <i className="fas fa-sign-out-alt w-5"></i>
+                <i className="fas fa-sign-out-alt w-5" aria-hidden="true"></i>
                 <span>Logout</span>
               </Button>
             </a>

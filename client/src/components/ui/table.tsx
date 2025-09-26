@@ -4,14 +4,23 @@ import { cn } from "@/lib/utils"
 
 const Table = React.forwardRef<
   HTMLTableElement,
-  React.HTMLAttributes<HTMLTableElement>
->(({ className, ...props }, ref) => (
+  React.HTMLAttributes<HTMLTableElement> & {
+    caption?: string;
+    "aria-label"?: string;
+    "aria-describedby"?: string;
+  }
+>(({ className, caption, "aria-label": ariaLabel, "aria-describedby": ariaDescribedBy, ...props }, ref) => (
   <div className="relative w-full overflow-auto">
     <table
       ref={ref}
       className={cn("w-full caption-bottom text-sm", className)}
+      role="table"
+      aria-label={ariaLabel}
+      aria-describedby={ariaDescribedBy}
       {...props}
-    />
+    >
+      {caption && <caption className="sr-only">{caption}</caption>}
+    </table>
   </div>
 ))
 Table.displayName = "Table"
@@ -20,7 +29,12 @@ const TableHeader = React.forwardRef<
   HTMLTableSectionElement,
   React.HTMLAttributes<HTMLTableSectionElement>
 >(({ className, ...props }, ref) => (
-  <thead ref={ref} className={cn("[&_tr]:border-b", className)} {...props} />
+  <thead 
+    ref={ref} 
+    className={cn("[&_tr]:border-b", className)} 
+    role="rowgroup"
+    {...props} 
+  />
 ))
 TableHeader.displayName = "TableHeader"
 
@@ -31,6 +45,7 @@ const TableBody = React.forwardRef<
   <tbody
     ref={ref}
     className={cn("[&_tr:last-child]:border-0", className)}
+    role="rowgroup"
     {...props}
   />
 ))
@@ -53,14 +68,18 @@ TableFooter.displayName = "TableFooter"
 
 const TableRow = React.forwardRef<
   HTMLTableRowElement,
-  React.HTMLAttributes<HTMLTableRowElement>
->(({ className, ...props }, ref) => (
+  React.HTMLAttributes<HTMLTableRowElement> & {
+    selected?: boolean;
+  }
+>(({ className, selected, ...props }, ref) => (
   <tr
     ref={ref}
     className={cn(
       "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
       className
     )}
+    role="row"
+    aria-selected={selected}
     {...props}
   />
 ))
@@ -68,16 +87,30 @@ TableRow.displayName = "TableRow"
 
 const TableHead = React.forwardRef<
   HTMLTableCellElement,
-  React.ThHTMLAttributes<HTMLTableCellElement>
->(({ className, ...props }, ref) => (
+  React.ThHTMLAttributes<HTMLTableCellElement> & {
+    sortable?: boolean;
+    sorted?: 'asc' | 'desc' | false;
+  }
+>(({ className, sortable, sorted, children, ...props }, ref) => (
   <th
     ref={ref}
     className={cn(
       "h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0",
+      sortable && "cursor-pointer hover:bg-muted/50",
       className
     )}
+    role="columnheader"
+    tabIndex={sortable ? 0 : undefined}
+    aria-sort={sorted ? (sorted === 'asc' ? 'ascending' : 'descending') : sortable ? 'none' : undefined}
     {...props}
-  />
+  >
+    {children}
+    {sortable && (
+      <span className="ml-1 inline-block" aria-hidden="true">
+        {sorted === 'asc' ? '↑' : sorted === 'desc' ? '↓' : '↕'}
+      </span>
+    )}
+  </th>
 ))
 TableHead.displayName = "TableHead"
 
@@ -88,6 +121,7 @@ const TableCell = React.forwardRef<
   <td
     ref={ref}
     className={cn("p-4 align-middle [&:has([role=checkbox])]:pr-0", className)}
+    role="gridcell"
     {...props}
   />
 ))

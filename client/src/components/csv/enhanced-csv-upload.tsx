@@ -34,6 +34,7 @@ export function EnhancedCsvUpload({ onUploadSuccess }: EnhancedCsvUploadProps) {
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [customFilename, setCustomFilename] = useState("");
+  const [customFilenameInteracted, setCustomFilenameInteracted] = useState(false);
   const [csvData, setCsvData] = useState<any[] | null>(null);
   const [validationResult, setValidationResult] = useState<CsvValidationResult | null>(null);
   const [uploadState, setUploadState] = useState<UploadState>({ step: 'select', progress: 0 });
@@ -102,6 +103,7 @@ export function EnhancedCsvUpload({ onUploadSuccess }: EnhancedCsvUploadProps) {
   const resetForm = () => {
     setFile(null);
     setCustomFilename("");
+    setCustomFilenameInteracted(false);
     setCsvData(null);
     setValidationResult(null);
     setUploadState({ step: 'select', progress: 0 });
@@ -194,6 +196,11 @@ export function EnhancedCsvUpload({ onUploadSuccess }: EnhancedCsvUploadProps) {
     // Remove invalid filename characters
     const cleaned = value.replace(/[<>:"/\\|?*]/g, '').slice(0, 50);
     setCustomFilename(cleaned);
+    setCustomFilenameInteracted(true);
+  };
+
+  const handleCustomFilenameBlur = () => {
+    setCustomFilenameInteracted(true);
   };
 
   const getStepIndicator = () => {
@@ -290,8 +297,10 @@ export function EnhancedCsvUpload({ onUploadSuccess }: EnhancedCsvUploadProps) {
                 className="hidden"
                 id="enhanced-csv-file-input"
                 data-testid="input-enhanced-csv-file"
+                aria-label="Choose CSV file to upload for anomaly detection"
               />
               <label htmlFor="enhanced-csv-file-input">
+                <span className="sr-only">Choose CSV file to upload</span>
                 <Button variant="outline" asChild data-testid="button-browse-enhanced-files">
                   <span style={{ cursor: 'pointer' }}>Browse Files</span>
                 </Button>
@@ -321,7 +330,11 @@ export function EnhancedCsvUpload({ onUploadSuccess }: EnhancedCsvUploadProps) {
                     disabled
                     className="bg-muted"
                     data-testid="input-original-filename"
+                    aria-describedby="original-filename-desc"
                   />
+                  <span id="original-filename-desc" className="sr-only">
+                    The original name of your uploaded file
+                  </span>
                 </div>
                 <div>
                   <Label htmlFor="custom-filename">
@@ -331,13 +344,23 @@ export function EnhancedCsvUpload({ onUploadSuccess }: EnhancedCsvUploadProps) {
                     id="custom-filename"
                     value={customFilename}
                     onChange={(e) => handleCustomFilenameChange(e.target.value)}
+                    onBlur={handleCustomFilenameBlur}
                     placeholder="Enter a descriptive name for your file"
                     maxLength={50}
                     data-testid="input-custom-filename"
+                    required
+                    aria-required="true"
+                    aria-describedby="custom-filename-desc custom-filename-error"
+                    aria-invalid={!customFilename.trim() && customFilenameInteracted}
                   />
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <span id="custom-filename-desc" className="text-xs text-muted-foreground mt-1">
                     {customFilename.length}/50 characters. Special characters will be removed.
-                  </p>
+                  </span>
+                  {!customFilename.trim() && customFilenameInteracted && (
+                    <span id="custom-filename-error" className="text-xs text-destructive" role="alert">
+                      Custom filename is required
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -380,8 +403,8 @@ export function EnhancedCsvUpload({ onUploadSuccess }: EnhancedCsvUploadProps) {
       {uploadState.step === 'upload' && (
         <Card data-testid="card-upload-progress">
           <CardContent className="py-8">
-            <div className="text-center space-y-4">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+            <div className="text-center space-y-4" role="status" aria-live="polite">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto" aria-hidden="true"></div>
               <div>
                 <p className="text-lg font-medium">Uploading your file...</p>
                 <p className="text-sm text-muted-foreground">
@@ -389,7 +412,16 @@ export function EnhancedCsvUpload({ onUploadSuccess }: EnhancedCsvUploadProps) {
                 </p>
               </div>
               <div className="max-w-md mx-auto space-y-2">
-                <Progress value={uploadState.progress} className="w-full" data-testid="progress-upload" />
+                <Progress 
+                value={uploadState.progress} 
+                className="w-full" 
+                data-testid="progress-upload"
+                aria-label="Upload progress"
+                role="progressbar"
+                aria-valuenow={uploadState.progress}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              />
                 <p className="text-xs text-muted-foreground">
                   {uploadState.progress < 30 ? 'Preparing file...' :
                    uploadState.progress < 70 ? 'Uploading to cloud storage...' :

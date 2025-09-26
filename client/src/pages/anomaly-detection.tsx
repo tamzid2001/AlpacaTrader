@@ -12,6 +12,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from "recharts";
+import ChartAccessibility from "@/components/accessibility/chart-accessibility"; 
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { Upload, FileText, AlertTriangle, TrendingUp, Activity, Download, FolderOpen, Share2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import EnhancedCsvUpload from "@/components/csv/enhanced-csv-upload";
@@ -25,6 +27,18 @@ interface AnomalyVisualizationProps {
 }
 
 function AnomalyVisualization({ anomalies }: AnomalyVisualizationProps) {
+  // Keyboard shortcuts for visualization
+  useKeyboardShortcuts({
+    shortcuts: [
+      {
+        key: 'v',
+        altKey: true,
+        action: () => document.getElementById('visualization-panel')?.scrollIntoView({ behavior: 'smooth' }),
+        description: 'Jump to visualization section',
+      },
+    ],
+  });
+  
   // Prepare data for charts
   const timeSeriesData = anomalies.map((anomaly, index) => ({
     date: anomaly.detectedDate,
@@ -47,11 +61,11 @@ function AnomalyVisualization({ anomalies }: AnomalyVisualizationProps) {
   return (
     <div className="space-y-6">
       <div className="grid md:grid-cols-2 gap-6">
-        <Card data-testid="card-anomaly-timeline">
-          <CardHeader>
-            <CardTitle>Anomaly Timeline</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <ChartAccessibility
+          data={timeSeriesData}
+          title="Anomaly Timeline"
+          description="Timeline showing P90 values and week-before values over time to identify trends in anomaly detection"
+          chartComponent={
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={timeSeriesData}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -63,14 +77,14 @@ function AnomalyVisualization({ anomalies }: AnomalyVisualizationProps) {
                 <Line type="monotone" dataKey="weekBeforeValue" stroke="#82ca9d" name="Week Before Value" />
               </LineChart>
             </ResponsiveContainer>
-          </CardContent>
-        </Card>
+          }
+        />
 
-        <Card data-testid="card-anomaly-types">
-          <CardHeader>
-            <CardTitle>Anomaly Types Distribution</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <ChartAccessibility
+          data={chartData}
+          title="Anomaly Types Distribution"
+          description="Bar chart showing the distribution of different types of anomalies detected in the dataset"
+          chartComponent={
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -80,8 +94,8 @@ function AnomalyVisualization({ anomalies }: AnomalyVisualizationProps) {
                 <Bar dataKey="count" fill="#8884d8" />
               </BarChart>
             </ResponsiveContainer>
-          </CardContent>
-        </Card>
+          }
+        />
       </div>
     </div>
   );
@@ -89,6 +103,33 @@ function AnomalyVisualization({ anomalies }: AnomalyVisualizationProps) {
 
 export default function AnomalyDetection() {
   const { user, isAuthenticated, isLoading } = useAuth();
+  
+  // Keyboard shortcuts for anomaly detection page
+  useKeyboardShortcuts({
+    shortcuts: [
+      {
+        key: 'u',
+        altKey: true,
+        action: () => {
+          const uploadSection = document.querySelector('[data-testid="container-enhanced-csv-upload"]');
+          uploadSection?.scrollIntoView({ behavior: 'smooth' });
+        },
+        description: 'Jump to upload section',
+      },
+      {
+        key: 't',
+        altKey: true,
+        action: () => {
+          const tabsElement = document.querySelector('[data-testid="tabs-main"]');
+          if (tabsElement) {
+            const firstTab = tabsElement.querySelector('[role="tab"]') as HTMLElement;
+            firstTab?.focus();
+          }
+        },
+        description: 'Focus on tabs navigation',
+      },
+    ],
+  });
   const [, setLocation] = useLocation();
   const [selectedUpload, setSelectedUpload] = useState<CsvUpload | null>(null);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
@@ -222,7 +263,7 @@ export default function AnomalyDetection() {
     <div className="min-h-screen bg-background flex">
       <Sidebar />
       
-      <main className="flex-1 ml-64 p-8" data-testid="anomaly-detection-main">
+      <main className="flex-1 ml-64 p-8" data-testid="anomaly-detection-main" role="main" id="main-content">
         <div className="max-w-7xl mx-auto space-y-8">
           {/* Header */}
           <div className="flex items-center justify-between">
@@ -255,20 +296,41 @@ export default function AnomalyDetection() {
           />
 
           {/* Main Content */}
-          <Tabs defaultValue="uploads" className="space-y-4">
-            <TabsList data-testid="tabs-main">
-              <TabsTrigger value="uploads" data-testid="tab-uploads">
+          <Tabs defaultValue="uploads" className="space-y-4" role="tablist" aria-label="Anomaly detection content sections">
+            <TabsList data-testid="tabs-main" role="tablist">
+              <TabsTrigger 
+                value="uploads" 
+                data-testid="tab-uploads"
+                role="tab"
+                aria-controls="uploads-panel"
+              >
                 CSV Uploads
               </TabsTrigger>
-              <TabsTrigger value="anomalies" data-testid="tab-anomalies">
+              <TabsTrigger 
+                value="anomalies" 
+                data-testid="tab-anomalies"
+                role="tab"
+                aria-controls="anomalies-panel"
+              >
                 Detected Anomalies
               </TabsTrigger>
-              <TabsTrigger value="visualization" data-testid="tab-visualization">
+              <TabsTrigger 
+                value="visualization" 
+                data-testid="tab-visualization"
+                role="tab"
+                aria-controls="visualization-panel"
+              >
                 Visualization
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="uploads" className="space-y-4">
+            <TabsContent 
+              value="uploads" 
+              className="space-y-4"
+              role="tabpanel"
+              id="uploads-panel"
+              aria-labelledby="tab-uploads"
+            >
               <CsvFileLibrary 
                 onAnalyzeFile={(upload) => {
                   setSelectedUpload(upload);
@@ -278,7 +340,13 @@ export default function AnomalyDetection() {
               />
             </TabsContent>
 
-            <TabsContent value="anomalies" className="space-y-4">
+            <TabsContent 
+              value="anomalies" 
+              className="space-y-4"
+              role="tabpanel"
+              id="anomalies-panel"
+              aria-labelledby="tab-anomalies"
+            >
               <Card data-testid="card-anomalies-table">
                 <CardHeader>
                   <div className="flex items-center justify-between">
@@ -341,14 +409,17 @@ export default function AnomalyDetection() {
                 </CardHeader>
                 <CardContent>
                   {anomalies && anomalies.length > 0 ? (
-                    <Table>
+                    <Table 
+                      aria-label="Detected anomalies data"
+                      caption="Table showing detected anomalies with type, date, description, and values"
+                    >
                       <TableHeader>
-                        <TableRow>
-                          <TableHead>Type</TableHead>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Description</TableHead>
-                          <TableHead>P90 Value</TableHead>
-                          <TableHead>Week Before</TableHead>
+                        <TableRow role="row">
+                          <TableHead scope="col">Type</TableHead>
+                          <TableHead scope="col">Date</TableHead>
+                          <TableHead scope="col">Description</TableHead>
+                          <TableHead scope="col">P90 Value</TableHead>
+                          <TableHead scope="col">Week Before</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -383,7 +454,13 @@ export default function AnomalyDetection() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="visualization" className="space-y-4">
+            <TabsContent 
+              value="visualization" 
+              className="space-y-4"
+              role="tabpanel"
+              id="visualization-panel"
+              aria-labelledby="tab-visualization"
+            >
               {anomalies && anomalies.length > 0 ? (
                 <AnomalyVisualization anomalies={anomalies} />
               ) : (
