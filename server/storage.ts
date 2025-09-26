@@ -129,6 +129,21 @@ export class MemStorage implements IStorage {
     sampleCourses.forEach(course => {
       this.courses.set(course.id, course);
     });
+
+    // Initialize admin user
+    const adminUserId = randomUUID();
+    const adminUser: User = {
+      id: adminUserId,
+      firebaseUid: "admin-tamzid257",
+      email: "tamzid257@gmail.com",
+      displayName: "Tamzid Admin",
+      photoURL: null,
+      role: "admin",
+      isApproved: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.users.set(adminUserId, adminUser);
   }
 
   // Users
@@ -314,7 +329,7 @@ export class MemStorage implements IStorage {
       id,
       status: insertUpload.status ?? "uploaded",
       uploadedAt: new Date(),
-      processedAt: insertUpload.processedAt ?? null,
+      processedAt: null, // Set when processing completes
     };
     this.csvUploads.set(id, upload);
     return upload;

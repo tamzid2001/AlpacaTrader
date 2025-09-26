@@ -125,15 +125,12 @@ export default function AuthModals({ children }: AuthModalsProps) {
 
   return (
     <>
+      {/* Login Modal */}
       <Dialog open={isLoginOpen} onOpenChange={setIsLoginOpen}>
-        <Dialog open={isSignupOpen} onOpenChange={setIsSignupOpen}>
-          <Dialog open={isForgotPasswordOpen} onOpenChange={setIsForgotPasswordOpen}>
-            <DialogTrigger asChild>
-              {children}
-            </DialogTrigger>
-
-            {/* Login Modal */}
-            <DialogContent className="sm:max-w-md" data-testid="modal-login">
+        <DialogTrigger asChild>
+          {children}
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-md" data-testid="modal-login">
               <DialogHeader>
                 <DialogTitle className="text-center text-2xl font-bold">Welcome Back</DialogTitle>
                 <p className="text-center text-muted-foreground">Sign in to your account</p>
@@ -228,10 +225,12 @@ export default function AuthModals({ children }: AuthModalsProps) {
                   Sign up
                 </Button>
               </div>
-            </DialogContent>
+        </DialogContent>
+      </Dialog>
 
-            {/* Signup Modal */}
-            <DialogContent className="sm:max-w-md" data-testid="modal-signup">
+      {/* Signup Modal */}
+      <Dialog open={isSignupOpen} onOpenChange={setIsSignupOpen}>
+        <DialogContent className="sm:max-w-md" data-testid="modal-signup">
               <DialogHeader>
                 <DialogTitle className="text-center text-2xl font-bold">Create Account</DialogTitle>
                 <p className="text-center text-muted-foreground">Join thousands of learners</p>
@@ -362,10 +361,12 @@ export default function AuthModals({ children }: AuthModalsProps) {
                   Sign in
                 </Button>
               </div>
-            </DialogContent>
+        </DialogContent>
+      </Dialog>
 
-            {/* Forgot Password Modal */}
-            <DialogContent className="sm:max-w-md" data-testid="modal-forgot-password">
+      {/* Forgot Password Modal */}
+      <Dialog open={isForgotPasswordOpen} onOpenChange={setIsForgotPasswordOpen}>
+        <DialogContent className="sm:max-w-md" data-testid="modal-forgot-password">
               <DialogHeader>
                 <DialogTitle className="text-center text-2xl font-bold">Reset Password</DialogTitle>
                 <p className="text-center text-muted-foreground">Enter your email to receive reset instructions</p>
@@ -404,9 +405,7 @@ export default function AuthModals({ children }: AuthModalsProps) {
                   Back to Sign In
                 </Button>
               </div>
-            </DialogContent>
-          </Dialog>
-        </Dialog>
+        </DialogContent>
       </Dialog>
     </>
   );
