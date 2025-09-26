@@ -17,6 +17,7 @@ import {
   createOrUpdateFirebaseUser,
   verifyAndRefreshFirebaseToken 
 } from "./firebase-admin";
+import { objectStorage } from "./lib/object-storage";
 
 // Initialize OpenAI with error handling for missing API key
 let openai: OpenAI | null = null;
@@ -748,21 +749,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const hasPercentileColumns = percentileColumns.length > 0;
       
-      // Server-side Firebase Storage upload
-      const firebaseResult = await uploadCsvFileServerSide(
-        file.buffer,
-        file.originalname,
+      // Server-side Object Storage upload
+      const objectStorageResult = await objectStorage.uploadCSV(
+        userId,
         sanitizedCustomFilename,
-        userId
+        file.buffer,
+        {
+          originalName: file.originalname,
+          contentType: file.mimetype,
+          percentileColumns,
+          hasPercentileColumns,
+        }
       );
+
+      if (!objectStorageResult.ok) {
+        throw new Error(objectStorageResult.error || 'Object Storage upload failed');
+      }
 
       // Create upload record with server-generated metadata
       const uploadData = insertCsvUploadSchema.parse({
         filename: file.originalname,
         customFilename: sanitizedCustomFilename,
-        firebaseStorageUrl: firebaseResult.downloadURL,
-        firebaseStoragePath: firebaseResult.fullPath,
-        fileSize: firebaseResult.size,
+        objectStoragePath: objectStorageResult.path,
+        fileSize: objectStorageResult.size || file.buffer.length,
         columnCount,
         rowCount,
         status: "uploaded",
@@ -775,8 +784,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           uploadedBy: userId,
           serverProcessed: true,
           userAgent: req.get('User-Agent') || 'unknown',
+          storageProvider: 'object-storage',
         },
         timeSeriesData,
+        // Keep legacy Firebase fields as null for migration compatibility
+        firebaseStorageUrl: null,
+        firebaseStoragePath: null,
       });
 
       const upload = await storage.createCsvUpload(uploadData, userId);
@@ -794,7 +807,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "CSV has too many columns. Maximum 100 columns allowed." });
       } else if (error.message.includes('JSON size')) {
         return res.status(400).json({ error: "Parsed CSV data too large. Please reduce file size or data complexity." });
-      } else if (error.message.includes('Firebase')) {
+      } else if (error.message.includes('Object Storage') || error.message.includes('Firebase')) {
         return res.status(500).json({ error: "File storage error. Please try again." });
       }
       
@@ -865,12 +878,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Access denied" });
       }
 
-      // Delete from Firebase Storage first (server-side)
+      // Delete from Object Storage first (server-side)
       try {
-        await deleteCsvFileServerSide(upload.firebaseStoragePath);
+        if (upload.objectStoragePath) {
+          // Use Object Storage for new uploads
+          const deleteResult = await objectStorage.deleteFile(upload.objectStoragePath);
+          if (!deleteResult.ok) {
+            console.warn("Object Storage file deletion failed:", deleteResult.error);
+          }
+        } else if (upload.firebaseStoragePath) {
+          // Legacy support for Firebase Storage files
+          await deleteCsvFileServerSide(upload.firebaseStoragePath);
+        }
       } catch (error) {
-        console.warn("Firebase file deletion failed:", error);
-        // Continue with database deletion even if Firebase deletion fails
+        console.warn("File deletion failed:", error);
+        // Continue with database deletion even if storage deletion fails
       }
 
       // Delete related anomalies first
@@ -907,15 +929,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Access denied. You can only download your own files." });
       }
 
-      // Generate secure signed URL for download
-      const signedUrl = await getSignedDownloadURL(upload.firebaseStoragePath, userId);
+      if (upload.objectStoragePath) {
+        // Use Object Storage for new uploads - direct download
+        const downloadResult = await objectStorage.downloadCSVByPath(upload.objectStoragePath);
+        
+        if (!downloadResult.ok) {
+          return res.status(500).json({ error: "Failed to download file from storage" });
+        }
 
-      // Return the signed URL for client-side download
-      res.json({ 
-        downloadUrl: signedUrl,
-        filename: upload.customFilename,
-        expiresIn: "1 hour"
-      });
+        // Set appropriate headers for CSV download
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="${upload.customFilename}.csv"`);
+        res.setHeader('Content-Length', downloadResult.data!.length);
+        
+        // Send the file data directly
+        res.send(downloadResult.data);
+      } else if (upload.firebaseStoragePath) {
+        // Legacy support for Firebase Storage files
+        const signedUrl = await getSignedDownloadURL(upload.firebaseStoragePath, userId);
+
+        // Return the signed URL for client-side download
+        res.json({ 
+          downloadUrl: signedUrl,
+          filename: upload.customFilename,
+          expiresIn: "1 hour"
+        });
+      } else {
+        return res.status(404).json({ error: "File storage path not found" });
+      }
 
     } catch (error: any) {
       console.error("Secure download error:", error);
@@ -1681,6 +1722,1297 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `attachment; filename="course-${id}-${type}"`);
     res.send(`Sample ${type} content for course ${id}`);
+  });
+
+  // ===================
+  // OBJECT STORAGE API ENDPOINTS
+  // ===================
+
+  // File management endpoints
+  app.post('/api/storage/upload', isAuthenticated, upload.single('file'), async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const file = req.file;
+      const { path, metadata } = req.body;
+
+      if (!file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      if (!path) {
+        return res.status(400).json({ error: "File path is required" });
+      }
+
+      // Upload to Object Storage
+      const result = await objectStorage.uploadFile(path, file.buffer, {
+        userId,
+        originalName: file.originalname,
+        contentType: file.mimetype,
+        ...JSON.parse(metadata || '{}')
+      });
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({ 
+        success: true, 
+        path: result.path,
+        size: result.size
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/storage/download/:path(*)', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const filePath = req.params.path;
+
+      // Check access permissions
+      const hasAccess = await objectStorage.checkUserAccess(userId, filePath);
+      if (!hasAccess.ok) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Download from Object Storage
+      const result = await objectStorage.downloadFile(filePath);
+
+      if (!result.ok) {
+        return res.status(404).json({ error: "File not found" });
+      }
+
+      // Set appropriate headers
+      res.setHeader('Content-Type', result.contentType || 'application/octet-stream');
+      res.setHeader('Content-Disposition', `attachment; filename="${result.filename || 'download'}"`);
+      res.send(result.data);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.delete('/api/storage/delete/:path(*)', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const filePath = req.params.path;
+
+      // Check access permissions
+      const hasAccess = await objectStorage.checkUserAccess(userId, filePath);
+      if (!hasAccess.ok) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Delete from Object Storage
+      const result = await objectStorage.deleteFile(filePath);
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/storage/list/:prefix?', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const prefix = req.params.prefix || `users/${userId}/`;
+
+      // List files from Object Storage
+      const result = await objectStorage.listFiles(prefix);
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({ files: result.files });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // User-specific storage endpoints
+  app.get('/api/storage/user/:userId/files', isAuthenticated, async (req: any, res) => {
+    try {
+      const requestingUserId = req.user.claims.sub;
+      const targetUserId = req.params.userId;
+
+      // Users can only access their own files unless admin
+      const currentUser = await storage.getUser(requestingUserId);
+      if (requestingUserId !== targetUserId && currentUser?.role !== 'admin') {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const result = await objectStorage.listUserFiles(targetUserId);
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({ files: result.files });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/storage/user/:userId/backup', isAuthenticated, async (req: any, res) => {
+    try {
+      const requestingUserId = req.user.claims.sub;
+      const targetUserId = req.params.userId;
+
+      // Users can only backup their own data
+      if (requestingUserId !== targetUserId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const result = await objectStorage.backupUserData(targetUserId);
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({ 
+        success: true, 
+        backupPath: result.backupPath,
+        timestamp: result.timestamp
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/storage/user/:userId/restore', isAuthenticated, async (req: any, res) => {
+    try {
+      const requestingUserId = req.user.claims.sub;
+      const targetUserId = req.params.userId;
+      const { backupPath } = req.body;
+
+      // Users can only restore their own data
+      if (requestingUserId !== targetUserId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      if (!backupPath) {
+        return res.status(400).json({ error: "Backup path is required" });
+      }
+
+      const result = await objectStorage.restoreUserData(targetUserId, backupPath);
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Course content storage endpoints
+  app.post('/api/storage/courses/:courseId/content', isAuthenticated, upload.single('content'), async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const courseId = req.params.courseId;
+      const file = req.file;
+      const { contentType, title } = req.body;
+
+      // Check if user is admin or course instructor
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser || currentUser.role !== 'admin') {
+        return res.status(403).json({ error: "Access denied. Admin role required." });
+      }
+
+      if (!file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      if (!contentType) {
+        return res.status(400).json({ error: "Content type is required" });
+      }
+
+      const result = await objectStorage.uploadCourseMaterial(courseId, contentType, file.buffer, {
+        title: title || file.originalname,
+        originalName: file.originalname,
+        uploadedBy: userId
+      });
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({ 
+        success: true, 
+        path: result.path,
+        size: result.size
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/storage/courses/:courseId/content/:type', async (req, res) => {
+    try {
+      const courseId = req.params.courseId;
+      const contentType = req.params.type;
+
+      const result = await objectStorage.downloadCourseMaterial(courseId, contentType);
+
+      if (!result.ok) {
+        return res.status(404).json({ error: "Content not found" });
+      }
+
+      // Set appropriate headers
+      res.setHeader('Content-Type', result.contentType || 'application/octet-stream');
+      res.setHeader('Content-Disposition', `attachment; filename="${result.filename || 'course-content'}"`);
+      res.send(result.data);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Asset management endpoints
+  app.post('/api/storage/assets/upload', isAuthenticated, upload.single('asset'), async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const file = req.file;
+      const { assetPath, assetType } = req.body;
+
+      if (!file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      if (!assetPath) {
+        return res.status(400).json({ error: "Asset path is required" });
+      }
+
+      const result = await objectStorage.uploadAsset(assetPath, file.buffer, {
+        assetType: assetType || 'general',
+        uploadedBy: userId,
+        originalName: file.originalname
+      });
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({ 
+        success: true, 
+        path: result.path,
+        size: result.size
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/storage/assets/:assetPath(*)', async (req, res) => {
+    try {
+      const assetPath = req.params.assetPath;
+
+      const result = await objectStorage.downloadAsset(assetPath);
+
+      if (!result.ok) {
+        return res.status(404).json({ error: "Asset not found" });
+      }
+
+      // Set appropriate headers with caching for assets
+      res.setHeader('Content-Type', result.contentType || 'application/octet-stream');
+      res.setHeader('Cache-Control', 'public, max-age=31536000'); // 1 year cache for assets
+      res.setHeader('ETag', result.etag || '');
+      res.send(result.data);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Bulk operations endpoint
+  app.post('/api/storage/bulk-upload', isAuthenticated, upload.array('files', 10), async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const files = req.files as Express.Multer.File[];
+      const { basePath } = req.body;
+
+      if (!files || files.length === 0) {
+        return res.status(400).json({ error: "No files uploaded" });
+      }
+
+      const uploadPromises = files.map((file, index) => ({
+        path: `${basePath || `users/${userId}/bulk`}/${file.originalname}`,
+        content: file.buffer
+      }));
+
+      const result = await objectStorage.bulkUpload(uploadPromises);
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({ 
+        success: true, 
+        results: result.results
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ===================
+  // USER CONTENT MANAGEMENT API ENDPOINTS
+  // ===================
+
+  // User Profile Management
+  app.get('/api/user/profile', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const profile = await storage.getUserProfile(userId);
+      res.json(profile);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.patch('/api/user/profile', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { firstName, lastName, profilePicture, preferences } = req.body;
+      
+      const updatedProfile = await storage.updateUserProfile(userId, {
+        firstName,
+        lastName,
+        profilePicture,
+        preferences
+      });
+      
+      res.json(updatedProfile);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Profile Picture Upload
+  app.post('/api/user/profile/picture', isAuthenticated, upload.single('profilePicture'), async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const file = req.file;
+
+      if (!file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      // Upload to Object Storage
+      const result = await objectStorage.uploadUserData(userId, 'profile-picture', file.buffer, {
+        originalName: file.originalname,
+        contentType: file.mimetype
+      });
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      // Update user profile with new picture path
+      const updatedProfile = await storage.updateUserProfile(userId, {
+        profilePicture: result.path
+      });
+
+      res.json({ 
+        success: true, 
+        profilePicture: result.path,
+        profile: updatedProfile
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Storage Quota Management
+  app.get('/api/user/storage/quota', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const quota = await storage.getUserStorageQuota(userId);
+      res.json(quota);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Learning Progress
+  app.get('/api/user/learning/progress', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const progress = await storage.getUserLearningProgress(userId);
+      res.json(progress);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.patch('/api/user/learning/progress/:courseId', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { courseId } = req.params;
+      const { progress } = req.body;
+
+      if (typeof progress !== 'number' || progress < 0 || progress > 100) {
+        return res.status(400).json({ error: "Progress must be a number between 0 and 100" });
+      }
+
+      const updatedProgress = await storage.updateUserLearningProgress(userId, courseId, progress);
+      res.json(updatedProgress);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // User Notes Management
+  app.get('/api/user/notes', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { courseId } = req.query;
+      const notes = await storage.getUserNotes(userId, courseId as string);
+      res.json(notes);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/user/notes', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { courseId, title, content, tags } = req.body;
+
+      if (!title || !content) {
+        return res.status(400).json({ error: "Title and content are required" });
+      }
+
+      const note = await storage.createUserNote(userId, {
+        courseId,
+        title,
+        content,
+        tags
+      });
+
+      res.json(note);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.patch('/api/user/notes/:noteId', isAuthenticated, async (req: any, res) => {
+    try {
+      const { noteId } = req.params;
+      const { title, content, tags } = req.body;
+
+      const updatedNote = await storage.updateUserNote(noteId, {
+        title,
+        content,
+        tags
+      });
+
+      res.json(updatedNote);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.delete('/api/user/notes/:noteId', isAuthenticated, async (req: any, res) => {
+    try {
+      const { noteId } = req.params;
+      const deleted = await storage.deleteUserNote(noteId);
+
+      if (!deleted) {
+        return res.status(404).json({ error: "Note not found" });
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // User Achievements
+  app.get('/api/user/achievements', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const achievements = await storage.getUserAchievements(userId);
+      res.json(achievements);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/user/achievements', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { type, title, description } = req.body;
+
+      if (!type || !title || !description) {
+        return res.status(400).json({ error: "Type, title, and description are required" });
+      }
+
+      const achievement = await storage.addUserAchievement(userId, {
+        type,
+        title,
+        description
+      });
+
+      res.json(achievement);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // User Data Backup and Export
+  app.post('/api/user/backup', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      
+      // Create backup data
+      const backup = await storage.createUserBackup(userId);
+      
+      // Upload backup to Object Storage
+      const backupJson = JSON.stringify(backup, null, 2);
+      const result = await objectStorage.uploadUserData(userId, 'backup', Buffer.from(backupJson), {
+        timestamp: backup.timestamp.toISOString(),
+        type: 'full_backup'
+      });
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({ 
+        success: true, 
+        backupPath: result.path,
+        timestamp: backup.timestamp,
+        size: backupJson.length
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/user/export', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const exportData = await storage.getUserExportData(userId);
+      
+      // Set headers for file download
+      const filename = `user-data-export-${userId}-${new Date().toISOString().split('T')[0]}.json`;
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      
+      res.json(exportData);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GDPR Data Deletion
+  app.delete('/api/user/data', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { confirmEmail } = req.body;
+
+      // Get user to verify email
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      if (confirmEmail !== user.email) {
+        return res.status(400).json({ error: "Email confirmation does not match" });
+      }
+
+      // Delete user data from Object Storage first
+      const objectStorageResult = await objectStorage.deleteUserData(userId);
+
+      // Delete user data from database
+      const databaseResult = await storage.deleteAllUserData(userId);
+
+      res.json({
+        success: true,
+        objectStorage: objectStorageResult,
+        database: databaseResult
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ===================
+  // COURSE CONTENT MANAGEMENT API ENDPOINTS
+  // ===================
+
+  // Course Material Upload
+  app.post('/api/courses/:courseId/materials/upload', isAuthenticated, upload.single('material'), async (req: any, res) => {
+    try {
+      const { courseId } = req.params;
+      const { materialType, lessonId, version } = req.body;
+      const file = req.file;
+
+      if (!file || !materialType) {
+        return res.status(400).json({ error: "File and material type are required" });
+      }
+
+      const result = await objectStorage.uploadCourseMaterial(courseId, materialType, file.buffer, {
+        originalName: file.originalname,
+        contentType: file.mimetype,
+        version,
+        lessonId,
+        metadata: {
+          uploadedBy: req.user.claims.sub,
+          uploadedAt: new Date()
+        }
+      });
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({
+        success: true,
+        path: result.path,
+        materialType,
+        courseId,
+        lessonId
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Course Material Download
+  app.get('/api/courses/:courseId/materials/:materialType/download', isAuthenticated, async (req: any, res) => {
+    try {
+      const { courseId, materialType } = req.params;
+      const { version, lessonId } = req.query;
+
+      const result = await objectStorage.downloadCourseMaterial(
+        courseId, 
+        materialType, 
+        version as string, 
+        lessonId as string
+      );
+
+      if (!result.ok || !result.data) {
+        return res.status(404).json({ error: result.error || "Course material not found" });
+      }
+
+      // Set appropriate headers based on metadata
+      if (result.metadata?.originalName) {
+        res.setHeader('Content-Disposition', `attachment; filename="${result.metadata.originalName}"`);
+      }
+      if (result.metadata?.contentType) {
+        res.setHeader('Content-Type', result.metadata.contentType);
+      }
+
+      res.send(result.data);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // List Course Materials
+  app.get('/api/courses/:courseId/materials', isAuthenticated, async (req: any, res) => {
+    try {
+      const { courseId } = req.params;
+      const { materialType, lessonId } = req.query;
+
+      const result = await objectStorage.listCourseMaterials(
+        courseId, 
+        materialType as string, 
+        lessonId as string
+      );
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({
+        success: true,
+        materials: result.materials || [],
+        courseId
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete Course Material
+  app.delete('/api/courses/:courseId/materials/:materialPath', isAuthenticated, async (req: any, res) => {
+    try {
+      const { courseId, materialPath } = req.params;
+
+      // Decode the material path
+      const decodedPath = decodeURIComponent(materialPath);
+
+      const result = await objectStorage.deleteCourseMaterial(courseId, decodedPath);
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Course Video Upload
+  app.post('/api/courses/:courseId/lessons/:lessonId/video', isAuthenticated, upload.fields([
+    { name: 'video', maxCount: 1 },
+    { name: 'thumbnail', maxCount: 1 }
+  ]), async (req: any, res) => {
+    try {
+      const { courseId, lessonId } = req.params;
+      const { duration, resolution, quality } = req.body;
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+
+      const videoFile = files['video']?.[0];
+      const thumbnailFile = files['thumbnail']?.[0];
+
+      if (!videoFile) {
+        return res.status(400).json({ error: "Video file is required" });
+      }
+
+      const result = await objectStorage.uploadCourseVideo(courseId, lessonId, videoFile.buffer, {
+        originalName: videoFile.originalname,
+        duration: duration ? parseFloat(duration) : undefined,
+        resolution,
+        quality,
+        thumbnailContent: thumbnailFile?.buffer
+      });
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({
+        success: true,
+        videoPath: result.videoPath,
+        thumbnailPath: result.thumbnailPath,
+        courseId,
+        lessonId
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Course Certificate Generation and Upload
+  app.post('/api/courses/:courseId/certificates/:userId', isAuthenticated, async (req: any, res) => {
+    try {
+      const { courseId, userId } = req.params;
+      const { certificateType, grade, courseName, userName } = req.body;
+
+      // TODO: Implement certificate generation logic here
+      // For now, we'll create a placeholder PDF
+      const certificateContent = Buffer.from(`Course Completion Certificate
+      
+      Course: ${courseName || courseId}
+      Student: ${userName || userId}
+      Completion Date: ${new Date().toDateString()}
+      Grade: ${grade || 'N/A'}
+      Certificate Type: ${certificateType || 'completion'}
+      `);
+
+      const result = await objectStorage.uploadCourseCertificate(courseId, userId, certificateContent, {
+        completionDate: new Date(),
+        grade: grade ? parseFloat(grade) : undefined,
+        certificateType,
+        courseName,
+        userName
+      });
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({
+        success: true,
+        certificatePath: result.certificatePath,
+        courseId,
+        userId
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get User Course Certificates
+  app.get('/api/user/certificates', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { courseId } = req.query;
+
+      const result = await objectStorage.getUserCourseCertificates(userId, courseId as string);
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({
+        success: true,
+        certificates: result.certificates || [],
+        userId
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Download Course Certificate
+  app.get('/api/courses/:courseId/certificates/:userId/download', isAuthenticated, async (req: any, res) => {
+    try {
+      const { courseId, userId } = req.params;
+      const { certificateType } = req.query;
+
+      // Get user certificates and find the requested one
+      const result = await objectStorage.getUserCourseCertificates(userId, courseId);
+
+      if (!result.ok || !result.certificates) {
+        return res.status(404).json({ error: "Certificates not found" });
+      }
+
+      const certificate = certificateType 
+        ? result.certificates.find(cert => cert.metadata?.certificateType === certificateType)
+        : result.certificates[result.certificates.length - 1]; // Get latest
+
+      if (!certificate) {
+        return res.status(404).json({ error: "Certificate not found" });
+      }
+
+      // Download the certificate file
+      const downloadResult = await objectStorage.downloadFile(certificate.path);
+
+      if (!downloadResult.ok || !downloadResult.data) {
+        return res.status(404).json({ error: "Certificate file not found" });
+      }
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="certificate-${courseId}-${userId}.pdf"`);
+      res.send(downloadResult.data);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Bulk Course Content Upload
+  app.post('/api/courses/:courseId/bulk-upload', isAuthenticated, upload.array('files', 20), async (req: any, res) => {
+    try {
+      const { courseId } = req.params;
+      const files = req.files as Express.Multer.File[];
+      const { materialTypes, lessonIds } = req.body; // JSON arrays
+
+      if (!files || files.length === 0) {
+        return res.status(400).json({ error: "No files uploaded" });
+      }
+
+      const materialTypesArray = JSON.parse(materialTypes || '[]');
+      const lessonIdsArray = JSON.parse(lessonIds || '[]');
+
+      const materials = files.map((file, index) => ({
+        type: materialTypesArray[index] || 'document',
+        content: file.buffer,
+        originalName: file.originalname,
+        lessonId: lessonIdsArray[index],
+        metadata: {
+          uploadedBy: req.user.claims.sub,
+          uploadedAt: new Date(),
+          contentType: file.mimetype
+        }
+      }));
+
+      const result = await objectStorage.bulkUploadCourseContent(courseId, materials);
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({
+        success: true,
+        results: result.results,
+        courseId,
+        totalFiles: files.length
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ===================
+  // SYSTEM ASSET STORAGE API ENDPOINTS
+  // ===================
+
+  // Upload Generated Icon
+  app.post('/api/assets/icons/upload', isAuthenticated, upload.single('icon'), async (req: any, res) => {
+    try {
+      const { iconId, format, category, tags, prompt, style } = req.body;
+      const file = req.file;
+
+      if (!file || !iconId) {
+        return res.status(400).json({ error: "Icon file and iconId are required" });
+      }
+
+      const result = await objectStorage.uploadGeneratedIcon(iconId, file.buffer, {
+        format: format || 'svg',
+        category,
+        tags: tags ? JSON.parse(tags) : [],
+        generatedBy: req.user.claims.sub,
+        prompt,
+        style
+      });
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({
+        success: true,
+        path: result.path,
+        iconId,
+        format: format || 'svg'
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Upload Chart Asset
+  app.post('/api/assets/charts/upload', isAuthenticated, upload.single('chart'), async (req: any, res) => {
+    try {
+      const { chartId, format, chartType, dataSource, metadata } = req.body;
+      const file = req.file;
+
+      if (!file || !chartId) {
+        return res.status(400).json({ error: "Chart file and chartId are required" });
+      }
+
+      const result = await objectStorage.uploadChartAsset(chartId, file.buffer, {
+        format: format || 'png',
+        chartType,
+        dataSource,
+        userId: req.user.claims.sub,
+        metadata: metadata ? JSON.parse(metadata) : {}
+      });
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({
+        success: true,
+        path: result.path,
+        chartId,
+        chartType,
+        format: format || 'png'
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Upload Report Asset
+  app.post('/api/assets/reports/upload', isAuthenticated, upload.single('report'), async (req: any, res) => {
+    try {
+      const { reportId, format, reportType, title, metadata } = req.body;
+      const file = req.file;
+
+      if (!file || !reportId) {
+        return res.status(400).json({ error: "Report file and reportId are required" });
+      }
+
+      const result = await objectStorage.uploadReportAsset(reportId, file.buffer, {
+        format: format || 'pdf',
+        reportType,
+        userId: req.user.claims.sub,
+        title,
+        metadata: metadata ? JSON.parse(metadata) : {}
+      });
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({
+        success: true,
+        path: result.path,
+        reportId,
+        reportType,
+        format: format || 'pdf'
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Upload System Backup
+  app.post('/api/assets/backups/upload', isAuthenticated, upload.single('backup'), async (req: any, res) => {
+    try {
+      const { backupId, backupType, version, description, metadata } = req.body;
+      const file = req.file;
+
+      // Check if user has admin permissions for system backups
+      const user = await storage.getUser(req.user.claims.sub);
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required for system backups" });
+      }
+
+      if (!file || !backupId) {
+        return res.status(400).json({ error: "Backup file and backupId are required" });
+      }
+
+      const result = await objectStorage.uploadSystemBackup(backupId, file.buffer, {
+        backupType,
+        version,
+        description,
+        metadata: metadata ? JSON.parse(metadata) : {}
+      });
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({
+        success: true,
+        path: result.path,
+        backupId,
+        backupType,
+        version
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Upload Static Asset
+  app.post('/api/assets/static/upload', isAuthenticated, upload.single('asset'), async (req: any, res) => {
+    try {
+      const { assetPath, category, version, metadata } = req.body;
+      const file = req.file;
+
+      if (!file || !assetPath) {
+        return res.status(400).json({ error: "Asset file and assetPath are required" });
+      }
+
+      const result = await objectStorage.uploadStaticAsset(assetPath, file.buffer, {
+        contentType: file.mimetype,
+        category,
+        version,
+        metadata: metadata ? JSON.parse(metadata) : {}
+      });
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({
+        success: true,
+        path: result.path,
+        originalPath: assetPath,
+        category,
+        version
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // List Assets
+  app.get('/api/assets/:assetType', isAuthenticated, async (req: any, res) => {
+    try {
+      const { assetType } = req.params;
+      const { category, limit, includeMetadata } = req.query;
+
+      const result = await objectStorage.listAssets(assetType, category as string, {
+        limit: limit ? parseInt(limit as string) : undefined,
+        includeMetadata: includeMetadata === 'true'
+      });
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({
+        success: true,
+        assetType,
+        category,
+        assets: result.assets || []
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Download Asset
+  app.get('/api/assets/download/:assetPath(*)', isAuthenticated, async (req: any, res) => {
+    try {
+      const assetPath = req.params.assetPath;
+
+      const result = await objectStorage.downloadAsset(assetPath);
+
+      if (!result.ok || !result.data) {
+        return res.status(404).json({ error: result.error || "Asset not found" });
+      }
+
+      // Set appropriate headers based on metadata
+      if (result.metadata?.contentType) {
+        res.setHeader('Content-Type', result.metadata.contentType);
+      }
+      
+      const filename = assetPath.split('/').pop() || 'asset';
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+      res.send(result.data);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete Asset
+  app.delete('/api/assets/:assetPath(*)', isAuthenticated, async (req: any, res) => {
+    try {
+      const assetPath = req.params.assetPath;
+
+      // Check if user has permission to delete this asset type
+      const user = await storage.getUser(req.user.claims.sub);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Admin can delete any asset, users can only delete their own assets
+      if (user.role !== 'admin' && !assetPath.includes(`/users/${user.id}/`)) {
+        return res.status(403).json({ error: "Permission denied" });
+      }
+
+      const result = await objectStorage.deleteAsset(assetPath);
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Bulk Upload Assets
+  app.post('/api/assets/bulk-upload', isAuthenticated, upload.array('assets', 50), async (req: any, res) => {
+    try {
+      const files = req.files as Express.Multer.File[];
+      const { assetPaths, types, categories, metadata } = req.body;
+
+      if (!files || files.length === 0) {
+        return res.status(400).json({ error: "No asset files uploaded" });
+      }
+
+      const assetPathsArray = JSON.parse(assetPaths || '[]');
+      const typesArray = JSON.parse(types || '[]');
+      const categoriesArray = JSON.parse(categories || '[]');
+      const metadataArray = JSON.parse(metadata || '[]');
+
+      const assets = files.map((file, index) => ({
+        path: assetPathsArray[index] || file.originalname,
+        content: file.buffer,
+        type: typesArray[index] || 'static',
+        category: categoriesArray[index],
+        metadata: {
+          contentType: file.mimetype,
+          uploadedBy: req.user.claims.sub,
+          ...metadataArray[index]
+        }
+      }));
+
+      const result = await objectStorage.bulkUploadAssets(assets);
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({
+        success: true,
+        results: result.results,
+        totalAssets: assets.length
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Asset Cleanup (Admin only)
+  app.post('/api/assets/:assetType/cleanup', isAuthenticated, async (req: any, res) => {
+    try {
+      const { assetType } = req.params;
+      const { retentionDays } = req.body;
+
+      // Check if user has admin permissions
+      const user = await storage.getUser(req.user.claims.sub);
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required for asset cleanup" });
+      }
+
+      const result = await objectStorage.cleanupOldAssets(
+        assetType, 
+        retentionDays ? parseInt(retentionDays) : 30
+      );
+
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({
+        success: true,
+        assetType,
+        deletedCount: result.deletedCount,
+        retentionDays: retentionDays || 30
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get Asset Statistics (Admin only)
+  app.get('/api/assets/statistics', isAuthenticated, async (req: any, res) => {
+    try {
+      // Check if user has admin permissions
+      const user = await storage.getUser(req.user.claims.sub);
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required for asset statistics" });
+      }
+
+      // Get statistics for different asset types
+      const assetTypes = ['icons', 'charts', 'reports', 'static'];
+      const statistics: any = {};
+
+      for (const assetType of assetTypes) {
+        const result = await objectStorage.listAssets(assetType, undefined, { 
+          limit: 1000,
+          includeMetadata: true 
+        });
+        
+        if (result.ok && result.assets) {
+          statistics[assetType] = {
+            totalCount: result.assets.length,
+            categories: [...new Set(result.assets.map(a => a.category).filter(Boolean))],
+            totalSize: result.assets.reduce((sum, asset) => {
+              return sum + (asset.metadata?.size || 0);
+            }, 0)
+          };
+        }
+      }
+
+      res.json({
+        success: true,
+        statistics,
+        timestamp: new Date()
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
   });
 
   const httpServer = createServer(app);

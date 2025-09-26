@@ -195,6 +195,9 @@ export class MemStorage implements IStorage {
   // Security storage
   private authAuditLogs: Map<string, AuthAuditLog> = new Map();
   private userSessions: Map<string, UserSession> = new Map();
+  // User content storage
+  public userNotes: Map<string, any> = new Map();
+  public userAchievements: Map<string, any> = new Map();
 
   constructor() {
     this.initializeData();
@@ -1390,6 +1393,322 @@ export class MemStorage implements IStorage {
     });
     
     return oldRevokedSessions.length;
+  }
+
+  // ==================
+  // USER CONTENT STORAGE METHODS
+  // ==================
+
+  async getUserProfile(userId: string): Promise<any> {
+    const user = this.users.get(userId);
+    if (!user) throw new Error("User not found");
+    
+    return {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+      profilePicture: user.profilePicture,
+      preferences: user.preferences || {},
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt
+    };
+  }
+
+  async updateUserProfile(userId: string, profileData: {
+    firstName?: string;
+    lastName?: string;
+    profilePicture?: string;
+    preferences?: any;
+  }): Promise<any> {
+    const user = this.users.get(userId);
+    if (!user) throw new Error("User not found");
+    
+    const updatedUser = {
+      ...user,
+      ...profileData,
+      updatedAt: new Date()
+    };
+    
+    this.users.set(userId, updatedUser);
+    return updatedUser;
+  }
+
+  async getUserStorageQuota(userId: string): Promise<any> {
+    // For memory storage, return default quota
+    return {
+      userId,
+      totalQuotaBytes: 1024 * 1024 * 1024, // 1GB default
+      usedBytes: 0,
+      fileCount: 0,
+      lastUpdated: new Date()
+    };
+  }
+
+  async updateUserStorageQuota(userId: string, updates: {
+    usedBytes?: number;
+    fileCount?: number;
+  }): Promise<any> {
+    // For memory storage, return updated quota
+    return {
+      userId,
+      totalQuotaBytes: 1024 * 1024 * 1024,
+      usedBytes: updates.usedBytes || 0,
+      fileCount: updates.fileCount || 0,
+      lastUpdated: new Date()
+    };
+  }
+
+  async getUserLearningProgress(userId: string): Promise<any[]> {
+    const userEnrollments = Array.from(this.userEnrollments.values())
+      .filter(enrollment => enrollment.userId === userId);
+    
+    return userEnrollments.map(enrollment => ({
+      courseId: enrollment.courseId,
+      progress: enrollment.progress,
+      completedAt: enrollment.completedAt,
+      enrolledAt: enrollment.enrolledAt
+    }));
+  }
+
+  async updateUserLearningProgress(userId: string, courseId: string, progress: number): Promise<any> {
+    const enrollment = Array.from(this.userEnrollments.values())
+      .find(e => e.userId === userId && e.courseId === courseId);
+    
+    if (enrollment) {
+      enrollment.progress = progress;
+      if (progress >= 100) {
+        enrollment.completedAt = new Date();
+      }
+      this.userEnrollments.set(enrollment.id, enrollment);
+      return enrollment;
+    }
+    
+    throw new Error("Enrollment not found");
+  }
+
+  async createUserNote(userId: string, noteData: {
+    courseId?: string;
+    title: string;
+    content: string;
+    tags?: string[];
+  }): Promise<any> {
+    const id = randomUUID();
+    const note = {
+      id,
+      userId,
+      courseId: noteData.courseId || null,
+      title: noteData.title,
+      content: noteData.content,
+      tags: noteData.tags || [],
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    // Store in a notes map (would need to add this to class properties)
+    if (!this.userNotes) {
+      this.userNotes = new Map();
+    }
+    this.userNotes.set(id, note);
+    return note;
+  }
+
+  async getUserNotes(userId: string, courseId?: string): Promise<any[]> {
+    if (!this.userNotes) return [];
+    
+    return Array.from(this.userNotes.values())
+      .filter(note => {
+        if (note.userId !== userId) return false;
+        if (courseId && note.courseId !== courseId) return false;
+        return true;
+      });
+  }
+
+  async updateUserNote(noteId: string, updates: {
+    title?: string;
+    content?: string;
+    tags?: string[];
+  }): Promise<any> {
+    if (!this.userNotes) throw new Error("Note not found");
+    
+    const note = this.userNotes.get(noteId);
+    if (!note) throw new Error("Note not found");
+    
+    const updatedNote = {
+      ...note,
+      ...updates,
+      updatedAt: new Date()
+    };
+    
+    this.userNotes.set(noteId, updatedNote);
+    return updatedNote;
+  }
+
+  async deleteUserNote(noteId: string): Promise<boolean> {
+    if (!this.userNotes) return false;
+    return this.userNotes.delete(noteId);
+  }
+
+  async getUserAchievements(userId: string): Promise<any[]> {
+    // Placeholder for user achievements
+    return [];
+  }
+
+  async addUserAchievement(userId: string, achievementData: {
+    type: string;
+    title: string;
+    description: string;
+    earnedAt?: Date;
+  }): Promise<any> {
+    const id = randomUUID();
+    const achievement = {
+      id,
+      userId,
+      type: achievementData.type,
+      title: achievementData.title,
+      description: achievementData.description,
+      earnedAt: achievementData.earnedAt || new Date()
+    };
+    
+    if (!this.userAchievements) {
+      this.userAchievements = new Map();
+    }
+    this.userAchievements.set(id, achievement);
+    return achievement;
+  }
+
+  async createUserBackup(userId: string): Promise<any> {
+    const user = await this.getUserProfile(userId);
+    const enrollments = await this.getUserLearningProgress(userId);
+    const notes = await this.getUserNotes(userId);
+    const achievements = await this.getUserAchievements(userId);
+    const csvUploads = await this.getUserCsvUploads(userId);
+    
+    const backup = {
+      userId,
+      timestamp: new Date(),
+      data: {
+        profile: user,
+        enrollments,
+        notes,
+        achievements,
+        csvUploads: csvUploads.map(upload => ({
+          ...upload,
+          timeSeriesData: null // Exclude large data from backup
+        }))
+      }
+    };
+    
+    return backup;
+  }
+
+  async getUserExportData(userId: string): Promise<any> {
+    // GDPR-compliant user data export
+    const user = await this.getUserProfile(userId);
+    const enrollments = await this.getUserLearningProgress(userId);
+    const notes = await this.getUserNotes(userId);
+    const achievements = await this.getUserAchievements(userId);
+    const csvUploads = await this.getUserCsvUploads(userId);
+    const quizResults = await this.getUserQuizResults(userId);
+    const anomalies = await this.getUserAnomalies(userId);
+    
+    return {
+      exportDate: new Date(),
+      userId,
+      personalData: {
+        profile: user,
+        learningData: {
+          enrollments,
+          quizResults,
+          achievements,
+          notes
+        },
+        uploadedFiles: csvUploads.map(upload => ({
+          id: upload.id,
+          filename: upload.filename,
+          customFilename: upload.customFilename,
+          uploadedAt: upload.uploadedAt,
+          fileSize: upload.fileSize,
+          status: upload.status
+        })),
+        analysisResults: anomalies.map(anomaly => ({
+          id: anomaly.id,
+          uploadId: anomaly.uploadId,
+          type: anomaly.anomalyType,
+          description: anomaly.description,
+          detectedAt: anomaly.createdAt
+        }))
+      }
+    };
+  }
+
+  async deleteAllUserData(userId: string): Promise<{
+    deletedFiles: number;
+    deletedData: string[];
+  }> {
+    // GDPR-compliant user data deletion
+    const deletedData: string[] = [];
+    let deletedFiles = 0;
+    
+    // Delete user's CSV uploads
+    const uploads = await this.getUserCsvUploads(userId);
+    for (const upload of uploads) {
+      await this.deleteCsvUpload(upload.id);
+      deletedFiles++;
+    }
+    deletedData.push('CSV uploads');
+    
+    // Delete user's anomalies
+    const anomalies = await this.getUserAnomalies(userId);
+    for (const anomaly of anomalies) {
+      await this.deleteAnomaly(anomaly.id);
+    }
+    deletedData.push('Analysis results');
+    
+    // Delete user's notes
+    if (this.userNotes) {
+      const notes = await this.getUserNotes(userId);
+      for (const note of notes) {
+        this.userNotes.delete(note.id);
+      }
+      deletedData.push('User notes');
+    }
+    
+    // Delete user's achievements
+    if (this.userAchievements) {
+      const achievements = Array.from(this.userAchievements.values())
+        .filter(a => a.userId === userId);
+      for (const achievement of achievements) {
+        this.userAchievements.delete(achievement.id);
+      }
+      deletedData.push('Achievements');
+    }
+    
+    // Delete enrollments
+    const enrollments = Array.from(this.userEnrollments.values())
+      .filter(e => e.userId === userId);
+    for (const enrollment of enrollments) {
+      this.userEnrollments.delete(enrollment.id);
+    }
+    deletedData.push('Course enrollments');
+    
+    // Delete quiz results
+    const quizResults = await this.getUserQuizResults(userId);
+    for (const result of quizResults) {
+      this.quizResults.delete(result.id);
+    }
+    deletedData.push('Quiz results');
+    
+    // Delete sessions
+    const sessions = Array.from(this.userSessions.values())
+      .filter(s => s.userId === userId);
+    for (const session of sessions) {
+      this.userSessions.delete(session.id);
+    }
+    deletedData.push('User sessions');
+    
+    return { deletedFiles, deletedData };
   }
 }
 

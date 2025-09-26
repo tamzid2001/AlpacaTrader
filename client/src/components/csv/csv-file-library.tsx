@@ -33,7 +33,7 @@ import {
   Globe
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { deleteCsvFile, downloadCsvFile } from "@/lib/firebase-storage";
+// Object Storage integration - using API endpoints instead of direct Firebase calls
 import { formatDistanceToNow } from "date-fns";
 import ShareDialog from "./share-dialog";
 import type { CsvUpload } from "@shared/schema";
@@ -93,9 +93,7 @@ export function CsvFileLibrary({ onAnalyzeFile, onRefresh }: CsvFileLibraryProps
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (upload: CsvUpload) => {
-      // Delete from Firebase Storage
-      await deleteCsvFile(upload.firebaseStoragePath);
-      // Delete from database
+      // Delete from database (server handles Object Storage cleanup)
       await apiRequest("DELETE", `/api/csv/uploads/${upload.id}`);
     },
     onSuccess: () => {
@@ -203,13 +201,41 @@ export function CsvFileLibrary({ onAnalyzeFile, onRefresh }: CsvFileLibraryProps
 
   const handleDownload = async (upload: CsvUpload) => {
     try {
-      const downloadUrl = await downloadCsvFile(upload.firebaseStoragePath);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = `${upload.customFilename}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // Use the server endpoint for downloading files
+      const response = await fetch(`/api/csv/uploads/${upload.id}/download`, {
+        method: 'GET',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Download failed');
+      }
+
+      // Handle different response types
+      const contentType = response.headers.get('content-type');
+      
+      if (contentType && contentType.includes('application/json')) {
+        // Legacy Firebase Storage response with signed URL
+        const data = await response.json();
+        const link = document.createElement('a');
+        link.href = data.downloadUrl;
+        link.download = `${upload.customFilename}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        // Direct Object Storage file download
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${upload.customFilename}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      }
       
       toast({
         title: "Download started",

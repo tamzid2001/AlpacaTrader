@@ -13,7 +13,6 @@ import { Progress } from "@/components/ui/progress";
 import { Upload, FileText, Check, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  uploadCsvFile, 
   parseCsvFile,
   validateCsvForSageMaker,
   type CsvValidationResult
