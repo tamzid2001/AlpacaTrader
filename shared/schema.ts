@@ -21,7 +21,7 @@ export const users = pgTable("users", {
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
-  role: text("role").notNull().default("user"), // user, admin
+  role: text("role").notNull().default("user"), // user, moderator, admin, superadmin
   isApproved: boolean("is_approved").notNull().default(false),
   // GDPR Compliance Fields
   dataRetentionUntil: timestamp("data_retention_until"),
@@ -180,6 +180,36 @@ export const dataProcessingLog = pgTable("data_processing_log", {
   retentionPeriod: varchar("retention_period"), // How long this log should be kept
 });
 
+// Authentication Audit Log table for OWASP ASVS V1/V2 compliance
+export const authAuditLog = pgTable("auth_audit_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"),
+  action: varchar("action").notNull(), // login, logout, failed_login, session_expired, session_hijack_attempt
+  ipAddress: varchar("ip_address").notNull(),
+  userAgent: varchar("user_agent"),
+  success: boolean("success").notNull(),
+  failureReason: varchar("failure_reason"),
+  timestamp: timestamp("timestamp").notNull().defaultNow(),
+  sessionId: varchar("session_id"),
+  riskScore: integer("risk_score").default(0),
+  metadata: json("metadata"), // Additional security metadata
+});
+
+// Enhanced Sessions table with security features
+export const userSessions = pgTable("user_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sid: varchar("sid").notNull().unique(),
+  userId: varchar("user_id").references(() => users.id),
+  ipAddress: varchar("ip_address").notNull(),
+  userAgent: varchar("user_agent"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  lastActivity: timestamp("last_activity").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+  revokedAt: timestamp("revoked_at"),
+  revokedReason: varchar("revoked_reason"),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -292,6 +322,20 @@ export const insertDataProcessingLogSchema = createInsertSchema(dataProcessingLo
   processingPurpose: z.enum(["service_provision", "analytics", "marketing", "support", "compliance", "security"]).optional(),
 });
 
+// Security schemas
+export const insertAuthAuditLogSchema = createInsertSchema(authAuditLog).omit({
+  id: true,
+  timestamp: true,
+}).extend({
+  action: z.enum(["login", "logout", "failed_login", "session_expired", "session_hijack_attempt", "token_refresh", "account_locked"]),
+});
+
+export const insertUserSessionSchema = createInsertSchema(userSessions).omit({
+  id: true,
+  createdAt: true,
+  lastActivity: true,
+});
+
 // Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type UpsertUser = z.infer<typeof upsertUserSchema>;
@@ -320,6 +364,12 @@ export type InsertAnonymousConsent = z.infer<typeof insertAnonymousConsentSchema
 export type AnonymousConsent = typeof anonymousConsent.$inferSelect;
 export type InsertDataProcessingLog = z.infer<typeof insertDataProcessingLogSchema>;
 export type DataProcessingLog = typeof dataProcessingLog.$inferSelect;
+
+// Security Types
+export type InsertAuthAuditLog = z.infer<typeof insertAuthAuditLogSchema>;
+export type AuthAuditLog = typeof authAuditLog.$inferSelect;
+export type InsertUserSession = z.infer<typeof insertUserSessionSchema>;
+export type UserSession = typeof userSessions.$inferSelect;
 
 // GDPR Enums for type safety
 export const CONSENT_TYPES = ["marketing", "analytics", "essential", "cookies", "data_processing"] as const;

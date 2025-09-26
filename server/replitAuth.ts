@@ -7,6 +7,9 @@ import type { Express, RequestHandler } from "express";
 import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
+import { getEnhancedSessionConfig, sessionSecurity, manageConcurrentSessions } from "./middleware/sessionManagement";
+import { authLimiter, progressiveBackoff, checkAccountLock } from "./middleware/rateLimiting";
+import { auditAuthEvent, detectSuspiciousActivity } from "./middleware/authAudit";
 
 if (!process.env.REPLIT_DOMAINS) {
   throw new Error("Environment variable REPLIT_DOMAINS not provided");
@@ -23,29 +26,7 @@ const getOidcConfig = memoize(
 );
 
 export function getSession() {
-  const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
-  const pgStore = connectPg(session);
-  const sessionStore = new pgStore({
-    conString: process.env.DATABASE_URL,
-    createTableIfMissing: false,
-    ttl: sessionTtl,
-    tableName: "sessions",
-  });
-  
-  const isProduction = process.env.NODE_ENV === 'production';
-  
-  return session({
-    secret: process.env.SESSION_SECRET!,
-    store: sessionStore,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      secure: isProduction, // Only secure in production (HTTPS required)
-      maxAge: sessionTtl,
-      sameSite: isProduction ? 'strict' : 'lax',
-    },
-  });
+  return getEnhancedSessionConfig();
 }
 
 function updateUserSession(
@@ -75,6 +56,10 @@ export async function setupAuth(app: Express) {
   app.use(getSession());
   app.use(passport.initialize());
   app.use(passport.session());
+  
+  // Security middleware for session management
+  app.use(sessionSecurity);
+  app.use(manageConcurrentSessions);
 
   const config = await getOidcConfig();
 
@@ -110,30 +95,41 @@ export async function setupAuth(app: Express) {
   passport.serializeUser((user: Express.User, cb) => cb(null, user));
   passport.deserializeUser((user: Express.User, cb) => cb(null, user));
 
-  app.get("/api/login", (req, res, next) => {
-    passport.authenticate(`replitauth:${req.hostname}`, {
-      prompt: "login consent",
-      scope: ["openid", "email", "profile", "offline_access"],
-    })(req, res, next);
-  });
-
-  app.get("/api/callback", (req, res, next) => {
-    passport.authenticate(`replitauth:${req.hostname}`, {
-      successReturnToOrRedirect: "/",
-      failureRedirect: "/api/login",
-    })(req, res, next);
-  });
-
-  app.get("/api/logout", (req, res) => {
-    req.logout(() => {
-      res.redirect(
-        client.buildEndSessionUrl(config, {
-          client_id: process.env.REPL_ID!,
-          post_logout_redirect_uri: `${req.protocol}://${req.hostname}`,
-        }).href
-      );
+  app.get("/api/login", 
+    authLimiter,
+    progressiveBackoff,
+    detectSuspiciousActivity,
+    checkAccountLock,
+    auditAuthEvent('login'),
+    (req, res, next) => {
+      passport.authenticate(`replitauth:${req.hostname}`, {
+        prompt: "login consent",
+        scope: ["openid", "email", "profile", "offline_access"],
+      })(req, res, next);
     });
-  });
+
+  app.get("/api/callback", 
+    authLimiter,
+    auditAuthEvent('login'),
+    (req, res, next) => {
+      passport.authenticate(`replitauth:${req.hostname}`, {
+        successReturnToOrRedirect: "/",
+        failureRedirect: "/api/login",
+      })(req, res, next);
+    });
+
+  app.get("/api/logout", 
+    auditAuthEvent('logout'),
+    (req, res) => {
+      req.logout(() => {
+        res.redirect(
+          client.buildEndSessionUrl(config, {
+            client_id: process.env.REPL_ID!,
+            post_logout_redirect_uri: `${req.protocol}://${req.hostname}`,
+          }).href
+        );
+      });
+    });
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {

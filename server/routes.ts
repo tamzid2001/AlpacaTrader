@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertSupportMessageSchema, insertQuizResultSchema, insertCsvUploadSchema, insertAnomalySchema, insertSharedResultSchema, insertAnonymousConsentSchema } from "@shared/schema";
 import { setupAuth, isAuthenticated } from "./replitAuth";
+import { registerSecurityRoutes } from "./routes/security";
 import OpenAI from "openai";
 import * as XLSX from "xlsx";
 import multer from "multer";
@@ -31,6 +32,9 @@ try {
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup Replit Auth middleware
   await setupAuth(app);
+  
+  // Register security routes
+  registerSecurityRoutes(app);
   
   // Configure multer for file uploads (memory storage for processing)
   const upload = multer({

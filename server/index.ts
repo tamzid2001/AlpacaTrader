@@ -1,10 +1,23 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { setupSecurityHeaders } from "./middleware/security";
+import { apiLimiter } from "./middleware/rateLimiting";
+import { startSessionCleanup } from "./middleware/sessionManagement";
 
 const app = express();
+
+// Apply security headers first
+setupSecurityHeaders(app);
+
+// Apply rate limiting to API routes
+app.use('/api', apiLimiter);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Start session cleanup worker
+startSessionCleanup();
 
 app.use((req, res, next) => {
   const start = Date.now();

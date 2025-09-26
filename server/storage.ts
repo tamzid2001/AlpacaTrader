@@ -24,6 +24,10 @@ import {
   type InsertAnonymousConsent,
   type DataProcessingLog,
   type InsertDataProcessingLog,
+  type AuthAuditLog,
+  type InsertAuthAuditLog,
+  type UserSession,
+  type InsertUserSession,
   type ConsentType,
   type LegalBasis,
   type ProcessingAction,
@@ -149,6 +153,29 @@ export interface IStorage {
     retentionPeriod: string;
     rights: string[];
   }>;
+
+  // Security - Authentication Audit Logging
+  createAuthAuditLog(log: InsertAuthAuditLog): Promise<AuthAuditLog>;
+  getAuthAuditLogs(userId?: string, limit?: number): Promise<AuthAuditLog[]>;
+  getRecentFailedAttempts(ipAddress: string, timeWindow: number): Promise<AuthAuditLog[]>;
+  getSecurityMetrics(timeRange: number): Promise<{
+    totalEvents: number;
+    failedLogins: number;
+    successfulLogins: number;
+    suspiciousEvents: number;
+    highRiskEvents: number;
+    topRiskIPs: Array<{ ip: string; count: number; riskScore: number }>;
+    recentAlerts: AuthAuditLog[];
+  }>;
+
+  // Security - Session Management
+  getUserActiveSessions(userId: string): Promise<UserSession[]>;
+  createUserSession(session: InsertUserSession): Promise<UserSession>;
+  updateSessionActivity(sessionId: string, data: { userId: string; ipAddress: string; userAgent?: string }): Promise<void>;
+  revokeUserSession(sessionId: string, reason: string): Promise<void>;
+  revokeAllUserSessions(userId: string, reason: string): Promise<number>;
+  cleanupExpiredSessions(): Promise<number>;
+  cleanupOldRevokedSessions(): Promise<number>;
 }
 
 export class MemStorage implements IStorage {
@@ -165,6 +192,9 @@ export class MemStorage implements IStorage {
   private userConsents: Map<string, UserConsent> = new Map();
   private anonymousConsents: Map<string, AnonymousConsent> = new Map();
   private dataProcessingLogs: Map<string, DataProcessingLog> = new Map();
+  // Security storage
+  private authAuditLogs: Map<string, AuthAuditLog> = new Map();
+  private userSessions: Map<string, UserSession> = new Map();
 
   constructor() {
     this.initializeData();
@@ -1176,6 +1206,190 @@ export class MemStorage implements IStorage {
         "Right to withdraw consent",
       ],
     };
+  }
+
+  // Security - Authentication Audit Logging
+  async createAuthAuditLog(log: InsertAuthAuditLog): Promise<AuthAuditLog> {
+    const id = randomUUID();
+    const auditLog: AuthAuditLog = {
+      id,
+      ...log,
+      timestamp: new Date(),
+      metadata: log.metadata || null,
+    };
+    
+    this.authAuditLogs.set(id, auditLog);
+    return auditLog;
+  }
+
+  async getAuthAuditLogs(userId?: string, limit: number = 100): Promise<AuthAuditLog[]> {
+    const logs = Array.from(this.authAuditLogs.values());
+    
+    const filteredLogs = userId 
+      ? logs.filter(log => log.userId === userId)
+      : logs;
+    
+    return filteredLogs
+      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+      .slice(0, limit);
+  }
+
+  async getRecentFailedAttempts(ipAddress: string, timeWindow: number): Promise<AuthAuditLog[]> {
+    const cutoff = new Date(Date.now() - timeWindow);
+    
+    return Array.from(this.authAuditLogs.values())
+      .filter(log => 
+        log.ipAddress === ipAddress && 
+        !log.success && 
+        log.timestamp > cutoff
+      )
+      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+  }
+
+  async getSecurityMetrics(timeRange: number): Promise<{
+    totalEvents: number;
+    failedLogins: number;
+    successfulLogins: number;
+    suspiciousEvents: number;
+    highRiskEvents: number;
+    topRiskIPs: Array<{ ip: string; count: number; riskScore: number }>;
+    recentAlerts: AuthAuditLog[];
+  }> {
+    const cutoff = new Date(Date.now() - timeRange);
+    const recentLogs = Array.from(this.authAuditLogs.values())
+      .filter(log => log.timestamp > cutoff);
+    
+    const failedLogins = recentLogs.filter(log => !log.success && log.action === 'failed_login');
+    const successfulLogins = recentLogs.filter(log => log.success && log.action === 'login');
+    const suspiciousEvents = recentLogs.filter(log => log.riskScore && log.riskScore >= 5);
+    const highRiskEvents = recentLogs.filter(log => log.riskScore && log.riskScore >= 8);
+    
+    // Group by IP and calculate risk scores
+    const ipMap = new Map<string, { count: number; totalRisk: number }>();
+    failedLogins.forEach(log => {
+      const existing = ipMap.get(log.ipAddress) || { count: 0, totalRisk: 0 };
+      ipMap.set(log.ipAddress, {
+        count: existing.count + 1,
+        totalRisk: existing.totalRisk + (log.riskScore || 0)
+      });
+    });
+    
+    const topRiskIPs = Array.from(ipMap.entries())
+      .map(([ip, data]) => ({
+        ip,
+        count: data.count,
+        riskScore: Math.round(data.totalRisk / data.count)
+      }))
+      .sort((a, b) => b.riskScore - a.riskScore)
+      .slice(0, 10);
+    
+    return {
+      totalEvents: recentLogs.length,
+      failedLogins: failedLogins.length,
+      successfulLogins: successfulLogins.length,
+      suspiciousEvents: suspiciousEvents.length,
+      highRiskEvents: highRiskEvents.length,
+      topRiskIPs,
+      recentAlerts: highRiskEvents.slice(0, 20)
+    };
+  }
+
+  // Security - Session Management
+  async getUserActiveSessions(userId: string): Promise<UserSession[]> {
+    const now = new Date();
+    return Array.from(this.userSessions.values())
+      .filter(session => 
+        session.userId === userId && 
+        session.isActive && 
+        session.expiresAt > now &&
+        !session.revokedAt
+      )
+      .sort((a, b) => b.lastActivity.getTime() - a.lastActivity.getTime());
+  }
+
+  async createUserSession(session: InsertUserSession): Promise<UserSession> {
+    const id = randomUUID();
+    const now = new Date();
+    const userSession: UserSession = {
+      id,
+      ...session,
+      isActive: true,
+      createdAt: now,
+      lastActivity: now,
+      revokedAt: null,
+      revokedReason: null,
+    };
+    
+    this.userSessions.set(id, userSession);
+    return userSession;
+  }
+
+  async updateSessionActivity(sessionId: string, data: { userId: string; ipAddress: string; userAgent?: string }): Promise<void> {
+    // Find session by sessionId (sid)
+    const session = Array.from(this.userSessions.values()).find(s => s.sid === sessionId);
+    if (session) {
+      session.lastActivity = new Date();
+      session.userId = data.userId;
+      session.ipAddress = data.ipAddress;
+      if (data.userAgent) {
+        session.userAgent = data.userAgent;
+      }
+      this.userSessions.set(session.id, session);
+    }
+  }
+
+  async revokeUserSession(sessionId: string, reason: string): Promise<void> {
+    const session = Array.from(this.userSessions.values()).find(s => s.sid === sessionId);
+    if (session) {
+      session.isActive = false;
+      session.revokedAt = new Date();
+      session.revokedReason = reason;
+      this.userSessions.set(session.id, session);
+    }
+  }
+
+  async revokeAllUserSessions(userId: string, reason: string): Promise<number> {
+    const userSessions = Array.from(this.userSessions.values())
+      .filter(session => session.userId === userId && session.isActive);
+    
+    userSessions.forEach(session => {
+      session.isActive = false;
+      session.revokedAt = new Date();
+      session.revokedReason = reason;
+      this.userSessions.set(session.id, session);
+    });
+    
+    return userSessions.length;
+  }
+
+  async cleanupExpiredSessions(): Promise<number> {
+    const now = new Date();
+    const expiredSessions = Array.from(this.userSessions.values())
+      .filter(session => session.expiresAt < now && session.isActive);
+    
+    expiredSessions.forEach(session => {
+      session.isActive = false;
+      session.revokedAt = now;
+      session.revokedReason = 'expired';
+      this.userSessions.set(session.id, session);
+    });
+    
+    return expiredSessions.length;
+  }
+
+  async cleanupOldRevokedSessions(): Promise<number> {
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const oldRevokedSessions = Array.from(this.userSessions.values())
+      .filter(session => 
+        session.revokedAt && 
+        session.revokedAt < dayAgo
+      );
+    
+    oldRevokedSessions.forEach(session => {
+      this.userSessions.delete(session.id);
+    });
+    
+    return oldRevokedSessions.length;
   }
 }
 
