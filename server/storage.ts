@@ -54,16 +54,18 @@ export interface IStorage {
   updateSupportMessage(id: string, updates: Partial<SupportMessage>): Promise<SupportMessage | undefined>;
 
   // CSV Uploads
-  createCsvUpload(upload: InsertCsvUpload): Promise<CsvUpload>;
+  createCsvUpload(upload: InsertCsvUpload, userId: string): Promise<CsvUpload>;
   getCsvUpload(id: string): Promise<CsvUpload | undefined>;
   getUserCsvUploads(userId: string): Promise<CsvUpload[]>;
   updateCsvUpload(id: string, updates: Partial<CsvUpload>): Promise<CsvUpload | undefined>;
+  deleteCsvUpload(id: string): Promise<boolean>;
 
   // Anomalies
   createAnomaly(anomaly: InsertAnomaly): Promise<Anomaly>;
   getUploadAnomalies(uploadId: string): Promise<Anomaly[]>;
   getUserAnomalies(userId: string): Promise<(Anomaly & { upload: CsvUpload })[]>;
   getAllAnomalies(): Promise<(Anomaly & { upload: CsvUpload })[]>;
+  deleteAnomaly(id: string): Promise<boolean>;
 }
 
 export class MemStorage implements IStorage {
@@ -350,12 +352,14 @@ export class MemStorage implements IStorage {
   }
 
   // CSV Uploads
-  async createCsvUpload(insertUpload: InsertCsvUpload): Promise<CsvUpload> {
+  async createCsvUpload(insertUpload: InsertCsvUpload, userId: string): Promise<CsvUpload> {
     const id = randomUUID();
     const upload: CsvUpload = {
       ...insertUpload,
       id,
+      userId, // Add userId from authenticated session
       status: insertUpload.status ?? "uploaded",
+      fileMetadata: insertUpload.fileMetadata ?? null,
       uploadedAt: new Date(),
       processedAt: null, // Set when processing completes
     };
@@ -416,6 +420,14 @@ export class MemStorage implements IStorage {
       ...anomaly,
       upload: this.csvUploads.get(anomaly.uploadId)!
     })).filter(a => a.upload);
+  }
+
+  async deleteCsvUpload(id: string): Promise<boolean> {
+    return this.csvUploads.delete(id);
+  }
+
+  async deleteAnomaly(id: string): Promise<boolean> {
+    return this.anomalies.delete(id);
   }
 }
 

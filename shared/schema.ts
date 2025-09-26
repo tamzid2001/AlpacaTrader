@@ -83,11 +83,15 @@ export const supportMessages = pgTable("support_messages", {
 export const csvUploads = pgTable("csv_uploads", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
-  filename: text("filename").notNull(),
+  filename: text("filename").notNull(), // Original filename
+  customFilename: text("custom_filename").notNull(), // User-defined filename
+  firebaseStorageUrl: text("firebase_storage_url").notNull(), // Firebase Storage download URL
+  firebaseStoragePath: text("firebase_storage_path").notNull(), // Firebase Storage full path for deletion
   fileSize: integer("file_size").notNull(),
   columnCount: integer("column_count").notNull(),
   rowCount: integer("row_count").notNull(),
   status: text("status").notNull().default("uploaded"), // uploaded, processing, completed, error
+  fileMetadata: json("file_metadata"), // Additional metadata: contentType, percentileColumns, validation results
   timeSeriesData: json("time_series_data").notNull(), // Array of CSV row objects
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   processedAt: timestamp("processed_at"),
@@ -144,8 +148,34 @@ export const insertSupportMessageSchema = createInsertSchema(supportMessages).om
 
 export const insertCsvUploadSchema = createInsertSchema(csvUploads).omit({
   id: true,
+  userId: true,
   uploadedAt: true,
   processedAt: true,
+}).refine((data) => {
+  // Validate file size (max 100MB)
+  if (data.fileSize && data.fileSize > 100 * 1024 * 1024) {
+    throw new Error('File size must be less than 100MB');
+  }
+  
+  // Validate row count (max 10,000 rows)
+  if (data.rowCount && data.rowCount > 10000) {
+    throw new Error('CSV file too large. Maximum 10,000 rows allowed.');
+  }
+  
+  // Validate column count (max 100 columns)
+  if (data.columnCount && data.columnCount > 100) {
+    throw new Error('CSV file has too many columns. Maximum 100 columns allowed.');
+  }
+  
+  // Validate timeSeriesData size (max 50MB JSON)
+  if (data.timeSeriesData && Array.isArray(data.timeSeriesData)) {
+    const jsonSize = Buffer.byteLength(JSON.stringify(data.timeSeriesData), 'utf8');
+    if (jsonSize > 50 * 1024 * 1024) {
+      throw new Error('Parsed CSV data too large. Maximum 50MB JSON size allowed.');
+    }
+  }
+  
+  return true;
 });
 
 export const insertAnomalySchema = createInsertSchema(anomalies).omit({

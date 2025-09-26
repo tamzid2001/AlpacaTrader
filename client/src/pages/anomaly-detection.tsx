@@ -12,203 +12,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from "recharts";
-import { Upload, FileText, AlertTriangle, TrendingUp, Activity, Download } from "lucide-react";
+import { Upload, FileText, AlertTriangle, TrendingUp, Activity, Download, FolderOpen } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import EnhancedCsvUpload from "@/components/csv/enhanced-csv-upload";
+import CsvFileLibrary from "@/components/csv/csv-file-library";
 import type { CsvUpload, Anomaly } from "@shared/schema";
 
-interface CsvUploadComponentProps {
-  onUploadSuccess: (upload: CsvUpload) => void;
-  userId: string;
-}
-
-function CsvUploadComponent({ onUploadSuccess, userId }: CsvUploadComponentProps) {
-  const [dragActive, setDragActive] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
-  const [csvData, setCsvData] = useState<any[] | null>(null);
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-
-  const uploadMutation = useMutation({
-    mutationFn: async (data: { filename: string; csvData: any[]; userId: string }) => {
-      const response = await apiRequest("POST", "/api/csv/upload", data);
-      return response.json();
-    },
-    onSuccess: (upload) => {
-      toast({
-        title: "CSV uploaded successfully",
-        description: `File ${upload.filename} has been uploaded and is ready for analysis.`,
-      });
-      onUploadSuccess(upload);
-      queryClient.invalidateQueries({ queryKey: ["/api/csv/uploads"] });
-      setFile(null);
-      setCsvData(null);
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Upload failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true);
-    } else if (e.type === "dragleave") {
-      setDragActive(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    
-    const files = Array.from(e.dataTransfer.files);
-    if (files[0]) {
-      handleFileSelection(files[0]);
-    }
-  };
-
-  const handleFileSelection = (selectedFile: File) => {
-    if (!selectedFile.name.toLowerCase().endsWith('.csv')) {
-      toast({
-        title: "Invalid file type",
-        description: "Please select a CSV file.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (selectedFile.size > 50 * 1024 * 1024) { // 50MB limit
-      toast({
-        title: "File too large",
-        description: "Please select a file smaller than 50MB.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setFile(selectedFile);
-    
-    // Parse CSV
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const text = e.target?.result as string;
-        const lines = text.split('\n').filter(line => line.trim());
-        
-        if (lines.length < 2) {
-          throw new Error("CSV must have at least a header and one data row");
-        }
-
-        const headers = lines[0].split(',').map(h => h.trim());
-        const data = lines.slice(1).map(line => {
-          const values = line.split(',');
-          const row: any = {};
-          headers.forEach((header, index) => {
-            row[header] = values[index]?.trim() || '';
-          });
-          return row;
-        });
-
-        setCsvData(data);
-      } catch (error: any) {
-        toast({
-          title: "CSV parsing error",
-          description: error.message,
-          variant: "destructive",
-        });
-        setFile(null);
-      }
-    };
-    reader.readAsText(selectedFile);
-  };
-
-  const handleUpload = () => {
-    if (!file || !csvData) return;
-    
-    uploadMutation.mutate({
-      filename: file.name,
-      csvData,
-      userId,
-    });
-  };
-
-  return (
-    <Card className="w-full" data-testid="card-csv-upload">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Upload className="h-5 w-5" />
-          Upload CSV File
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div
-          className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-            dragActive ? "border-primary bg-primary/5" : "border-muted-foreground/25"
-          }`}
-          onDragEnter={handleDrag}
-          onDragLeave={handleDrag}
-          onDragOver={handleDrag}
-          onDrop={handleDrop}
-          data-testid="dropzone-csv"
-        >
-          <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-          <p className="text-lg font-medium mb-2">
-            Drop your CSV file here or click to browse
-          </p>
-          <p className="text-sm text-muted-foreground mb-4">
-            Supports CSV files with p1-p99 percentile columns (max 50MB)
-          </p>
-          <input
-            type="file"
-            accept=".csv"
-            onChange={(e) => e.target.files?.[0] && handleFileSelection(e.target.files[0])}
-            className="hidden"
-            id="csv-file-input"
-            data-testid="input-csv-file"
-          />
-          <label htmlFor="csv-file-input">
-            <Button variant="outline" asChild data-testid="button-browse-files">
-              <span style={{ cursor: 'pointer' }}>Browse Files</span>
-            </Button>
-          </label>
-        </div>
-
-        {file && csvData && (
-          <div className="mt-4 space-y-4">
-            <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
-              <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4" />
-                <span className="font-medium" data-testid="text-selected-file">
-                  {file.name}
-                </span>
-                <Badge variant="secondary" data-testid="badge-file-size">
-                  {(file.size / 1024).toFixed(1)} KB
-                </Badge>
-              </div>
-              <Button
-                onClick={handleUpload}
-                disabled={uploadMutation.isPending}
-                data-testid="button-upload-csv"
-              >
-                {uploadMutation.isPending ? "Uploading..." : "Upload & Analyze"}
-              </Button>
-            </div>
-            
-            <div className="text-sm text-muted-foreground" data-testid="text-csv-preview">
-              <strong>Preview:</strong> {csvData.length} rows, {Object.keys(csvData[0] || {}).length} columns
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
 
 interface AnomalyVisualizationProps {
   anomalies: (Anomaly & { upload: CsvUpload })[];
@@ -295,23 +104,13 @@ export default function AnomalyDetection() {
     }
   }, [isLoading, isAuthenticated, user, setLocation]);
 
-  const { data: uploads } = useQuery({
-    queryKey: ["/api/csv/uploads"],
-    queryFn: async () => {
-      const response = await fetch(`/api/csv/uploads?userId=${user?.id}`);
-      if (!response.ok) throw new Error("Failed to fetch uploads");
-      return response.json();
-    },
+  const { data: uploads, refetch: refetchUploads } = useQuery<CsvUpload[]>({
+    queryKey: ["/api/csv/uploads", user?.id],
     enabled: !!user?.id,
   });
 
-  const { data: anomalies } = useQuery({
+  const { data: anomalies = [] } = useQuery<(Anomaly & { upload: CsvUpload })[]>({
     queryKey: ["/api/anomalies"],
-    queryFn: async () => {
-      const response = await fetch(`/api/anomalies?userId=${user?.id}`);
-      if (!response.ok) throw new Error("Failed to fetch anomalies");
-      return response.json();
-    },
     enabled: !!user?.id,
   });
 
@@ -339,7 +138,7 @@ export default function AnomalyDetection() {
 
   const exportMutation = useMutation({
     mutationFn: async (uploadId: string) => {
-      const response = await fetch(`/api/anomalies/${uploadId}/export-excel?userId=${user?.id}`, {
+      const response = await fetch(`/api/anomalies/${uploadId}/export-excel`, {
         method: 'GET',
       });
       
@@ -445,9 +244,11 @@ export default function AnomalyDetection() {
           </div>
 
           {/* Upload Section */}
-          <CsvUploadComponent 
-            onUploadSuccess={(upload) => setSelectedUpload(upload)} 
-            userId={user?.id || ""}
+          <EnhancedCsvUpload 
+            onUploadSuccess={(upload) => {
+              setSelectedUpload(upload);
+              refetchUploads();
+            }} 
           />
 
           {/* Main Content */}
@@ -465,66 +266,13 @@ export default function AnomalyDetection() {
             </TabsList>
 
             <TabsContent value="uploads" className="space-y-4">
-              <Card data-testid="card-uploads-table">
-                <CardHeader>
-                  <CardTitle>Your CSV Uploads</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {uploads && uploads.length > 0 ? (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Filename</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Rows</TableHead>
-                          <TableHead>Uploaded</TableHead>
-                          <TableHead>Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {uploads.map((upload: CsvUpload) => (
-                          <TableRow key={upload.id} data-testid={`row-upload-${upload.id}`}>
-                            <TableCell className="font-medium">
-                              {upload.filename}
-                            </TableCell>
-                            <TableCell>
-                              <Badge 
-                                variant={
-                                  upload.status === "completed" ? "default" :
-                                  upload.status === "processing" ? "secondary" :
-                                  upload.status === "error" ? "destructive" : "outline"
-                                }
-                                data-testid={`badge-status-${upload.id}`}
-                              >
-                                {upload.status}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>{upload.rowCount}</TableCell>
-                            <TableCell>
-                              {new Date(upload.uploadedAt).toLocaleDateString()}
-                            </TableCell>
-                            <TableCell>
-                              <Button
-                                size="sm"
-                                onClick={() => analyzeMutation.mutate(upload.id)}
-                                disabled={analyzeMutation.isPending || upload.status === "processing"}
-                                data-testid={`button-analyze-${upload.id}`}
-                              >
-                                {upload.status === "processing" ? "Processing..." : "Analyze"}
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  ) : (
-                    <div className="text-center py-8">
-                      <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                      <p className="text-muted-foreground">No CSV files uploaded yet</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              <CsvFileLibrary 
+                onAnalyzeFile={(upload) => {
+                  setSelectedUpload(upload);
+                  analyzeMutation.mutate(upload.id);
+                }}
+                onRefresh={refetchUploads}
+              />
             </TabsContent>
 
             <TabsContent value="anomalies" className="space-y-4">

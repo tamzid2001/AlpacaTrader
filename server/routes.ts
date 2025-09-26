@@ -5,6 +5,8 @@ import { insertSupportMessageSchema, insertQuizResultSchema, insertCsvUploadSche
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import OpenAI from "openai";
 import * as XLSX from "xlsx";
+import multer from "multer";
+import { uploadCsvFileServerSide, deleteCsvFileServerSide, getSignedDownloadURL, parseCsvFileServerSide } from "./firebase-admin";
 
 // Initialize OpenAI with error handling for missing API key
 let openai: OpenAI | null = null;
@@ -21,6 +23,23 @@ try {
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup Replit Auth middleware
   await setupAuth(app);
+  
+  // Configure multer for file uploads (memory storage for processing)
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      fileSize: 100 * 1024 * 1024, // 100MB max file size
+      files: 1, // Only allow 1 file at a time
+    },
+    fileFilter: (req, file, cb) => {
+      // Only allow CSV files
+      if (file.mimetype === 'text/csv' || file.originalname.toLowerCase().endsWith('.csv')) {
+        cb(null, true);
+      } else {
+        cb(new Error('Only CSV files are allowed'));
+      }
+    },
+  });
   
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
@@ -215,62 +234,247 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // CSV Upload and Anomaly Detection routes
-  app.post("/api/csv/upload", async (req, res) => {
+  // SECURE CSV Upload route - Server-side file handling
+  app.post("/api/csv/upload", isAuthenticated, upload.single('csvFile'), async (req: any, res) => {
     try {
-      const { filename, csvData, userId } = req.body;
+      const userId = req.user.claims.sub;
+      const { customFilename } = req.body;
+      const file = req.file;
+
+      // Validate required fields
+      if (!file) {
+        return res.status(400).json({ error: "No file uploaded. Please select a CSV file." });
+      }
+
+      if (!customFilename || typeof customFilename !== 'string') {
+        return res.status(400).json({ error: "Custom filename is required." });
+      }
+
+      // Sanitize custom filename
+      const sanitizedCustomFilename = customFilename
+        .trim()
+        .replace(/[^a-zA-Z0-9._-]/g, '_')
+        .substring(0, 50);
+
+      if (!sanitizedCustomFilename) {
+        return res.status(400).json({ error: "Invalid custom filename. Only alphanumeric characters, dots, hyphens, and underscores are allowed." });
+      }
+
+      // Server-side CSV parsing with security limits
+      const parsedData = await parseCsvFileServerSide(file.buffer);
       
-      if (!filename || !csvData || !userId) {
-        return res.status(400).json({ error: "Missing required fields: filename, csvData, userId" });
-      }
-
-      // Validate CSV structure
-      if (!Array.isArray(csvData) || csvData.length === 0) {
-        return res.status(400).json({ error: "Invalid CSV data format" });
-      }
-
-      // Check for required percentile columns (p1 through p99)
-      const requiredColumns = [];
-      for (let i = 1; i <= 99; i++) {
-        requiredColumns.push(`p${i}`);
-      }
+      // Validate parsed data structure for anomaly detection
+      const { data: timeSeriesData, rowCount, columnCount } = parsedData;
       
-      const firstRow = csvData[0];
-      const missingColumns = requiredColumns.filter(col => !(col in firstRow));
-      if (missingColumns.length > 0) {
-        return res.status(400).json({ 
-          error: `Missing required percentile columns: ${missingColumns.join(", ")}` 
-        });
+      if (timeSeriesData.length === 0) {
+        return res.status(400).json({ error: "CSV file is empty or invalid." });
       }
 
-      // Validate file size (limit to 50MB equivalent)
-      if (csvData.length > 50000) {
-        return res.status(400).json({ error: "CSV file too large. Maximum 50,000 rows allowed." });
-      }
-
-      // Create CSV upload record
-      const uploadData = insertCsvUploadSchema.parse({
-        userId,
-        filename,
-        fileSize: JSON.stringify(csvData).length,
-        columnCount: Object.keys(firstRow).length,
-        rowCount: csvData.length,
-        timeSeriesData: csvData,
-        status: "uploaded"
+      // Check for percentile columns (required for anomaly detection)
+      const firstRow = timeSeriesData[0];
+      const headers = Object.keys(firstRow).filter(h => h !== '_rowIndex');
+      const percentileColumns = headers.filter(header => {
+        const match = header.toLowerCase().match(/^p(\d+)$/);
+        if (match) {
+          const num = parseInt(match[1]);
+          return num >= 1 && num <= 99;
+        }
+        return false;
       });
 
-      const upload = await storage.createCsvUpload(uploadData);
+      const hasPercentileColumns = percentileColumns.length > 0;
+      
+      // Server-side Firebase Storage upload
+      const firebaseResult = await uploadCsvFileServerSide(
+        file.buffer,
+        file.originalname,
+        sanitizedCustomFilename,
+        userId
+      );
+
+      // Create upload record with server-generated metadata
+      const uploadData = insertCsvUploadSchema.parse({
+        filename: file.originalname,
+        customFilename: sanitizedCustomFilename,
+        firebaseStorageUrl: firebaseResult.downloadURL,
+        firebaseStoragePath: firebaseResult.fullPath,
+        fileSize: firebaseResult.size,
+        columnCount,
+        rowCount,
+        status: "uploaded",
+        fileMetadata: {
+          contentType: file.mimetype,
+          percentileColumns,
+          hasPercentileColumns,
+          originalName: file.originalname,
+          uploadDate: new Date().toISOString(),
+          uploadedBy: userId,
+          serverProcessed: true,
+          userAgent: req.get('User-Agent') || 'unknown',
+        },
+        timeSeriesData,
+      });
+
+      const upload = await storage.createCsvUpload(uploadData, userId);
       res.json(upload);
+
     } catch (error: any) {
+      console.error("Secure CSV upload error:", error);
+      
+      // Provide specific error messages for different types of failures
+      if (error.message.includes('File size')) {
+        return res.status(400).json({ error: "File too large. Maximum file size is 100MB." });
+      } else if (error.message.includes('CSV file too large')) {
+        return res.status(400).json({ error: "CSV data too large. Maximum 10,000 rows allowed." });
+      } else if (error.message.includes('too many columns')) {
+        return res.status(400).json({ error: "CSV has too many columns. Maximum 100 columns allowed." });
+      } else if (error.message.includes('JSON size')) {
+        return res.status(400).json({ error: "Parsed CSV data too large. Please reduce file size or data complexity." });
+      } else if (error.message.includes('Firebase')) {
+        return res.status(500).json({ error: "File storage error. Please try again." });
+      }
+      
       res.status(400).json({ error: error.message });
     }
   });
 
-  app.post("/api/csv/:id/analyze", async (req, res) => {
+  // Get user's CSV uploads
+  app.get("/api/csv/uploads", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user.claims.sub;
+      const uploads = await storage.getUserCsvUploads(userId);
+      res.json(uploads);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Update CSV upload (for renaming)
+  app.patch("/api/csv/uploads/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const uploadId = req.params.id;
+      const { customFilename } = req.body;
+
+      // Verify the upload belongs to the user
+      const upload = await storage.getCsvUpload(uploadId);
+      if (!upload) {
+        return res.status(404).json({ error: "Upload not found" });
+      }
+      
+      if (upload.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      if (!customFilename || typeof customFilename !== 'string') {
+        return res.status(400).json({ error: "customFilename is required and must be a string" });
+      }
+
+      // Update the upload
+      const updatedUpload = await storage.updateCsvUpload(uploadId, {
+        customFilename: customFilename.trim(),
+      });
+
+      if (!updatedUpload) {
+        return res.status(404).json({ error: "Upload not found" });
+      }
+
+      res.json(updatedUpload);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete CSV upload (with secure Firebase file deletion)
+  app.delete("/api/csv/uploads/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const uploadId = req.params.id;
+
+      // Verify the upload belongs to the user
+      const upload = await storage.getCsvUpload(uploadId);
+      if (!upload) {
+        return res.status(404).json({ error: "Upload not found" });
+      }
+      
+      if (upload.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Delete from Firebase Storage first (server-side)
+      try {
+        await deleteCsvFileServerSide(upload.firebaseStoragePath);
+      } catch (error) {
+        console.warn("Firebase file deletion failed:", error);
+        // Continue with database deletion even if Firebase deletion fails
+      }
+
+      // Delete related anomalies first
+      const anomalies = await storage.getUploadAnomalies(uploadId);
+      for (const anomaly of anomalies) {
+        await storage.deleteAnomaly(anomaly.id);
+      }
+
+      // Delete the upload record
+      const deleted = await storage.deleteCsvUpload(uploadId);
+      if (!deleted) {
+        return res.status(404).json({ error: "Upload not found" });
+      }
+
+      res.json({ message: "Upload deleted successfully" });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // SECURE CSV file download route with ownership verification
+  app.get("/api/csv/uploads/:id/download", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const uploadId = req.params.id;
+
+      // Verify the upload belongs to the user
+      const upload = await storage.getCsvUpload(uploadId);
+      if (!upload) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      
+      if (upload.userId !== userId) {
+        return res.status(403).json({ error: "Access denied. You can only download your own files." });
+      }
+
+      // Generate secure signed URL for download
+      const signedUrl = await getSignedDownloadURL(upload.firebaseStoragePath, userId);
+
+      // Return the signed URL for client-side download
+      res.json({ 
+        downloadUrl: signedUrl,
+        filename: upload.customFilename,
+        expiresIn: "1 hour"
+      });
+
+    } catch (error: any) {
+      console.error("Secure download error:", error);
+      if (error.message.includes("Access denied")) {
+        return res.status(403).json({ error: error.message });
+      } else if (error.message.includes("not found")) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      res.status(500).json({ error: "Failed to generate download link" });
+    }
+  });
+
+  app.post("/api/csv/:id/analyze", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
       const upload = await storage.getCsvUpload(req.params.id);
       if (!upload) {
         return res.status(404).json({ error: "CSV upload not found" });
+      }
+
+      // Verify the upload belongs to the authenticated user
+      if (upload.userId !== userId) {
+        return res.status(403).json({ error: "Access denied. You can only analyze your own files." });
       }
 
       // Update status to processing
@@ -396,37 +600,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/csv/uploads", async (req, res) => {
+
+  app.get("/api/csv/:id/anomalies", isAuthenticated, async (req: any, res) => {
     try {
-      const { userId } = req.query;
-      if (!userId) {
-        return res.status(400).json({ error: "userId query parameter is required" });
+      const userId = req.user.claims.sub;
+      const uploadId = req.params.id;
+      
+      // Verify the upload belongs to the authenticated user
+      const upload = await storage.getCsvUpload(uploadId);
+      if (!upload) {
+        return res.status(404).json({ error: "Upload not found" });
       }
       
-      const uploads = await storage.getUserCsvUploads(userId as string);
-      res.json(uploads);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
+      if (upload.userId !== userId) {
+        return res.status(403).json({ error: "Access denied. You can only view anomalies for your own files." });
+      }
 
-  app.get("/api/csv/:id/anomalies", async (req, res) => {
-    try {
-      const anomalies = await storage.getUploadAnomalies(req.params.id);
+      const anomalies = await storage.getUploadAnomalies(uploadId);
       res.json(anomalies);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
 
-  app.get("/api/anomalies", async (req, res) => {
+  app.get("/api/anomalies", isAuthenticated, async (req: any, res) => {
     try {
-      const { userId } = req.query;
-      if (!userId) {
-        return res.status(400).json({ error: "userId query parameter is required" });
-      }
-      
-      const anomalies = await storage.getUserAnomalies(userId as string);
+      const userId = req.user.claims.sub;
+      const anomalies = await storage.getUserAnomalies(userId);
       res.json(anomalies);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -434,19 +634,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Excel Export Route for Monday.com
-  app.get("/api/anomalies/:uploadId/export-excel", async (req, res) => {
+  app.get("/api/anomalies/:uploadId/export-excel", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user.claims.sub;
       const uploadId = req.params.uploadId;
-      const { userId } = req.query;
 
-      if (!userId) {
-        return res.status(400).json({ error: "userId query parameter is required" });
-      }
-
-      // Get upload and anomalies data
+      // Get upload and verify ownership
       const upload = await storage.getCsvUpload(uploadId);
       if (!upload) {
         return res.status(404).json({ error: "CSV upload not found" });
+      }
+
+      // Verify the upload belongs to the authenticated user
+      if (upload.userId !== userId) {
+        return res.status(403).json({ error: "Access denied. You can only export your own files." });
       }
 
       const anomalies = await storage.getUploadAnomalies(uploadId);
@@ -455,7 +656,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get user data for owner info
-      const user = await storage.getUser(userId as string);
+      const user = await storage.getUser(userId);
       const ownerEmail = user?.email || "unknown@example.com";
 
       // Create new workbook
