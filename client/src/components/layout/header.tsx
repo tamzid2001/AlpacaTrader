@@ -4,10 +4,10 @@ import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { FcGoogle } from "react-icons/fc";
 import { SiGithub, SiReplit } from "react-icons/si";
-import { TrendingUp } from "lucide-react";
+import { TrendingUp, Shield } from "lucide-react";
 import { EnhancedIcon } from "@/components/icons/enhanced-icon";
 import SkipNavigation from "@/components/accessibility/skip-navigation";
 
@@ -92,6 +92,19 @@ export default function Header() {
                   <Link href="/dashboard">
                     <Button data-testid="button-dashboard">Dashboard</Button>
                   </Link>
+                  {user?.role === "admin" && (
+                    <Link href="/admin">
+                      <Button 
+                        variant="outline"
+                        className="flex items-center gap-2 bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-950 dark:to-orange-950 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900 transition-all duration-200"
+                        data-testid="button-admin-panel"
+                        aria-label="Access admin panel for system management"
+                      >
+                        <Shield className="h-4 w-4" aria-hidden="true" />
+                        Admin Panel
+                      </Button>
+                    </Link>
+                  )}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button 
@@ -117,9 +130,15 @@ export default function Header() {
                         <Link href="/dashboard" data-testid="link-user-dashboard">Dashboard</Link>
                       </DropdownMenuItem>
                       {user?.role === "admin" && (
-                        <DropdownMenuItem asChild>
-                          <Link href="/admin" data-testid="link-admin-dashboard">Admin</Link>
-                        </DropdownMenuItem>
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem asChild>
+                            <Link href="/admin" data-testid="link-admin-dashboard" className="flex items-center gap-2">
+                              <Shield className="h-4 w-4 text-red-600 dark:text-red-400" aria-hidden="true" />
+                              <span className="text-red-700 dark:text-red-300 font-medium">Admin Panel</span>
+                            </Link>
+                          </DropdownMenuItem>
+                        </>
                       )}
                       <DropdownMenuItem asChild>
                         <Link href="/anomaly-detection" data-testid="link-anomaly-detection">Anomaly Detection</Link>

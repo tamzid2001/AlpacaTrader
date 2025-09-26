@@ -8,6 +8,7 @@ import type { User } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Shield, Users, BarChart, BookOpen, Settings } from "lucide-react";
 
 export default function AdminDashboard() {
   const { user, isAuthenticated, isLoading } = useAuth();
@@ -105,8 +106,8 @@ export default function AdminDashboard() {
       <nav className="w-64 bg-card border-r border-border fixed h-full z-30 overflow-y-auto" role="navigation" aria-label="Admin navigation">
         <div className="p-6">
           <div className="flex items-center space-x-2 mb-8">
-            <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center">
-              <i className="fas fa-shield-alt text-white text-sm"></i>
+            <div className="w-8 h-8 bg-gradient-to-r from-red-600 to-orange-600 rounded-lg flex items-center justify-center">
+              <Shield className="h-5 w-5 text-white" aria-hidden="true" />
             </div>
             <span className="text-xl font-bold" data-testid="text-admin-title">Admin Panel</span>
           </div>
@@ -114,40 +115,41 @@ export default function AdminDashboard() {
             <li>
               <a 
                 href="#" 
-                className="flex items-center space-x-3 p-3 rounded-lg bg-red-100 text-red-800"
+                className="flex items-center space-x-3 p-3 rounded-lg bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-950 dark:to-orange-950 text-red-800 dark:text-red-200 border border-red-200/50 dark:border-red-800/50"
                 data-testid="link-admin-dashboard"
+                aria-current="page"
               >
-                <i className="fas fa-tachometer-alt w-5"></i>
-                <span>Dashboard</span>
+                <BarChart className="h-5 w-5" aria-hidden="true" />
+                <span className="font-medium">Dashboard</span>
               </a>
             </li>
             <li>
               <a 
                 href="#" 
-                className="flex items-center space-x-3 p-3 rounded-lg text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                className="flex items-center space-x-3 p-3 rounded-lg text-muted-foreground hover:bg-gradient-to-r hover:from-red-50 hover:to-orange-50 dark:hover:from-red-950/50 dark:hover:to-orange-950/50 hover:text-red-700 dark:hover:text-red-300 transition-colors"
                 data-testid="link-user-management"
               >
-                <i className="fas fa-users w-5"></i>
+                <Users className="h-5 w-5" aria-hidden="true" />
                 <span>User Management</span>
               </a>
             </li>
             <li>
               <a 
                 href="#" 
-                className="flex items-center space-x-3 p-3 rounded-lg text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                className="flex items-center space-x-3 p-3 rounded-lg text-muted-foreground hover:bg-gradient-to-r hover:from-red-50 hover:to-orange-50 dark:hover:from-red-950/50 dark:hover:to-orange-950/50 hover:text-red-700 dark:hover:text-red-300 transition-colors"
                 data-testid="link-course-management"
               >
-                <i className="fas fa-book w-5"></i>
+                <BookOpen className="h-5 w-5" aria-hidden="true" />
                 <span>Course Management</span>
               </a>
             </li>
             <li>
               <a 
                 href="#" 
-                className="flex items-center space-x-3 p-3 rounded-lg text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                className="flex items-center space-x-3 p-3 rounded-lg text-muted-foreground hover:bg-gradient-to-r hover:from-red-50 hover:to-orange-50 dark:hover:from-red-950/50 dark:hover:to-orange-950/50 hover:text-red-700 dark:hover:text-red-300 transition-colors"
                 data-testid="link-analytics"
               >
-                <i className="fas fa-chart-bar w-5"></i>
+                <BarChart className="h-5 w-5" aria-hidden="true" />
                 <span>Analytics</span>
               </a>
             </li>
@@ -157,9 +159,14 @@ export default function AdminDashboard() {
 
       {/* Admin Main Content */}
       <main className="flex-1 ml-64 p-8" role="main" id="main-content">
-        <h1 className="text-3xl font-bold mb-8" data-testid="text-admin-dashboard-title">
-          User Approval Dashboard
-        </h1>
+        <div className="flex items-center gap-3 mb-8">
+          <div className="w-10 h-10 bg-gradient-to-r from-red-600 to-orange-600 rounded-lg flex items-center justify-center">
+            <Shield className="h-6 w-6 text-white" aria-hidden="true" />
+          </div>
+          <h1 className="text-3xl font-bold" data-testid="text-admin-dashboard-title">
+            Admin Dashboard
+          </h1>
+        </div>
         
         {/* Pending Approvals */}
         <Card className="overflow-hidden">
@@ -234,8 +241,10 @@ export default function AdminDashboard() {
               </div>
             ) : (
               <div className="p-8 text-center" data-testid="text-no-pending">
-                <i className="fas fa-users text-4xl text-muted-foreground mb-4"></i>
-                <h3 className="text-xl font-semibold mb-2">No pending approvals</h3>
+                <div className="w-16 h-16 mx-auto bg-gradient-to-r from-green-100 to-emerald-100 dark:from-green-900/50 dark:to-emerald-900/50 rounded-full flex items-center justify-center mb-4">
+                  <Users className="h-8 w-8 text-green-600 dark:text-green-400" aria-hidden="true" />
+                </div>
+                <h3 className="text-xl font-semibold mb-2 text-green-700 dark:text-green-300">No pending approvals</h3>
                 <p className="text-muted-foreground">All users have been processed</p>
               </div>
             )}

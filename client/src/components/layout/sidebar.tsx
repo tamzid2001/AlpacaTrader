@@ -67,6 +67,40 @@ export default function Sidebar() {
             </li>
           ))}
           
+          {user?.role === "admin" && (
+            <>
+              <li className="pt-4 border-t border-sidebar-border" role="listitem">
+                <div className="px-3 py-2">
+                  <h2 className="text-xs font-semibold text-sidebar-foreground/60 uppercase tracking-wider">
+                    Administration
+                  </h2>
+                </div>
+              </li>
+              <li role="listitem">
+                <Link href="/admin">
+                  <a
+                    className={cn(
+                      "flex items-center space-x-3 p-3 rounded-lg transition-colors bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-950/50 dark:to-orange-950/50 border border-red-200/50 dark:border-red-800/50",
+                      location === "/admin"
+                        ? "bg-red-100 dark:bg-red-900/70 text-red-900 dark:text-red-100 border-red-300 dark:border-red-700"
+                        : "text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/70 hover:border-red-300 dark:hover:border-red-700"
+                    )}
+                    data-testid="link-admin-panel"
+                    aria-current={location === "/admin" ? 'page' : undefined}
+                    aria-label="Navigate to Admin Panel"
+                  >
+                    <EnhancedIcon 
+                      name="Shield" 
+                      size={20} 
+                      aria-hidden="true"
+                    />
+                    <span className="font-medium">Admin Panel</span>
+                  </a>
+                </Link>
+              </li>
+            </>
+          )}
+          
           <li className="pt-4 border-t border-sidebar-border" role="listitem">
             <Link href="/settings">
               <a
