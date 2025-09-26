@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useCourses } from "@/hooks/use-courses";
+import { FcGoogle } from "react-icons/fc";
+import { SiGithub, SiReplit } from "react-icons/si";
 
 export default function LandingPage() {
   const { user, isAuthenticated } = useAuth();
@@ -50,10 +52,15 @@ export default function LandingPage() {
               <a href="/api/login">
                 <Button 
                   size="lg" 
-                  className="bg-white text-primary hover:bg-gray-100 px-8 py-4 text-lg font-semibold"
+                  className="bg-white text-primary hover:bg-gray-100 px-8 py-4 text-lg font-semibold flex items-center gap-3"
                   data-testid="button-start-learning"
                 >
-                  Start Learning Today
+                  <div className="flex items-center gap-1">
+                    <FcGoogle className="w-5 h-5" />
+                    <SiGithub className="w-4 h-4" />
+                    <SiReplit className="w-4 h-4 text-orange-500" />
+                  </div>
+                  Sign in with Google & More
                 </Button>
               </a>
               <Button 
@@ -181,9 +188,10 @@ export default function LandingPage() {
                     </span>
                     <a href="/api/login">
                       <Button 
-                        className="hover:bg-primary/90"
+                        className="hover:bg-primary/90 flex items-center gap-2"
                         data-testid={`button-enroll-${course.id}`}
                       >
+                        <SiReplit className="w-4 h-4" />
                         Enroll Now
                       </Button>
                     </a>

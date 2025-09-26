@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { FcGoogle } from "react-icons/fc";
+import { SiGithub, SiReplit } from "react-icons/si";
 
 export default function Header() {
   const { user, isAuthenticated, isLoading } = useAuth();
@@ -106,7 +108,14 @@ export default function Header() {
               )
             ) : (
               <a href="/api/login">
-                <Button data-testid="button-login">Get Started</Button>
+                <Button className="flex items-center gap-2" data-testid="button-login">
+                  <div className="flex items-center gap-1">
+                    <FcGoogle className="w-4 h-4" />
+                    <SiGithub className="w-3 h-3" />
+                    <SiReplit className="w-3 h-3 text-orange-500" />
+                  </div>
+                  Get Started
+                </Button>
               </a>
             )}
           </div>
