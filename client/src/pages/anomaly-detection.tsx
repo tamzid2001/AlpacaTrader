@@ -278,22 +278,22 @@ function AnomalyVisualization({ anomalies }: AnomalyVisualizationProps) {
 }
 
 export default function AnomalyDetection() {
-  const { firebaseUser, user, isApproved } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const [, setLocation] = useLocation();
   const [selectedUpload, setSelectedUpload] = useState<CsvUpload | null>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   useEffect(() => {
-    if (!firebaseUser) {
+    if (!isLoading && !isAuthenticated) {
       setLocation("/");
       return;
     }
     
-    if (!isApproved) {
+    if (user && !user.isApproved) {
       return;
     }
-  }, [firebaseUser, isApproved, setLocation]);
+  }, [isLoading, isAuthenticated, user, setLocation]);
 
   const { data: uploads } = useQuery({
     queryKey: ["/api/csv/uploads"],
@@ -391,11 +391,11 @@ export default function AnomalyDetection() {
     },
   });
 
-  if (!firebaseUser) {
+  if (!isAuthenticated || !user) {
     return null;
   }
 
-  if (!isApproved) {
+  if (!user.isApproved) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Card className="max-w-md w-full mx-4">

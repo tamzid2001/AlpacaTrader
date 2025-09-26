@@ -1,5 +1,6 @@
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
+import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
 import { useUserEnrollments } from "@/hooks/use-courses";
 import Sidebar from "@/components/layout/sidebar";
@@ -11,27 +12,39 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 
 export default function Dashboard() {
-  const { firebaseUser, user, isApproved } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const { data: enrollments } = useUserEnrollments(user?.id || "");
 
+  // Redirect to login if not authenticated
   useEffect(() => {
-    if (!firebaseUser) {
-      setLocation("/");
+    if (!isLoading && !isAuthenticated) {
+      toast({
+        title: "Unauthorized",
+        description: "You are logged out. Logging in again...",
+        variant: "destructive",
+      });
+      setTimeout(() => {
+        window.location.href = "/api/login";
+      }, 500);
       return;
     }
-    
-    if (!isApproved) {
-      // User is not approved, show pending approval message
-      return;
-    }
-  }, [firebaseUser, isApproved, setLocation]);
+  }, [isAuthenticated, isLoading, toast]);
 
-  if (!firebaseUser) {
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated || !user) {
     return null;
   }
 
-  if (!isApproved) {
+  if (!user.isApproved) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Card className="max-w-md w-full mx-4">
@@ -43,9 +56,9 @@ export default function Dashboard() {
               Your account is currently pending approval from our admin team. 
               You'll receive access to the platform once approved.
             </p>
-            <Button onClick={() => setLocation("/")} variant="outline">
-              Return to Home
-            </Button>
+            <a href="/">
+              <Button variant="outline">Return to Home</Button>
+            </a>
           </CardContent>
         </Card>
       </div>
@@ -61,7 +74,7 @@ export default function Dashboard() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold text-foreground" data-testid="text-welcome">
-              Welcome back, {user?.displayName || 'Student'}!
+              Welcome back, {user?.firstName || user?.email?.split('@')[0] || 'Student'}!
             </h1>
             <p className="text-muted-foreground" data-testid="text-subtitle">
               Continue your learning journey
@@ -73,7 +86,7 @@ export default function Dashboard() {
             </Button>
             <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center" data-testid="avatar-user">
               <span className="text-primary-foreground font-semibold">
-                {user?.displayName?.charAt(0) || 'U'}
+                {user?.firstName?.charAt(0) || user?.email?.charAt(0)?.toUpperCase() || 'U'}
               </span>
             </div>
           </div>

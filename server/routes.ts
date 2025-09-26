@@ -1,7 +1,8 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertSupportMessageSchema, insertQuizResultSchema, insertCsvUploadSchema, insertAnomalySchema } from "@shared/schema";
+import { insertSupportMessageSchema, insertQuizResultSchema, insertCsvUploadSchema, insertAnomalySchema } from "@shared/schema";
+import { setupAuth, isAuthenticated } from "./replitAuth";
 import OpenAI from "openai";
 import * as XLSX from "xlsx";
 
@@ -18,44 +19,32 @@ try {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Setup Replit Auth middleware
+  await setupAuth(app);
   
   // Auth routes
-  app.post("/api/auth/sync-user", async (req, res) => {
+  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
-      const userData = insertUserSchema.parse(req.body);
-      
-      // Check if user exists by Firebase UID
-      let user = await storage.getUserByFirebaseUid(userData.firebaseUid);
-      
-      if (user) {
-        // Update existing user
-        user = await storage.updateUser(user.id, userData);
-      } else {
-        // Create new user (needs admin approval)
-        user = await storage.createUser(userData);
-      }
-      
-      res.json(user);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
-    }
-  });
-
-  app.get("/api/auth/user/:firebaseUid", async (req, res) => {
-    try {
-      const user = await storage.getUserByFirebaseUid(req.params.firebaseUid);
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
       if (!user) {
-        return res.status(404).json({ error: "User not found" });
+        return res.status(404).json({ message: "User not found" });
       }
       res.json(user);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
     }
   });
 
-  // Admin routes
-  app.get("/api/admin/users", async (req, res) => {
+  // Admin routes (protected)
+  app.get("/api/admin/users", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user.claims.sub;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser || currentUser.role !== "admin") {
+        return res.status(403).json({ message: "Access denied. Admin role required." });
+      }
       const users = await storage.getAllUsers();
       res.json(users);
     } catch (error: any) {
@@ -63,8 +52,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/admin/users/pending", async (req, res) => {
+  app.get("/api/admin/users/pending", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user.claims.sub;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser || currentUser.role !== "admin") {
+        return res.status(403).json({ message: "Access denied. Admin role required." });
+      }
       const users = await storage.getPendingUsers();
       res.json(users);
     } catch (error: any) {
@@ -72,8 +66,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/users/:id/approve", async (req, res) => {
+  app.post("/api/admin/users/:id/approve", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user.claims.sub;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser || currentUser.role !== "admin") {
+        return res.status(403).json({ message: "Access denied. Admin role required." });
+      }
       const user = await storage.approveUser(req.params.id);
       if (!user) {
         return res.status(404).json({ error: "User not found" });

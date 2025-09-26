@@ -1,6 +1,7 @@
 import { 
   type User, 
-  type InsertUser, 
+  type InsertUser,
+  type UpsertUser, 
   type Course,
   type InsertCourse,
   type CourseEnrollment,
@@ -21,7 +22,7 @@ import { randomUUID } from "crypto";
 export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
-  getUserByFirebaseUid(firebaseUid: string): Promise<User | undefined>;
+  upsertUser(user: UpsertUser): Promise<User>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, updates: Partial<User>): Promise<User | undefined>;
@@ -130,20 +131,19 @@ export class MemStorage implements IStorage {
       this.courses.set(course.id, course);
     });
 
-    // Initialize admin user
-    const adminUserId = randomUUID();
+    // Initialize admin user for Replit Auth
     const adminUser: User = {
-      id: adminUserId,
-      firebaseUid: "admin-tamzid257",
+      id: "tamzid-admin-id", // Fixed admin ID for consistency
       email: "tamzid257@gmail.com",
-      displayName: "Tamzid Admin",
-      photoURL: null,
+      firstName: "Tamzid",
+      lastName: "Admin",
+      profileImageUrl: null,
       role: "admin",
       isApproved: true,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
-    this.users.set(adminUserId, adminUser);
+    this.users.set(adminUser.id, adminUser);
   }
 
   // Users
@@ -151,8 +151,34 @@ export class MemStorage implements IStorage {
     return this.users.get(id);
   }
 
-  async getUserByFirebaseUid(firebaseUid: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(user => user.firebaseUid === firebaseUid);
+  async upsertUser(userData: UpsertUser): Promise<User> {
+    const existingUser = this.users.get(userData.id!);
+    
+    if (existingUser) {
+      // Update existing user
+      const updatedUser: User = {
+        ...existingUser,
+        ...userData,
+        updatedAt: new Date(),
+      };
+      this.users.set(userData.id!, updatedUser);
+      return updatedUser;
+    } else {
+      // Create new user
+      const newUser: User = {
+        id: userData.id!,
+        email: userData.email ?? null,
+        firstName: userData.firstName ?? null,
+        lastName: userData.lastName ?? null,
+        profileImageUrl: userData.profileImageUrl ?? null,
+        role: userData.role ?? "student",
+        isApproved: userData.isApproved ?? true, // Auto-approve Replit Auth users
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      this.users.set(userData.id!, newUser);
+      return newUser;
+    }
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
@@ -164,8 +190,10 @@ export class MemStorage implements IStorage {
     const user: User = { 
       ...insertUser,
       id,
-      displayName: insertUser.displayName ?? null,
-      photoURL: insertUser.photoURL ?? null,
+      email: insertUser.email ?? null,
+      firstName: insertUser.firstName ?? null,
+      lastName: insertUser.lastName ?? null,
+      profileImageUrl: insertUser.profileImageUrl ?? null,
       role: insertUser.role ?? "student",
       isApproved: insertUser.isApproved ?? false,
       createdAt: new Date(),

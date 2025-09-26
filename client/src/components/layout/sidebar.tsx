@@ -1,22 +1,11 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { signOutUser } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export default function Sidebar() {
   const { user } = useAuth();
   const [location] = useLocation();
-  const [, setLocation] = useLocation();
-
-  const handleSignOut = async () => {
-    try {
-      await signOutUser();
-      setLocation("/");
-    } catch (error) {
-      console.error("Sign out error:", error);
-    }
-  };
 
   const navItems = [
     { href: "/dashboard", icon: "fas fa-home", label: "Dashboard" },
@@ -73,15 +62,16 @@ export default function Sidebar() {
           </li>
           
           <li>
-            <Button
-              variant="ghost"
-              className="w-full justify-start space-x-3 p-3 text-sidebar-foreground hover:bg-destructive hover:text-destructive-foreground"
-              onClick={handleSignOut}
-              data-testid="button-logout"
-            >
-              <i className="fas fa-sign-out-alt w-5"></i>
-              <span>Logout</span>
-            </Button>
+            <a href="/api/logout" className="block">
+              <Button
+                variant="ghost"
+                className="w-full justify-start space-x-3 p-3 text-sidebar-foreground hover:bg-destructive hover:text-destructive-foreground"
+                data-testid="button-logout"
+              >
+                <i className="fas fa-sign-out-alt w-5"></i>
+                <span>Logout</span>
+              </Button>
+            </a>
           </li>
         </ul>
         
@@ -90,15 +80,15 @@ export default function Sidebar() {
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 bg-sidebar-primary rounded-full flex items-center justify-center">
                 <span className="text-sidebar-primary-foreground font-semibold">
-                  {user.displayName?.charAt(0) || user.email.charAt(0).toUpperCase()}
+                  {user.firstName?.charAt(0) || user.email?.charAt(0).toUpperCase() || 'U'}
                 </span>
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-sidebar-foreground truncate" data-testid="text-user-name">
-                  {user.displayName || user.email.split('@')[0]}
+                  {user.firstName || user.email?.split('@')[0] || 'User'}
                 </p>
                 <p className="text-xs text-sidebar-foreground/60 truncate" data-testid="text-user-email">
-                  {user.email}
+                  {user.email || ''}
                 </p>
               </div>
             </div>

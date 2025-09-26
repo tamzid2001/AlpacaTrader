@@ -3,10 +3,11 @@ import { Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import AuthModals from "@/components/auth/auth-modals";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 export default function Header() {
-  const { firebaseUser, isApproved } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
 
   const scrollToSection = (id: string) => {
@@ -59,20 +60,54 @@ export default function Header() {
           </nav>
           
           <div className="flex items-center space-x-4">
-            {firebaseUser ? (
-              isApproved ? (
-                <Link href="/dashboard">
-                  <Button data-testid="button-dashboard">Dashboard</Button>
-                </Link>
+            {isLoading ? (
+              <Button variant="outline" disabled data-testid="button-loading">
+                Loading...
+              </Button>
+            ) : isAuthenticated ? (
+              user?.isApproved ? (
+                <div className="flex items-center space-x-4">
+                  <Link href="/dashboard">
+                    <Button data-testid="button-dashboard">Dashboard</Button>
+                  </Link>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="relative" data-testid="button-user-menu">
+                        <Avatar className="w-8 h-8">
+                          <AvatarImage src={user?.profileImageUrl || undefined} alt="User" />
+                          <AvatarFallback>
+                            {user?.firstName?.[0] || user?.email?.[0] || 'U'}
+                          </AvatarFallback>
+                        </Avatar>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem asChild>
+                        <Link href="/dashboard" data-testid="link-user-dashboard">Dashboard</Link>
+                      </DropdownMenuItem>
+                      {user?.role === "admin" && (
+                        <DropdownMenuItem asChild>
+                          <Link href="/admin" data-testid="link-admin-dashboard">Admin</Link>
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem asChild>
+                        <Link href="/anomaly-detection" data-testid="link-anomaly-detection">Anomaly Detection</Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <a href="/api/logout" data-testid="button-logout">Logout</a>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               ) : (
                 <Button variant="outline" disabled data-testid="button-pending">
                   Approval Pending
                 </Button>
               )
             ) : (
-              <AuthModals>
-                <Button data-testid="button-get-started">Get Started</Button>
-              </AuthModals>
+              <a href="/api/login">
+                <Button data-testid="button-login">Get Started</Button>
+              </a>
             )}
           </div>
           

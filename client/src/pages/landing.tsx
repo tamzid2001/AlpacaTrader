@@ -3,7 +3,6 @@ import { useLocation } from "wouter";
 import { useEffect } from "react";
 import Header from "@/components/layout/header";
 import Footer from "@/components/layout/footer";
-import AuthModals from "@/components/auth/auth-modals";
 import SupportChat from "@/components/support/support-chat";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,15 +10,15 @@ import { Badge } from "@/components/ui/badge";
 import { useCourses } from "@/hooks/use-courses";
 
 export default function LandingPage() {
-  const { firebaseUser, isApproved } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
   const { data: courses } = useCourses();
 
   useEffect(() => {
-    if (firebaseUser && isApproved) {
+    if (isAuthenticated && user?.isApproved) {
       setLocation("/dashboard");
     }
-  }, [firebaseUser, isApproved, setLocation]);
+  }, [isAuthenticated, user, setLocation]);
 
   const scrollToSection = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
@@ -48,7 +47,7 @@ export default function LandingPage() {
               Build multi-period binomial models using Amazon SageMaker Canvas. State-of-the-art end-to-end machine learning pipeline for financial analysis.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <AuthModals>
+              <a href="/api/login">
                 <Button 
                   size="lg" 
                   className="bg-white text-primary hover:bg-gray-100 px-8 py-4 text-lg font-semibold"
@@ -56,7 +55,7 @@ export default function LandingPage() {
                 >
                   Start Learning Today
                 </Button>
-              </AuthModals>
+              </a>
               <Button 
                 variant="outline" 
                 size="lg"
@@ -180,14 +179,14 @@ export default function LandingPage() {
                     >
                       ${course.price}
                     </span>
-                    <AuthModals>
+                    <a href="/api/login">
                       <Button 
                         className="hover:bg-primary/90"
                         data-testid={`button-enroll-${course.id}`}
                       >
                         Enroll Now
                       </Button>
-                    </AuthModals>
+                    </a>
                   </div>
                 </CardContent>
               </Card>

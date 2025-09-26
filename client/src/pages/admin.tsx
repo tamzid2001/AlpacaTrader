@@ -1,6 +1,7 @@
 import { useAuth } from "@/hooks/use-auth";
-import { useLocation } from "wouter";
+import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
+import { isUnauthorizedError } from "@/lib/authUtils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import type { User } from "@shared/schema";
@@ -9,14 +10,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 export default function AdminDashboard() {
-  const { firebaseUser, user } = useAuth();
-  const [, setLocation] = useLocation();
+  const { user, isAuthenticated, isLoading } = useAuth();
+  const { toast } = useToast();
   const queryClient = useQueryClient();
 
   // Fetch pending users
-  const { data: pendingUsers, isLoading } = useQuery<User[]>({
+  const { data: pendingUsers, isLoading: isLoadingUsers } = useQuery<User[]>({
     queryKey: ["/api/admin/users/pending"],
     enabled: user?.role === "admin",
+    retry: false,
   });
 
   // Approve user mutation
@@ -28,16 +30,56 @@ export default function AdminDashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users/pending"] });
     },
+    onError: (error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+    },
   });
 
   useEffect(() => {
-    if (!firebaseUser || user?.role !== "admin") {
-      setLocation("/");
+    if (!isLoading && !isAuthenticated) {
+      toast({
+        title: "Unauthorized",
+        description: "You are logged out. Logging in again...",
+        variant: "destructive",
+      });
+      setTimeout(() => {
+        window.location.href = "/api/login";
+      }, 500);
       return;
     }
-  }, [firebaseUser, user, setLocation]);
+    
+    if (!isLoading && user && user.role !== "admin") {
+      toast({
+        title: "Access Denied",
+        description: "Admin role required to access this page.",
+        variant: "destructive",
+      });
+      setTimeout(() => {
+        window.location.href = "/";
+      }, 500);
+      return;
+    }
+  }, [isAuthenticated, isLoading, user, toast]);
 
-  if (!firebaseUser || user?.role !== "admin") {
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated || !user || user.role !== "admin") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Card className="max-w-md w-full mx-4">
@@ -48,9 +90,9 @@ export default function AdminDashboard() {
             <p className="text-muted-foreground mb-4">
               You don't have permission to access the admin dashboard.
             </p>
-            <Button onClick={() => setLocation("/")} variant="outline">
-              Return to Home
-            </Button>
+            <a href="/">
+              <Button variant="outline">Return to Home</Button>
+            </a>
           </CardContent>
         </Card>
       </div>
@@ -150,11 +192,11 @@ export default function AdminDashboard() {
                           <div className="flex items-center space-x-3">
                             <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
                               <span className="text-primary-foreground text-sm font-semibold">
-                                {user.displayName?.charAt(0) || user.email.charAt(0).toUpperCase()}
+                                {user.firstName?.charAt(0) || user.email?.charAt(0)?.toUpperCase() || 'U'}
                               </span>
                             </div>
                             <span data-testid={`text-user-name-${user.id}`}>
-                              {user.displayName || user.email.split('@')[0]}
+                              {user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.email?.split('@')[0] || 'Unknown'}
                             </span>
                           </div>
                         </td>
