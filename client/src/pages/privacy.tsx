@@ -1,11 +1,9 @@
-import Header from "@/components/layout/header";
-import Footer from "@/components/layout/footer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function PrivacyPage() {
   return (
     <div className="min-h-screen bg-background">
-      <Header />
+      {/* Header removed - now handled by App layout */}
       
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16" role="main" id="main-content">
         <div className="mb-8">
@@ -111,7 +109,7 @@ export default function PrivacyPage() {
         </div>
       </main>
       
-      <Footer />
+      {/* Footer removed - now handled by App layout */}
     </div>
   );
 }

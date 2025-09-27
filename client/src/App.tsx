@@ -6,6 +6,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/auth-context";
 import { AccessibilityTesting } from "@/lib/accessibility-testing";
 import { useAuth } from "@/hooks/use-auth";
+import Header from "@/components/layout/header";
+import Footer from "@/components/layout/footer";
+import Sidebar from "@/components/layout/sidebar";
 import LandingPage from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import AdminDashboard from "@/pages/admin";
@@ -19,6 +22,30 @@ import TermsPage from "@/pages/terms";
 import NotFound from "@/pages/not-found";
 import IconGeneratorPage from "@/pages/icon-generator";
 import { CookieConsent } from "@/components/gdpr/cookie-consent";
+import SupportChat from "@/components/support/support-chat";
+
+// Layout wrapper for authenticated pages
+function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen flex">
+      <Sidebar />
+      <div className="flex-1">
+        <Header />
+        <main className="flex-1">{children}</main>
+        <Footer />
+      </div>
+    </div>
+  );
+}
+
+// Layout wrapper for public pages
+function PublicLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen">
+      {children}
+    </div>
+  );
+}
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -27,26 +54,60 @@ function Router() {
     <Switch>
       {isLoading || !isAuthenticated ? (
         <>
-          <Route path="/" component={LandingPage} />
-          <Route path="/shared/:token" component={SharedResultsViewer} />
-          <Route path="/privacy" component={PrivacyPage} />
-          <Route path="/terms" component={TermsPage} />
-          <Route component={LandingPage} />
+          <Route path="/">
+            {() => <PublicLayout><LandingPage /></PublicLayout>}
+          </Route>
+          <Route path="/shared/:token">
+            {(params) => <PublicLayout><SharedResultsViewer {...params} /></PublicLayout>}
+          </Route>
+          <Route path="/privacy">
+            {() => <PublicLayout><PrivacyPage /></PublicLayout>}
+          </Route>
+          <Route path="/terms">
+            {() => <PublicLayout><TermsPage /></PublicLayout>}
+          </Route>
+          <Route>
+            {() => <PublicLayout><LandingPage /></PublicLayout>}
+          </Route>
         </>
       ) : (
         <>
-          <Route path="/" component={Dashboard} />
-          <Route path="/dashboard" component={Dashboard} />
-          <Route path="/admin" component={AdminDashboard} />
-          <Route path="/icon-generator" component={IconGeneratorPage} />
-          <Route path="/market-data" component={MarketDataPage} />
-          <Route path="/anomaly-detection" component={AnomalyDetection} />
-          <Route path="/my-shared-results" component={MySharedResults} />
-          <Route path="/shared/:token" component={SharedResultsViewer} />
-          <Route path="/privacy" component={PrivacyPage} />
-          <Route path="/privacy-settings" component={PrivacySettings} />
-          <Route path="/terms" component={TermsPage} />
-          <Route component={NotFound} />
+          <Route path="/">
+            {() => <AuthenticatedLayout><Dashboard /></AuthenticatedLayout>}
+          </Route>
+          <Route path="/dashboard">
+            {() => <AuthenticatedLayout><Dashboard /></AuthenticatedLayout>}
+          </Route>
+          <Route path="/admin">
+            {() => <AuthenticatedLayout><AdminDashboard /></AuthenticatedLayout>}
+          </Route>
+          <Route path="/icon-generator">
+            {() => <AuthenticatedLayout><IconGeneratorPage /></AuthenticatedLayout>}
+          </Route>
+          <Route path="/market-data">
+            {() => <AuthenticatedLayout><MarketDataPage /></AuthenticatedLayout>}
+          </Route>
+          <Route path="/anomaly-detection">
+            {() => <AuthenticatedLayout><AnomalyDetection /></AuthenticatedLayout>}
+          </Route>
+          <Route path="/my-shared-results">
+            {() => <AuthenticatedLayout><MySharedResults /></AuthenticatedLayout>}
+          </Route>
+          <Route path="/shared/:token">
+            {(params) => <PublicLayout><SharedResultsViewer {...params} /></PublicLayout>}
+          </Route>
+          <Route path="/privacy">
+            {() => <AuthenticatedLayout><PrivacyPage /></AuthenticatedLayout>}
+          </Route>
+          <Route path="/privacy-settings">
+            {() => <AuthenticatedLayout><PrivacySettings /></AuthenticatedLayout>}
+          </Route>
+          <Route path="/terms">
+            {() => <AuthenticatedLayout><TermsPage /></AuthenticatedLayout>}
+          </Route>
+          <Route>
+            {() => <AuthenticatedLayout><NotFound /></AuthenticatedLayout>}
+          </Route>
         </>
       )}
     </Switch>
@@ -61,6 +122,7 @@ function App() {
           <AccessibilityTesting />
           <Toaster />
           <Router />
+          <SupportChat />
           <CookieConsent />
         </TooltipProvider>
       </AuthProvider>

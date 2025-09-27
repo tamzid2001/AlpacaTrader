@@ -1,9 +1,6 @@
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
 import { useEffect, useState } from "react";
-import Header from "@/components/layout/header";
-import Footer from "@/components/layout/footer";
-import SupportChat from "@/components/support/support-chat";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -46,7 +43,7 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen">
-      <Header />
+      {/* Header removed - now handled by App layout */}
       
       {/* Main Content */}
       <main id="main-content" role="main">
@@ -302,8 +299,7 @@ export default function LandingPage() {
         </section>
       </main>
 
-      <Footer />
-      <SupportChat />
+      {/* Footer and SupportChat removed - now handled by App layout */}
       <DemoVideoModal 
         isOpen={showDemoModal} 
         onClose={() => setShowDemoModal(false)} 
