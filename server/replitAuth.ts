@@ -26,7 +26,25 @@ const getOidcConfig = memoize(
 );
 
 export function getSession() {
-  return getEnhancedSessionConfig();
+  const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
+  const pgStore = connectPg(session);
+  const sessionStore = new pgStore({
+    conString: process.env.DATABASE_URL,
+    createTableIfMissing: false,
+    ttl: sessionTtl,
+    tableName: "sessions",
+  });
+  return session({
+    secret: process.env.SESSION_SECRET!,
+    store: sessionStore,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: sessionTtl,
+    },
+  });
 }
 
 function updateUserSession(
@@ -56,7 +74,13 @@ async function upsertUser(
     userData.isApproved = true;
   }
 
-  await storage.upsertUser(userData);
+  try {
+    await storage.upsertUser(userData);
+    console.log('Successfully upserted user:', userData.id, userData.email);
+  } catch (error) {
+    console.error('Error upserting user:', error);
+    throw error;
+  }
 }
 
 export async function setupAuth(app: Express) {
@@ -64,10 +88,6 @@ export async function setupAuth(app: Express) {
   app.use(getSession());
   app.use(passport.initialize());
   app.use(passport.session());
-  
-  // Security middleware for session management
-  app.use(sessionSecurity);
-  app.use(manageConcurrentSessions);
 
   const config = await getOidcConfig();
 
@@ -81,11 +101,15 @@ export async function setupAuth(app: Express) {
     verified(null, user);
   };
 
-  // Get domains from environment variable and add localhost for development
+  // Get domains from environment variable
   const domains = process.env.REPLIT_DOMAINS!.split(",");
+  
+  // Add localhost for development testing
   if (process.env.NODE_ENV === 'development') {
     domains.push('localhost');
   }
+  
+  console.log('Setting up auth for domains:', domains);
 
   for (const domain of domains) {
     const strategy = new Strategy(
@@ -103,32 +127,25 @@ export async function setupAuth(app: Express) {
   passport.serializeUser((user: Express.User, cb) => cb(null, user));
   passport.deserializeUser((user: Express.User, cb) => cb(null, user));
 
-  app.get("/api/login", 
-    authLimiter,
-    progressiveBackoff,
-    detectSuspiciousActivity,
-    checkAccountLock,
-    auditAuthEvent('login'),
-    (req, res, next) => {
-      passport.authenticate(`replitauth:${req.hostname}`, {
-        prompt: "login consent",
-        scope: ["openid", "email", "profile", "offline_access"],
-      })(req, res, next);
-    });
+  app.get("/api/login", (req, res, next) => {
+    const strategy = `replitauth:${req.hostname}`;
+    console.log('Login attempt with strategy:', strategy, 'hostname:', req.hostname);
+    passport.authenticate(strategy, {
+      prompt: "login consent",
+      scope: ["openid", "email", "profile", "offline_access"],
+    })(req, res, next);
+  });
 
-  app.get("/api/callback", 
-    authLimiter,
-    auditAuthEvent('login'),
-    (req, res, next) => {
-      passport.authenticate(`replitauth:${req.hostname}`, {
-        successReturnToOrRedirect: "/",
-        failureRedirect: "/api/login",
-      })(req, res, next);
-    });
+  app.get("/api/callback", (req, res, next) => {
+    const strategy = `replitauth:${req.hostname}`;
+    console.log('Callback with strategy:', strategy, 'hostname:', req.hostname);
+    passport.authenticate(strategy, {
+      successReturnToOrRedirect: "/",
+      failureRedirect: "/api/login",
+    })(req, res, next);
+  });
 
-  app.get("/api/logout", 
-    auditAuthEvent('logout'),
-    (req, res) => {
+  app.get("/api/logout", (req, res) => {
       req.logout(() => {
         res.redirect(
           client.buildEndSessionUrl(config, {
