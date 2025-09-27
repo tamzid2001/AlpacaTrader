@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Elements,
   CardElement,
@@ -22,11 +22,25 @@ import {
   CheckCircle, 
   AlertCircle, 
   Loader2,
-  Lock 
+  Lock,
+  ExternalLink,
+  RefreshCw 
 } from "lucide-react";
 
-// Initialize Stripe with the public key
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
+// Initialize Stripe with error handling
+let stripePromise: Promise<any> | null = null;
+
+try {
+  const publicKey = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
+  if (publicKey && publicKey !== 'undefined') {
+    stripePromise = loadStripe(publicKey);
+  } else {
+    console.error('Stripe public key is not configured');
+  }
+} catch (error) {
+  console.error('Failed to initialize Stripe:', error);
+  stripePromise = null;
+}
 
 interface StripePaymentFormProps {
   course: Course;
@@ -312,14 +326,203 @@ function PaymentForm({ course, onPaymentSuccess, onCancel }: PaymentFormProps) {
   );
 }
 
-export default function StripePaymentForm({ course, onPaymentSuccess, onCancel }: StripePaymentFormProps) {
+// Fallback component when Stripe fails to load
+function StripeFallbackForm({ course, onPaymentSuccess, onCancel }: StripePaymentFormProps) {
+  const [isRetrying, setIsRetrying] = useState(false);
+
+  const handleRetry = async () => {
+    setIsRetrying(true);
+    // Force page reload to retry Stripe loading
+    setTimeout(() => {
+      window.location.reload();
+    }, 1000);
+  };
+
+  const handleExternalPayment = () => {
+    // Provide alternative payment method or contact information
+    window.open('mailto:support@example.com?subject=Course Purchase&body=I would like to purchase: ' + course.title, '_blank');
+  };
+
   return (
-    <Elements stripe={stripePromise}>
-      <PaymentForm
-        course={course}
-        onPaymentSuccess={onPaymentSuccess}
-        onCancel={onCancel}
-      />
-    </Elements>
+    <div className="w-full max-w-md mx-auto">
+      <Card>
+        <CardHeader className="text-center">
+          <CardTitle className="flex items-center justify-center gap-2 text-destructive">
+            <AlertCircle className="h-5 w-5" />
+            Payment System Unavailable
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Course Summary */}
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <img 
+                src={course.imageUrl || "/api/placeholder/80/60"} 
+                alt={course.title}
+                className="w-20 h-15 object-cover rounded-md"
+              />
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-sm leading-tight" data-testid="payment-course-title">
+                  {course.title}
+                </h3>
+                <p className="text-muted-foreground text-xs mt-1">
+                  {course.instructor}
+                </p>
+                <Badge variant="secondary" className="mt-1 text-xs">
+                  {course.level}
+                </Badge>
+              </div>
+            </div>
+            
+            <Separator />
+            
+            <div className="flex justify-between font-semibold">
+              <span>Total</span>
+              <span data-testid="payment-total-price">${((course.price || 0) / 100).toFixed(2)}</span>
+            </div>
+          </div>
+
+          <Separator />
+
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Our payment system is temporarily unavailable. You can try refreshing the page or contact support for assistance.
+            </AlertDescription>
+          </Alert>
+
+          {/* Action Buttons */}
+          <div className="space-y-3">
+            <Button
+              onClick={handleRetry}
+              disabled={isRetrying}
+              className="w-full"
+              data-testid="button-retry-payment"
+            >
+              {isRetrying ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Retrying...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Retry Payment System
+                </>
+              )}
+            </Button>
+            
+            <Button
+              variant="outline"
+              onClick={handleExternalPayment}
+              className="w-full"
+              data-testid="button-contact-support"
+            >
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Contact Support
+            </Button>
+
+            <Button
+              variant="ghost"
+              onClick={onCancel}
+              className="w-full"
+              data-testid="button-cancel-payment"
+            >
+              Cancel
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// Error boundary component for Stripe loading
+function StripeErrorBoundary({ children, course, onPaymentSuccess, onCancel }: { 
+  children: React.ReactNode; 
+  course: Course;
+  onPaymentSuccess: () => void;
+  onCancel: () => void;
+}) {
+  const [hasError, setHasError] = useState(false);
+  const [stripeLoadingError, setStripeLoadingError] = useState(false);
+
+  useEffect(() => {
+    // Check if Stripe failed to load
+    const checkStripeLoading = async () => {
+      if (!stripePromise) {
+        setStripeLoadingError(true);
+        return;
+      }
+
+      try {
+        const stripe = await stripePromise;
+        if (!stripe) {
+          setStripeLoadingError(true);
+        }
+      } catch (error) {
+        console.error('Stripe loading failed:', error);
+        setStripeLoadingError(true);
+      }
+    };
+
+    // Add a small delay to allow Stripe to initialize
+    const timer = setTimeout(checkStripeLoading, 2000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Handle JavaScript errors that might occur in Stripe components
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      if (event.error?.message?.includes('stripe') || 
+          event.filename?.includes('stripe') ||
+          event.error?.stack?.includes('stripe')) {
+        console.error('Stripe-related error caught:', event.error);
+        setHasError(true);
+        event.preventDefault(); // Prevent the error from showing runtime overlay
+      }
+    };
+
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      if (event.reason?.message?.includes('stripe') || 
+          event.reason?.stack?.includes('stripe')) {
+        console.error('Stripe-related promise rejection caught:', event.reason);
+        setHasError(true);
+        event.preventDefault(); // Prevent the error from showing runtime overlay
+      }
+    };
+
+    window.addEventListener('error', handleError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
+    return () => {
+      window.removeEventListener('error', handleError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
+  }, []);
+
+  if (hasError || stripeLoadingError) {
+    return <StripeFallbackForm course={course} onPaymentSuccess={onPaymentSuccess} onCancel={onCancel} />;
+  }
+
+  return <>{children}</>;
+}
+
+export default function StripePaymentForm({ course, onPaymentSuccess, onCancel }: StripePaymentFormProps) {
+  // If Stripe promise is null (failed to initialize), show fallback immediately
+  if (!stripePromise) {
+    return <StripeFallbackForm course={course} onPaymentSuccess={onPaymentSuccess} onCancel={onCancel} />;
+  }
+
+  return (
+    <StripeErrorBoundary course={course} onPaymentSuccess={onPaymentSuccess} onCancel={onCancel}>
+      <Elements stripe={stripePromise}>
+        <PaymentForm
+          course={course}
+          onPaymentSuccess={onPaymentSuccess}
+          onCancel={onCancel}
+        />
+      </Elements>
+    </StripeErrorBoundary>
   );
 }

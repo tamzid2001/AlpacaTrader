@@ -854,6 +854,9 @@ export interface IStorage {
 export class MemStorage implements IStorage {
   private users: Map<string, User> = new Map();
   private courses: Map<string, Course> = new Map();
+  private lessons: Map<string, Lesson> = new Map();
+  private courseMaterials: Map<string, CourseMaterial> = new Map();
+  private userProgress: Map<string, UserProgress> = new Map();
   private enrollments: Map<string, CourseEnrollment> = new Map();
   private quizzes: Map<string, Quiz> = new Map();
   private quizResults: Map<string, QuizResult> = new Map();
@@ -916,6 +919,22 @@ export class MemStorage implements IStorage {
         documentsUrl: "/api/courses/1/documents", 
         codeUrl: "/api/courses/1/code",
         createdAt: new Date(),
+        updatedAt: new Date(),
+        status: "published",
+        instructor: "Dr. Sarah Johnson",
+        duration: 120,
+        category: "Finance",
+        tags: ["finance", "markets", "beginner"],
+        prerequisites: null,
+        difficulty: "beginner",
+        language: "English",
+        publishedAt: new Date(),
+        lastUpdated: new Date(),
+        enrollmentCount: 0,
+        maxEnrollments: null,
+        isPublic: true,
+        featured: false,
+        ownerId: "tamzid-admin-id"
       },
       {
         id: randomUUID(),
@@ -930,6 +949,22 @@ export class MemStorage implements IStorage {
         documentsUrl: "/api/courses/2/documents",
         codeUrl: "/api/courses/2/code",
         createdAt: new Date(),
+        updatedAt: new Date(),
+        status: "published",
+        instructor: "Prof. Michael Chen",
+        duration: 180,
+        category: "Machine Learning",
+        tags: ["ml", "finance", "python", "intermediate"],
+        prerequisites: "Basic Python knowledge",
+        difficulty: "intermediate",
+        language: "English",
+        publishedAt: new Date(),
+        lastUpdated: new Date(),
+        enrollmentCount: 0,
+        maxEnrollments: null,
+        isPublic: true,
+        featured: true,
+        ownerId: "tamzid-admin-id"
       },
       {
         id: randomUUID(),
@@ -944,6 +979,22 @@ export class MemStorage implements IStorage {
         documentsUrl: "/api/courses/3/documents",
         codeUrl: "/api/courses/3/code",
         createdAt: new Date(),
+        updatedAt: new Date(),
+        status: "published",
+        instructor: "Dr. Alex Rodriguez",
+        duration: 240,
+        category: "Trading",
+        tags: ["trading", "algorithms", "advanced"],
+        prerequisites: "Financial Markets Fundamentals, Programming experience",
+        difficulty: "advanced",
+        language: "English",
+        publishedAt: new Date(),
+        lastUpdated: new Date(),
+        enrollmentCount: 0,
+        maxEnrollments: null,
+        isPublic: true,
+        featured: false,
+        ownerId: "tamzid-admin-id"
       }
     ];
 
@@ -960,6 +1011,22 @@ export class MemStorage implements IStorage {
       profileImageUrl: null,
       role: "admin",
       isApproved: true,
+      dataRetentionUntil: null,
+      marketingConsent: true,
+      analyticsConsent: true,
+      dataProcessingBasis: "consent",
+      lastDataExport: null,
+      lastLogin: null,
+      loginCount: 0,
+      accountStatus: "active",
+      hasAccessToSharedResources: false,
+      defaultSharePermission: "view",
+      autoMLCredits: 100,
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      subscriptionStatus: null,
+      subscriptionTier: null,
+      defaultPaymentMethodId: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -1119,6 +1186,270 @@ export class MemStorage implements IStorage {
     });
 
     return true;
+  }
+
+  async getPublishedCourses(): Promise<Course[]> {
+    return Array.from(this.courses.values()).filter(course => course.publishedAt !== null);
+  }
+
+  async getCoursesByCategory(category: string): Promise<Course[]> {
+    return Array.from(this.courses.values()).filter(course => course.category === category);
+  }
+
+  async searchCourses(query: string): Promise<Course[]> {
+    const searchTerm = query.toLowerCase();
+    return Array.from(this.courses.values()).filter(course =>
+      course.title.toLowerCase().includes(searchTerm) ||
+      course.description.toLowerCase().includes(searchTerm) ||
+      (course.instructor && course.instructor.toLowerCase().includes(searchTerm))
+    );
+  }
+
+  // Lessons
+  async getCourseLessons(courseId: string): Promise<Lesson[]> {
+    return Array.from(this.lessons.values())
+      .filter(lesson => lesson.courseId === courseId)
+      .sort((a, b) => a.order - b.order);
+  }
+
+  async getLesson(id: string): Promise<Lesson | undefined> {
+    return this.lessons.get(id);
+  }
+
+  async createLesson(insertLesson: InsertLesson): Promise<Lesson> {
+    const id = randomUUID();
+    const lesson: Lesson = {
+      ...insertLesson,
+      id,
+      videoUrl: insertLesson.videoUrl ?? null,
+      thumbnailUrl: insertLesson.thumbnailUrl ?? null,
+      duration: insertLesson.duration ?? null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.lessons.set(id, lesson);
+    return lesson;
+  }
+
+  async updateLesson(id: string, updates: Partial<Lesson>): Promise<Lesson | undefined> {
+    const lesson = this.lessons.get(id);
+    if (!lesson) return undefined;
+
+    const updatedLesson = { ...lesson, ...updates, updatedAt: new Date() };
+    this.lessons.set(id, updatedLesson);
+    return updatedLesson;
+  }
+
+  async deleteLesson(id: string): Promise<boolean> {
+    const lesson = this.lessons.get(id);
+    if (!lesson) return false;
+
+    // Remove lesson from storage
+    this.lessons.delete(id);
+
+    // Remove related materials
+    const materialsToDelete = Array.from(this.courseMaterials.values())
+      .filter(material => material.lessonId === id);
+    
+    materialsToDelete.forEach(material => {
+      this.courseMaterials.delete(material.id);
+    });
+
+    // Remove related user progress
+    const progressToDelete = Array.from(this.userProgress.values())
+      .filter(progress => progress.lessonId === id);
+    
+    progressToDelete.forEach(progress => {
+      this.userProgress.delete(progress.id);
+    });
+
+    return true;
+  }
+
+  async updateLessonOrder(courseId: string, lessonOrders: { id: string; order: number }[]): Promise<void> {
+    lessonOrders.forEach(({ id, order }) => {
+      const lesson = this.lessons.get(id);
+      if (lesson && lesson.courseId === courseId) {
+        lesson.order = order;
+        lesson.updatedAt = new Date();
+        this.lessons.set(id, lesson);
+      }
+    });
+  }
+
+  // Course Materials
+  async getLessonMaterials(lessonId: string): Promise<CourseMaterial[]> {
+    return Array.from(this.courseMaterials.values())
+      .filter(material => material.lessonId === lessonId);
+  }
+
+  async getCourseMaterials(courseId: string): Promise<CourseMaterial[]> {
+    return Array.from(this.courseMaterials.values())
+      .filter(material => material.courseId === courseId);
+  }
+
+  async getMaterial(id: string): Promise<CourseMaterial | undefined> {
+    return this.courseMaterials.get(id);
+  }
+
+  async createMaterial(insertMaterial: InsertCourseMaterial): Promise<CourseMaterial> {
+    const id = randomUUID();
+    const material: CourseMaterial = {
+      ...insertMaterial,
+      id,
+      downloadCount: 0,
+      createdAt: new Date(),
+    };
+    this.courseMaterials.set(id, material);
+    return material;
+  }
+
+  async updateMaterial(id: string, updates: Partial<CourseMaterial>): Promise<CourseMaterial | undefined> {
+    const material = this.courseMaterials.get(id);
+    if (!material) return undefined;
+
+    const updatedMaterial = { ...material, ...updates };
+    this.courseMaterials.set(id, updatedMaterial);
+    return updatedMaterial;
+  }
+
+  async deleteMaterial(id: string): Promise<boolean> {
+    const material = this.courseMaterials.get(id);
+    if (!material) return false;
+
+    this.courseMaterials.delete(id);
+    return true;
+  }
+
+  async incrementDownloadCount(materialId: string): Promise<void> {
+    const material = this.courseMaterials.get(materialId);
+    if (material) {
+      material.downloadCount += 1;
+      this.courseMaterials.set(materialId, material);
+    }
+  }
+
+  // User Progress Tracking
+  async getUserProgress(userId: string, courseId: string): Promise<UserProgress[]> {
+    return Array.from(this.userProgress.values())
+      .filter(progress => progress.userId === userId && progress.courseId === courseId);
+  }
+
+  async getUserLessonProgress(userId: string, lessonId: string): Promise<UserProgress | undefined> {
+    return Array.from(this.userProgress.values())
+      .find(progress => progress.userId === userId && progress.lessonId === lessonId);
+  }
+
+  async updateUserProgress(insertProgress: InsertUserProgress): Promise<UserProgress> {
+    // Check if progress already exists
+    const existing = Array.from(this.userProgress.values())
+      .find(p => p.userId === insertProgress.userId && p.lessonId === insertProgress.lessonId);
+
+    if (existing) {
+      // Update existing progress
+      const updatedProgress = {
+        ...existing,
+        ...insertProgress,
+        lastWatched: insertProgress.lastWatched ?? existing.lastWatched,
+        progressPercentage: insertProgress.progressPercentage ?? existing.progressPercentage,
+        completed: insertProgress.completed ?? existing.completed,
+        updatedAt: new Date(),
+      };
+      this.userProgress.set(existing.id, updatedProgress);
+      return updatedProgress;
+    } else {
+      // Create new progress record
+      const id = randomUUID();
+      const progress: UserProgress = {
+        ...insertProgress,
+        id,
+        lastWatched: insertProgress.lastWatched ?? null,
+        progressPercentage: insertProgress.progressPercentage ?? null,
+        completed: insertProgress.completed ?? null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      this.userProgress.set(id, progress);
+      return progress;
+    }
+  }
+
+  async markLessonCompleted(userId: string, lessonId: string): Promise<void> {
+    const existing = Array.from(this.userProgress.values())
+      .find(p => p.userId === userId && p.lessonId === lessonId);
+
+    if (existing) {
+      existing.completed = true;
+      existing.progressPercentage = 100;
+      existing.updatedAt = new Date();
+      this.userProgress.set(existing.id, existing);
+    } else {
+      // Create new completed progress
+      const lesson = this.lessons.get(lessonId);
+      if (lesson) {
+        const id = randomUUID();
+        const progress: UserProgress = {
+          id,
+          userId,
+          lessonId,
+          courseId: lesson.courseId,
+          completed: true,
+          progressPercentage: 100,
+          lastWatched: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        this.userProgress.set(id, progress);
+      }
+    }
+  }
+
+  async updateVideoProgress(userId: string, lessonId: string, lastWatched: number, progressPercentage: number): Promise<void> {
+    const existing = Array.from(this.userProgress.values())
+      .find(p => p.userId === userId && p.lessonId === lessonId);
+
+    const lesson = this.lessons.get(lessonId);
+    if (!lesson) return;
+
+    if (existing) {
+      existing.lastWatched = lastWatched;
+      existing.progressPercentage = progressPercentage;
+      existing.completed = progressPercentage >= 95; // Consider 95%+ as completed
+      existing.updatedAt = new Date();
+      this.userProgress.set(existing.id, existing);
+    } else {
+      const id = randomUUID();
+      const progress: UserProgress = {
+        id,
+        userId,
+        lessonId,
+        courseId: lesson.courseId,
+        lastWatched,
+        progressPercentage,
+        completed: progressPercentage >= 95,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      this.userProgress.set(id, progress);
+    }
+  }
+
+  async getCourseProgressSummary(userId: string, courseId: string): Promise<{ completedLessons: number; totalLessons: number; overallProgress: number }> {
+    const courseLessons = Array.from(this.lessons.values())
+      .filter(lesson => lesson.courseId === courseId);
+    
+    const userProgressRecords = Array.from(this.userProgress.values())
+      .filter(progress => progress.userId === userId && progress.courseId === courseId);
+
+    const completedLessons = userProgressRecords.filter(progress => progress.completed).length;
+    const totalLessons = courseLessons.length;
+    const overallProgress = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
+
+    return {
+      completedLessons,
+      totalLessons,
+      overallProgress,
+    };
   }
 
   // Enrollments

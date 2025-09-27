@@ -68,62 +68,131 @@ import {
 import { insertMarketDataDownloadSchema } from "@shared/schema";
 import { sendShareInvitation, sendShareAcceptedNotification } from "./services/email";
 
-// Enhanced webhook handler functions
+// Enhanced webhook handler functions with comprehensive logging
 async function handlePaymentSuccess(paymentIntent: any) {
-  console.log('Payment success handler called for:', paymentIntent.id);
+  console.log('🎯 === PAYMENT SUCCESS HANDLER STARTED ===');
+  console.log('Payment Intent ID:', paymentIntent.id);
+  console.log('Amount:', `$${paymentIntent.amount / 100}`);
+  console.log('Currency:', paymentIntent.currency);
+  console.log('Status:', paymentIntent.status);
+  console.log('Metadata received:', JSON.stringify(paymentIntent.metadata, null, 2));
   
   try {
-    const { userId, userEmail, productId, productType } = paymentIntent.metadata;
+    // Extract and validate metadata
+    const { userId, userEmail, productId, productType } = paymentIntent.metadata || {};
+    
+    if (!userId || !productId || !productType) {
+      console.error('❌ Critical: Missing required metadata', {
+        userId: !!userId,
+        productId: !!productId,
+        productType: !!productType,
+        availableKeys: Object.keys(paymentIntent.metadata || {})
+      });
+      throw new Error('Missing required payment metadata');
+    }
+    
+    console.log('✅ Metadata validation passed:', {
+      userId,
+      userEmail,
+      productId,
+      productType
+    });
     
     if (productType === 'course') {
-      // Check if user exists and get user details
+      console.log('📚 Processing COURSE payment...');
+      
+      // Step 1: Check if user exists and get user details
+      console.log('🔍 Step 1: Checking user existence...');
       const user = await storage.getUser(userId);
       if (!user) {
-        console.error('User not found for payment:', userId);
-        return;
+        console.error('❌ User not found for payment:', userId);
+        throw new Error(`User ${userId} not found in database`);
       }
+      console.log('✅ User found:', {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role
+      });
       
       // Check if user is admin - tamzid257@gmail.com gets free access anyway
       const isAdmin = userEmail === 'tamzid257@gmail.com';
       if (isAdmin) {
-        console.log('Admin user making payment - enrollment granted');
+        console.log('👑 Admin user making payment - enrollment granted');
       }
       
-      // Check if course exists
+      // Step 2: Check if course exists
+      console.log('🔍 Step 2: Checking course existence...');
       const course = await storage.getCourse(productId);
       if (!course) {
-        console.error('Course not found for payment:', productId);
-        return;
+        console.error('❌ Course not found for payment:', productId);
+        throw new Error(`Course ${productId} not found in database`);
       }
+      console.log('✅ Course found:', {
+        id: course.id,
+        title: course.title,
+        price: course.price,
+        status: course.status
+      });
       
-      // Check if user is already enrolled
+      // Step 3: Check if user is already enrolled
+      console.log('🔍 Step 3: Checking existing enrollment...');
       const existingEnrollment = await storage.getEnrollment(userId, productId);
       if (existingEnrollment) {
-        console.log('User already enrolled in course:', userId, productId);
-        return;
+        console.log('⚠️ User already enrolled in course:', {
+          enrollmentId: existingEnrollment.id,
+          userId,
+          courseId: productId,
+          progress: existingEnrollment.progress,
+          completed: existingEnrollment.completed
+        });
+        return; // Exit early but don't throw error
       }
+      console.log('✅ No existing enrollment found, proceeding with enrollment creation');
       
-      // Create enrollment record
-      const enrollment = await storage.enrollUserInCourse({
+      // Step 4: Create enrollment record
+      console.log('🚀 Step 4: Creating enrollment...');
+      const enrollmentData = {
         userId,
         courseId: productId,
         progress: 0,
         completed: false
-      });
+      };
+      console.log('Enrollment data to be created:', enrollmentData);
       
-      console.log('Course enrollment created:', {
+      const enrollment = await storage.enrollUserInCourse(enrollmentData);
+      
+      console.log('✅ Course enrollment created successfully:', {
         enrollmentId: enrollment.id,
-        userId,
-        courseId: productId,
+        userId: enrollment.userId,
+        courseId: enrollment.courseId,
+        progress: enrollment.progress,
+        completed: enrollment.completed,
+        enrolledAt: enrollment.enrolledAt,
         courseTitle: course.title,
         paymentIntentId: paymentIntent.id,
         amount: paymentIntent.amount / 100
       });
       
+      // Step 5: Verify enrollment was created
+      console.log('🔍 Step 5: Verifying enrollment creation...');
+      const verificationEnrollment = await storage.getEnrollment(userId, productId);
+      if (verificationEnrollment) {
+        console.log('✅ Enrollment verification successful:', {
+          verificationId: verificationEnrollment.id,
+          matches: verificationEnrollment.id === enrollment.id
+        });
+      } else {
+        console.error('❌ Enrollment verification failed - enrollment not found after creation');
+        throw new Error('Enrollment verification failed');
+      }
+      
       // Log successful payment and enrollment
-      console.log(`Payment successful: User ${userEmail} enrolled in "${course.title}" for $${paymentIntent.amount / 100}`);
+      console.log(`🎉 SUCCESS: User ${userEmail} enrolled in "${course.title}" for $${paymentIntent.amount / 100}`);
       
     } else if (productType === 'subscription_monthly' || productType === 'subscription_yearly') {
+      console.log('📋 Processing SUBSCRIPTION payment...');
       // Handle subscription payments
       const user = await storage.getUser(userId);
       if (user) {
@@ -132,12 +201,27 @@ async function handlePaymentSuccess(paymentIntent: any) {
           customerId: user.stripeCustomerId,
           subscriptionId: user.stripeSubscriptionId
         });
-        console.log('Subscription payment processed for user:', userId);
+        console.log('✅ Subscription payment processed for user:', userId);
+      } else {
+        console.error('❌ User not found for subscription payment:', userId);
       }
+    } else {
+      console.error('❌ Unknown product type:', productType);
+      throw new Error(`Unknown product type: ${productType}`);
     }
     
-  } catch (error) {
-    console.error('Error processing payment success:', error);
+    console.log('🎯 === PAYMENT SUCCESS HANDLER COMPLETED ===');
+    
+  } catch (error: any) {
+    console.error('❌ === PAYMENT SUCCESS HANDLER ERROR ===');
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('Payment Intent ID:', paymentIntent.id);
+    console.error('Payment metadata:', paymentIntent.metadata);
+    console.error('=== END ERROR DETAILS ===');
+    
+    // Re-throw the error so webhook handler can log it
+    throw error;
   }
 }
 
@@ -446,7 +530,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
@@ -462,8 +546,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // These routes bridge Replit Auth with Firebase Storage security rules
   app.get('/api/auth/firebase-token', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
-      const userEmail = req.user.email;
+      const userId = req.user.claims.sub;
+      const userEmail = req.user.claims.email;
       const user = await storage.getUser(userId);
       
       if (!user) {
@@ -474,8 +558,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await createOrUpdateFirebaseUser(
         userId, 
         userEmail, 
-        req.user.firstName, 
-        req.user.lastName,
+        req.user.claims.first_name, 
+        req.user.claims.last_name,
         user.role,
         user.isApproved
       );
@@ -503,7 +587,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/auth/firebase-token/verify', isAuthenticated, async (req: any, res) => {
     try {
       const { token } = req.body;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       if (!token) {
         return res.status(400).json({ message: "Firebase token is required" });
@@ -523,8 +607,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { error, errorInfo, userAgent, url, timestamp } = req.body;
       
       // Extract user information if available
-      const userId = req.user?.id || 'anonymous';
-      const userEmail = req.user?.email || 'unknown';
+      const userId = req.user?.claims?.sub || 'anonymous';
+      const userEmail = req.user?.claims?.email || 'unknown';
       
       // Log error for debugging
       console.error('Frontend Error Report:', {
@@ -612,8 +696,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         amount,
         currency: "usd",
         metadata: {
-          userId: req.user.id,
-          userEmail: req.user.email,
+          userId: req.user.claims.sub,
+          userEmail: req.user.claims.email,
           productId,
           productType
         },
@@ -640,8 +724,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      const userId = req.user.id;
-      const userEmail = req.user.email;
+      const userId = req.user.claims.sub;
+      const userEmail = req.user.claims.email;
       const user = await storage.getUser(userId);
 
       if (!user) {
@@ -718,75 +802,215 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Comprehensive Webhook Integration - must be BEFORE express.json() middleware
+  // Test endpoint for debugging webhook functionality (development only)
+  app.post('/api/test/webhook-simulation', express.json(), async (req, res) => {
+    if (process.env.NODE_ENV !== 'development') {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    console.log('🧪 === WEBHOOK SIMULATION TEST ===');
+    
+    try {
+      // Create a test user first if needed
+      const testUserId = req.body.userId || 'test-user-' + Date.now();
+      const testUserEmail = req.body.userEmail || 'test@example.com';
+      
+      console.log('🔧 Creating test user for simulation...');
+      await storage.upsertUser({
+        id: testUserId,
+        email: testUserEmail,
+        firstName: 'Test',
+        lastName: 'User',
+        role: 'user',
+        isApproved: true
+      });
+      console.log('✅ Test user created:', testUserId);
+
+      // Simulate a successful payment intent
+      const mockPaymentIntent = {
+        id: 'pi_test_' + Date.now(),
+        amount: 9900, // $99.00
+        currency: 'usd',
+        status: 'succeeded',
+        metadata: {
+          userId: testUserId,
+          userEmail: testUserEmail,
+          productId: req.body.productId || '4381c4ba-433a-408e-806d-e96b7cef2e51',
+          productType: 'course'
+        }
+      };
+
+      console.log('🎯 Simulating payment success with mock data:', mockPaymentIntent);
+      
+      // Call the actual payment success handler
+      await handlePaymentSuccess(mockPaymentIntent);
+      
+      console.log('✅ Webhook simulation completed successfully');
+      res.json({ 
+        success: true, 
+        message: 'Webhook simulation completed',
+        mockPaymentIntent: mockPaymentIntent,
+        testUser: { id: testUserId, email: testUserEmail }
+      });
+      
+    } catch (error: any) {
+      console.error('❌ Webhook simulation failed:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: error.message,
+        stack: error.stack
+      });
+    }
+  });
+
+  // Test endpoint for enrollment verification
+  app.get('/api/test/enrollment/:userId/:courseId', async (req, res) => {
+    if (process.env.NODE_ENV !== 'development') {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    try {
+      const { userId, courseId } = req.params;
+      console.log('🔍 Testing enrollment lookup for:', { userId, courseId });
+      
+      const enrollment = await storage.getEnrollment(userId, courseId);
+      const course = await storage.getCourse(courseId);
+      
+      res.json({
+        enrollment: enrollment || null,
+        course: course || null,
+        enrolled: !!enrollment,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Enhanced Webhook Integration with comprehensive logging - must be BEFORE express.json() middleware
   app.post('/api/stripe/webhook', express.raw({type: 'application/json'}), async (req, res) => {
     const sig = req.headers['stripe-signature'] as string;
+    const timestamp = new Date().toISOString();
+    
+    // Log webhook reception
+    console.log('=== STRIPE WEBHOOK RECEIVED ===');
+    console.log('Timestamp:', timestamp);
+    console.log('Headers:', Object.keys(req.headers));
+    console.log('Body size:', req.body ? req.body.length : 0, 'bytes');
+    console.log('Signature present:', !!sig);
+    console.log('Stripe config:', { 
+      stripeConfigured: !!stripe, 
+      webhookSecretConfigured: !!process.env.STRIPE_WEBHOOK_SECRET 
+    });
+
     let event: Stripe.Event;
 
     try {
       if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) {
+        console.error('❌ Stripe configuration missing');
         return res.status(500).json({ error: 'Stripe not configured' });
       }
+
+      if (!sig) {
+        console.error('❌ No stripe-signature header found');
+        return res.status(400).send('Missing stripe-signature header');
+      }
+
+      console.log('✅ Starting signature verification...');
       event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+      console.log('✅ Signature verification successful');
+      console.log('Event details:', {
+        id: event.id,
+        type: event.type,
+        created: new Date(event.created * 1000).toISOString(),
+        livemode: event.livemode
+      });
+
     } catch (err: any) {
-      console.error(`Webhook signature verification failed:`, err.message);
+      console.error('❌ Webhook signature verification failed:', err.message);
+      console.error('Error type:', err.constructor.name);
+      console.error('Body preview:', req.body.toString('utf8', 0, 200));
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
     try {
+      console.log(`📋 Processing webhook event: ${event.type}`);
+      
       // Handle the event
       switch (event.type) {
         case 'payment_intent.succeeded':
           const paymentIntent = event.data.object;
-          console.log(`PaymentIntent ${paymentIntent.id} for $${paymentIntent.amount/100} succeeded!`);
+          console.log(`💳 PaymentIntent ${paymentIntent.id} for $${paymentIntent.amount/100} succeeded!`);
+          console.log('Payment metadata:', paymentIntent.metadata);
           await handlePaymentSuccess(paymentIntent);
+          console.log('✅ Payment success handler completed');
           break;
 
         case 'payment_intent.payment_failed':
           const failedPayment = event.data.object;
-          console.log(`PaymentIntent ${failedPayment.id} failed`);
+          console.log(`❌ PaymentIntent ${failedPayment.id} failed`);
+          console.log('Failure metadata:', failedPayment.metadata);
           await handlePaymentFailure(failedPayment);
+          console.log('✅ Payment failure handler completed');
           break;
 
         case 'customer.subscription.created':
         case 'customer.subscription.updated':
           const subscription = event.data.object;
-          console.log(`Subscription ${subscription.id} ${event.type}`);
+          console.log(`📋 Subscription ${subscription.id} ${event.type}`);
           await handleSubscriptionChange(subscription);
+          console.log('✅ Subscription change handler completed');
           break;
 
         case 'customer.subscription.deleted':
           const deletedSub = event.data.object;
-          console.log(`Subscription ${deletedSub.id} cancelled`);
+          console.log(`🗑️ Subscription ${deletedSub.id} cancelled`);
           await handleSubscriptionCancellation(deletedSub);
+          console.log('✅ Subscription cancellation handler completed');
           break;
 
         case 'invoice.payment_succeeded':
           const invoice = event.data.object;
-          console.log(`Invoice ${invoice.id} payment succeeded`);
+          console.log(`📄 Invoice ${invoice.id} payment succeeded`);
           await handleInvoicePayment(invoice);
+          console.log('✅ Invoice payment handler completed');
           break;
 
         case 'invoice.payment_failed':
           const failedInvoice = event.data.object;
-          console.log(`Invoice ${failedInvoice.id} payment failed`);
+          console.log(`❌ Invoice ${failedInvoice.id} payment failed`);
           await handleInvoiceFailure(failedInvoice);
+          console.log('✅ Invoice failure handler completed');
           break;
 
         default:
-          console.log(`Unhandled event type: ${event.type}`);
+          console.log(`❓ Unhandled event type: ${event.type}`);
+          console.log('Event data keys:', Object.keys(event.data.object));
       }
+      
+      console.log('✅ Webhook event processing completed successfully');
+      
     } catch (error: any) {
-      console.error('Error handling webhook:', error);
-      return res.status(500).json({ error: 'Webhook handler failed' });
+      console.error('❌ Error handling webhook:', {
+        message: error.message,
+        stack: error.stack,
+        eventType: event?.type,
+        eventId: event?.id
+      });
+      return res.status(500).json({ 
+        error: 'Webhook handler failed', 
+        eventType: event?.type,
+        timestamp: timestamp
+      });
     }
 
-    res.json({received: true});
+    console.log('=== WEBHOOK PROCESSING COMPLETE ===');
+    res.json({received: true, eventType: event.type, timestamp: timestamp});
   });
 
   // Usage-based billing endpoint for AutoML jobs
   app.post("/api/automl/create-job", isAuthenticated, async (req: any, res) => {
-    const user = await storage.getUser(req.user.id);
+    const user = await storage.getUser(req.user.claims.sub);
     
     // Check subscription status and credits
     const canUseAutoML = await checkAutoMLAccess(user);
@@ -799,14 +1023,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     // Create AutoML job (implement AWS SageMaker integration)
     try {
-      const jobId = await createAutoMLJob(req.body, req.user.id);
+      const jobId = await createAutoMLJob(req.body, req.user.claims.sub);
       
       // Deduct credits if on subscription
       if (user?.subscriptionStatus === 'active') {
-        await storage.deductAutoMLCredits(req.user.id, 1);
+        await storage.deductAutoMLCredits(req.user.claims.sub, 1);
       } else {
         // Charge per-use fee
-        await chargeAutoMLUsage(req.user.id, 500); // $5.00 per job
+        await chargeAutoMLUsage(req.user.claims.sub, 500); // $5.00 per job
       }
 
       res.json({ jobId, status: 'started' });
@@ -818,7 +1042,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Database performance monitoring endpoint
   app.get('/api/admin/database/performance', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const currentUser = await storage.getUser(userId);
       if (!currentUser || currentUser.role !== "admin") {
         return res.status(403).json({ message: "Access denied. Admin role required." });
@@ -834,7 +1058,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Admin routes (protected)
   app.get("/api/admin/users", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const currentUser = await storage.getUser(userId);
       if (!currentUser || currentUser.role !== "admin") {
         return res.status(403).json({ message: "Access denied. Admin role required." });
@@ -848,7 +1072,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/admin/users/pending", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const currentUser = await storage.getUser(userId);
       if (!currentUser || currentUser.role !== "admin") {
         return res.status(403).json({ message: "Access denied. Admin role required." });
@@ -862,7 +1086,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/admin/users/:id/approve", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const currentUser = await storage.getUser(userId);
       if (!currentUser || currentUser.role !== "admin") {
         return res.status(403).json({ message: "Access denied. Admin role required." });
@@ -887,6 +1111,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Specific course routes - MUST come before /api/courses/:id
+  app.get("/api/courses/published", async (req, res) => {
+    try {
+      const courses = await storage.getPublishedCourses();
+      res.json(courses);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/courses/search", async (req, res) => {
+    try {
+      const query = req.query.q as string;
+      const courses = await storage.searchCourses(query || "");
+      res.json(courses);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/courses/category/:category", async (req, res) => {
+    try {
+      const courses = await storage.getCoursesByCategory(req.params.category);
+      res.json(courses);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.get("/api/courses/:id", async (req, res) => {
     try {
       const course = await storage.getCourse(req.params.id);
@@ -904,7 +1157,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const courseData = insertCourseSchema.parse({
         ...req.body,
-        ownerId: req.user.id, // Set owner to current admin user
+        ownerId: req.user.claims.sub, // Set owner to current admin user
         createdAt: new Date(),
         updatedAt: new Date()
       });
@@ -1065,7 +1318,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const quizData = insertQuizSchema.parse(req.body);
       const quiz = await storage.createQuiz({
         ...quizData,
-        createdBy: req.user.id
+        createdBy: req.user.claims.sub
       });
       res.status(201).json(quiz);
     } catch (error: any) {
@@ -1253,7 +1506,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Quiz Attempt Management
   app.post("/api/quizzes/:id/start", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const quizId = req.params.id;
 
       // Check if user can attempt quiz
@@ -1299,8 +1552,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if user owns this attempt or is admin
-      const userId = req.user.id;
-      const userRole = req.user.role;
+      const userId = req.user.claims.sub;
+      const userRole = req.user.claims.role;
       if (attempt.userId !== userId && !['admin', 'superadmin'].includes(userRole)) {
         return res.status(403).json({ error: "Access denied" });
       }
@@ -1314,8 +1567,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/users/:userId/quiz-attempts", isAuthenticated, async (req: any, res) => {
     try {
       const requestedUserId = req.params.userId;
-      const currentUserId = req.user.id;
-      const userRole = req.user.role;
+      const currentUserId = req.user.claims.sub;
+      const userRole = req.user.claims.role;
 
       // Check if user can access these attempts
       if (requestedUserId !== currentUserId && !['admin', 'superadmin'].includes(userRole)) {
@@ -1333,7 +1586,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/quiz-attempts/:id/submit", isAuthenticated, async (req: any, res) => {
     try {
       const attemptId = req.params.id;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { responses, timeSpent } = req.body;
 
       // Get attempt and verify ownership
@@ -1391,7 +1644,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           courseId: attempt.quiz.courseId,
           attemptId,
           certificateNumber: `CERT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          studentName: `${req.user.firstName} ${req.user.lastName}`,
+          studentName: `${req.user.claims.first_name} ${req.user.claims.last_name}`,
           courseName: attempt.quiz.course?.title || 'Course',
           quizName: attempt.quiz.title,
           score,
@@ -1420,7 +1673,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/quiz-attempts/:id/abandon", isAuthenticated, async (req: any, res) => {
     try {
       const attemptId = req.params.id;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
 
       // Verify ownership
       const attempt = await storage.getQuizAttempt(attemptId);
@@ -1452,7 +1705,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/quiz-attempts/:id/auto-save", isAuthenticated, async (req: any, res) => {
     try {
       const attemptId = req.params.id;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { responses } = req.body;
 
       // Verify ownership
@@ -1471,7 +1724,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/quiz-attempts/:id/responses", isAuthenticated, async (req: any, res) => {
     try {
       const attemptId = req.params.id;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
 
       // Verify ownership or admin access
       const attempt = await storage.getQuizAttempt(attemptId);
@@ -1479,7 +1732,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Quiz attempt not found" });
       }
       
-      const userRole = req.user.role;
+      const userRole = req.user.claims.role;
       if (attempt.userId !== userId && !['admin', 'superadmin'].includes(userRole)) {
         return res.status(403).json({ error: "Access denied" });
       }
@@ -1505,7 +1758,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/responses/:id/grade", isAuthenticated, requireAdmin, async (req: any, res) => {
     try {
       const { grade, feedback } = req.body;
-      const gradedBy = req.user.id;
+      const gradedBy = req.user.claims.sub;
       
       const response = await storage.gradeResponse(req.params.id, grade, feedback, gradedBy);
       if (!response) {
@@ -1524,7 +1777,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/responses/bulk-grade", isAuthenticated, requireAdmin, async (req: any, res) => {
     try {
       const { grades } = req.body;
-      const gradedBy = req.user.id;
+      const gradedBy = req.user.claims.sub;
 
       if (!Array.isArray(grades)) {
         return res.status(400).json({ error: "grades must be an array" });
@@ -1553,8 +1806,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/users/:userId/certificates", isAuthenticated, async (req: any, res) => {
     try {
       const requestedUserId = req.params.userId;
-      const currentUserId = req.user.id;
-      const userRole = req.user.role;
+      const currentUserId = req.user.claims.sub;
+      const userRole = req.user.claims.role;
 
       // Check access permissions
       if (requestedUserId !== currentUserId && !['admin', 'superadmin'].includes(userRole)) {
@@ -1582,7 +1835,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/certificates/:id/download", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const download = await storage.downloadCertificate(req.params.id, userId);
       
       if (!download) {
@@ -1618,8 +1871,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/users/:userId/quiz-performance", isAuthenticated, async (req: any, res) => {
     try {
       const requestedUserId = req.params.userId;
-      const currentUserId = req.user.id;
-      const userRole = req.user.role;
+      const currentUserId = req.user.claims.sub;
+      const userRole = req.user.claims.role;
 
       // Check access permissions
       if (requestedUserId !== currentUserId && !['admin', 'superadmin'].includes(userRole)) {
@@ -1655,8 +1908,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/users/:userId/courses/:courseId/quiz-progress", isAuthenticated, async (req: any, res) => {
     try {
       const { userId, courseId } = req.params;
-      const currentUserId = req.user.id;
-      const userRole = req.user.role;
+      const currentUserId = req.user.claims.sub;
+      const userRole = req.user.claims.role;
 
       // Check access permissions
       if (userId !== currentUserId && !['admin', 'superadmin'].includes(userRole)) {
@@ -1672,7 +1925,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/lessons/:lessonId/quiz-requirements", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const requirements = await storage.checkQuizCompletionRequirements(userId, req.params.lessonId);
       res.json(requirements);
     } catch (error: any) {
@@ -1689,7 +1942,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const course = await storage.createCourse({
         ...req.body,
-        ownerId: req.user.id
+        ownerId: req.user.claims.sub
       });
       res.json(course);
     } catch (error: any) {
@@ -1716,34 +1969,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Course not found" });
       }
       res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.get("/api/courses/published", async (req, res) => {
-    try {
-      const courses = await storage.getPublishedCourses();
-      res.json(courses);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.get("/api/courses/search", async (req, res) => {
-    try {
-      const query = req.query.q as string;
-      const courses = await storage.searchCourses(query || "");
-      res.json(courses);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.get("/api/courses/category/:category", async (req, res) => {
-    try {
-      const courses = await storage.getCoursesByCategory(req.params.category);
-      res.json(courses);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -1925,7 +2150,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             version: 1,
             isActive: true,
             metadata: {
-              uploadedBy: req.user.id,
+              uploadedBy: req.user.claims.sub,
               uploadedAt: new Date().toISOString(),
               fileType: type,
               ...materialData.metadata
@@ -2019,7 +2244,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         version: 1,
         isActive: true,
         metadata: {
-          uploadedBy: req.user.id,
+          uploadedBy: req.user.claims.sub,
           uploadedAt: new Date().toISOString(),
           fileType: type
         }
@@ -2064,7 +2289,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // User Progress Tracking
   app.get("/api/user/progress/:courseId", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const progress = await storage.getUserProgress(userId, req.params.courseId);
       res.json(progress);
     } catch (error: any) {
@@ -2074,7 +2299,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/user/progress/:courseId/summary", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const summary = await storage.getCourseProgressSummary(userId, req.params.courseId);
       res.json(summary);
     } catch (error: any) {
@@ -2084,7 +2309,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/user/progress", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const progress = await storage.updateUserProgress({
         ...req.body,
         userId
@@ -2097,7 +2322,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/user/progress/:lessonId/video", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { lastWatched, progressPercentage } = req.body;
       await storage.updateVideoProgress(userId, req.params.lessonId, lastWatched, progressPercentage);
       res.json({ success: true });
@@ -2108,7 +2333,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/user/progress/:lessonId/complete", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       await storage.markLessonCompleted(userId, req.params.lessonId);
       res.json({ success: true });
     } catch (error: any) {
@@ -2119,7 +2344,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Enhanced Enrollment System
   app.post("/api/courses/:courseId/enroll", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const enrollment = await storage.enrollUserInCourse({
         userId,
         courseId: req.params.courseId
@@ -2132,7 +2357,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/user/courses", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const enrollments = await storage.getUserEnrollments(userId);
       res.json(enrollments);
     } catch (error: any) {
@@ -2142,7 +2367,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/user/courses/:courseId/enrollment", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const enrollment = await storage.getEnrollment(userId, req.params.courseId);
       if (!enrollment) {
         return res.status(404).json({ error: "Enrollment not found" });
@@ -2155,7 +2380,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/user/courses/:courseId/complete", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       await storage.completeCourse(userId, req.params.courseId);
       res.json({ success: true });
     } catch (error: any) {
@@ -2262,7 +2487,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GDPR Consent Management Routes
   app.post('/api/gdpr/consent', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { consentType, consentGiven, purpose, legalBasis = 'consent' } = req.body;
       
       if (!consentType || typeof consentGiven !== 'boolean') {
@@ -2341,7 +2566,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/gdpr/consent-history', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const consents = await storage.getUserConsent(userId);
       
       // Log data access
@@ -2365,7 +2590,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/gdpr/processing-history', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const limit = parseInt(req.query.limit as string) || 100;
       
       const logs = await storage.getUserProcessingLogs(userId, limit);
@@ -2391,7 +2616,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/gdpr/preferences', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const consentStatus = await storage.getUserConsentStatus(userId);
       
       res.json(consentStatus);
@@ -2404,7 +2629,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Article 15: Right to Access - Get all personal data
   app.get('/api/gdpr/personal-data', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       // Get comprehensive user data export
       const userData = await storage.exportUserData(userId);
@@ -2442,7 +2667,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Article 20: Right to Data Portability - Export user data
   app.get('/api/gdpr/export', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       const userData = await storage.exportUserData(userId);
       
@@ -2484,7 +2709,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Article 16: Right to Rectification - Update profile information
   app.patch('/api/gdpr/rectification', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { firstName, lastName, email } = req.body;
       
       // Validate input
@@ -2531,7 +2756,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Article 17: Right to Erasure - Delete user account
   app.post('/api/gdpr/delete', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { reason = 'User requested account deletion' } = req.body;
       
       // Perform soft delete with audit logging
@@ -2567,7 +2792,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Article 21: Right to Object - Object to data processing
   app.post('/api/gdpr/objection', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { reason, processingTypes = [] } = req.body;
       
       if (!reason || !reason.trim()) {
@@ -2603,7 +2828,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.createSupportMessage({
         userId,
         name: 'GDPR Objection',
-        email: req.user.email,
+        email: req.user.claims.email,
         subject: 'Article 21 - Right to Object',
         message: `User has objected to data processing. Reason: ${reason.trim()}. Processing types affected: ${processingTypes.join(', ')}`
       });
@@ -2622,7 +2847,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Audit log access for transparency
   app.get('/api/gdpr/audit-log', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const limit = parseInt(req.query.limit as string) || 50;
       
       const auditLogs = await storage.getUserProcessingLogs(userId, limit);
@@ -2655,7 +2880,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { symbol } = req.params;
       const { startDate, endDate, interval = '1d' } = req.query;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       if (!symbol || !startDate || !endDate) {
         return res.status(400).json({ error: 'symbol, startDate, and endDate are required' });
@@ -2689,7 +2914,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { symbol } = req.params;
       const { startDate, endDate, interval = '1d' } = req.query;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       if (!symbol || !startDate || !endDate) {
         return res.status(400).json({ error: 'symbol, startDate, and endDate are required' });
@@ -2742,7 +2967,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/market-data/batch-download', isAuthenticated, async (req: any, res) => {
     try {
       const { symbols, startDate, endDate, interval = '1d' } = req.body;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       if (!symbols || !Array.isArray(symbols) || !startDate || !endDate) {
         return res.status(400).json({ error: 'symbols (array), startDate, and endDate are required' });
@@ -2792,7 +3017,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get user's market data download history
   app.get('/api/market-data/downloads', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const downloads = await storage.getUserMarketDataDownloads(userId);
       res.json(downloads);
     } catch (error: any) {
@@ -2814,7 +3039,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // SECURE CSV Upload route - Server-side file handling
   app.post("/api/csv/upload", isAuthenticated, upload.single('csvFile'), async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { customFilename } = req.body;
       const file = req.file;
 
@@ -2930,7 +3155,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get user's CSV uploads
   app.get("/api/csv/uploads", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const uploads = await storage.getUserCsvUploads(userId);
       res.json(uploads);
     } catch (error: any) {
@@ -2941,7 +3166,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Update CSV upload (for renaming)
   app.patch("/api/csv/uploads/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const uploadId = req.params.id;
       const { customFilename } = req.body;
 
@@ -2977,7 +3202,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Delete CSV upload (with secure Firebase file deletion)
   app.delete("/api/csv/uploads/:id", isAuthenticated, requirePermission('csv', 'delete'), async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const uploadId = req.params.id;
 
       // Verify the upload belongs to the user
@@ -3028,7 +3253,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // SECURE CSV file download route with ownership verification
   app.get("/api/csv/uploads/:id/download", isAuthenticated, requirePermission('csv', 'view'), async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const uploadId = req.params.id;
 
       // Verify the upload belongs to the user
@@ -3083,7 +3308,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/csv/:id/analyze", isAuthenticated, requirePermission('csv', 'view'), async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const upload = await storage.getCsvUpload(req.params.id);
       if (!upload) {
         return res.status(404).json({ error: "CSV upload not found" });
@@ -3220,7 +3445,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/csv/:id/anomalies", isAuthenticated, requirePermission('csv', 'view'), async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const uploadId = req.params.id;
       
       // Verify the upload belongs to the authenticated user
@@ -3242,7 +3467,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/anomalies", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const anomalies = await storage.getUserAnomalies(userId);
       res.json(anomalies);
     } catch (error: any) {
@@ -3253,7 +3478,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Excel Export Route for Monday.com
   app.get("/api/anomalies/:uploadId/export-excel", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const uploadId = req.params.uploadId;
 
       // Get upload and verify ownership
@@ -3444,7 +3669,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // POST /api/share/results - Create shareable link for anomaly results
   app.post("/api/share/results", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const shareData = insertSharedResultSchema.parse(req.body);
 
       // Verify the CSV upload exists and belongs to the user
@@ -3558,7 +3783,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/user/shared - Get user's shared results list
   app.get("/api/user/shared", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const sharedResults = await storage.getUserSharedResults(userId);
 
       res.json(sharedResults.map(shared => ({
@@ -3589,7 +3814,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // PATCH /api/share/:id - Update sharing permissions/expiration
   app.patch("/api/share/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const shareId = req.params.id;
       const updates = req.body;
 
@@ -3660,7 +3885,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // DELETE /api/share/:id - Revoke sharing access
   app.delete("/api/share/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const shareId = req.params.id;
 
       // Get the shared result and verify ownership
@@ -3843,7 +4068,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // File management endpoints
   app.post('/api/storage/upload', isAuthenticated, upload.single('file'), async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const file = req.file;
       const { path, metadata } = req.body;
 
@@ -3879,7 +4104,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/storage/download/:path(*)', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const filePath = req.params.path;
 
       // Check access permissions
@@ -3906,7 +4131,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/storage/delete/:path(*)', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const filePath = req.params.path;
 
       // Check access permissions
@@ -3930,7 +4155,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/storage/list/:prefix?', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const prefix = req.params.prefix || `users/${userId}/`;
 
       // List files from Object Storage
@@ -3949,7 +4174,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // User-specific storage endpoints
   app.get('/api/storage/user/:userId/files', isAuthenticated, async (req: any, res) => {
     try {
-      const requestingUserId = req.user.id;
+      const requestingUserId = req.user.claims.sub;
       const targetUserId = req.params.userId;
 
       // Users can only access their own files unless admin
@@ -3972,7 +4197,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/storage/user/:userId/backup', isAuthenticated, async (req: any, res) => {
     try {
-      const requestingUserId = req.user.id;
+      const requestingUserId = req.user.claims.sub;
       const targetUserId = req.params.userId;
 
       // Users can only backup their own data
@@ -3998,7 +4223,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/storage/user/:userId/restore', isAuthenticated, async (req: any, res) => {
     try {
-      const requestingUserId = req.user.id;
+      const requestingUserId = req.user.claims.sub;
       const targetUserId = req.params.userId;
       const { backupPath } = req.body;
 
@@ -4026,7 +4251,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Course content storage endpoints
   app.post('/api/storage/courses/:courseId/content', isAuthenticated, upload.single('content'), async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const courseId = req.params.courseId;
       const file = req.file;
       const { contentType, title } = req.body;
@@ -4088,7 +4313,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Asset management endpoints
   app.post('/api/storage/assets/upload', isAuthenticated, upload.single('asset'), async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const file = req.file;
       const { assetPath, assetType } = req.body;
 
@@ -4143,7 +4368,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Bulk operations endpoint
   app.post('/api/storage/bulk-upload', isAuthenticated, upload.array('files', 10), async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const files = req.files as Express.Multer.File[];
       const { basePath } = req.body;
 
@@ -4178,7 +4403,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // User Profile Management
   app.get('/api/user/profile', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const profile = await storage.getUserProfile(userId);
       res.json(profile);
     } catch (error: any) {
@@ -4188,7 +4413,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch('/api/user/profile', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { firstName, lastName, profilePicture, preferences } = req.body;
       
       const updatedProfile = await storage.updateUserProfile(userId, {
@@ -4207,7 +4432,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Profile Picture Upload
   app.post('/api/user/profile/picture', isAuthenticated, upload.single('profilePicture'), async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const file = req.file;
 
       if (!file) {
@@ -4242,7 +4467,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Storage Quota Management
   app.get('/api/user/storage/quota', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const quota = await storage.getUserStorageQuota(userId);
       res.json(quota);
     } catch (error: any) {
@@ -4253,7 +4478,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Learning Progress
   app.get('/api/user/learning/progress', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const progress = await storage.getUserLearningProgress(userId);
       res.json(progress);
     } catch (error: any) {
@@ -4263,7 +4488,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch('/api/user/learning/progress/:courseId', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { courseId } = req.params;
       const { progress } = req.body;
 
@@ -4281,7 +4506,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // User Notes Management
   app.get('/api/user/notes', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { courseId } = req.query;
       const notes = await storage.getUserNotes(userId, courseId as string);
       res.json(notes);
@@ -4292,7 +4517,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/user/notes', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { courseId, title, content, tags } = req.body;
 
       if (!title || !content) {
@@ -4347,7 +4572,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // User Achievements
   app.get('/api/user/achievements', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const achievements = await storage.getUserAchievements(userId);
       res.json(achievements);
     } catch (error: any) {
@@ -4357,7 +4582,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/user/achievements', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { type, title, description } = req.body;
 
       if (!type || !title || !description) {
@@ -4379,7 +4604,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // User Data Backup and Export
   app.post('/api/user/backup', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       // Create backup data
       const backup = await storage.createUserBackup(userId);
@@ -4408,7 +4633,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/user/export', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const exportData = await storage.getUserExportData(userId);
       
       // Set headers for file download
@@ -4425,7 +4650,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GDPR Data Deletion
   app.delete('/api/user/data', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { confirmEmail } = req.body;
 
       // Get user to verify email
@@ -4475,7 +4700,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         version,
         lessonId,
         metadata: {
-          uploadedBy: req.user.id,
+          uploadedBy: req.user.claims.sub,
           uploadedAt: new Date()
         }
       });
@@ -4657,7 +4882,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get User Course Certificates
   app.get('/api/user/certificates', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { courseId } = req.query;
 
       const result = await objectStorage.getUserCourseCertificates(userId, courseId as string);
@@ -4732,7 +4957,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         originalName: file.originalname,
         lessonId: lessonIdsArray[index],
         metadata: {
-          uploadedBy: req.user.id,
+          uploadedBy: req.user.claims.sub,
           uploadedAt: new Date(),
           contentType: file.mimetype
         }
@@ -4774,7 +4999,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         format: format || 'png',
         chartType,
         dataSource,
-        userId: req.user.id,
+        userId: req.user.claims.sub,
         metadata: metadata ? JSON.parse(metadata) : {}
       });
 
@@ -4807,7 +5032,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await objectStorage.uploadReportAsset(reportId, file.buffer, {
         format: format || 'pdf',
         reportType,
-        userId: req.user.id,
+        userId: req.user.claims.sub,
         title,
         metadata: metadata ? JSON.parse(metadata) : {}
       });
@@ -4835,7 +5060,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const file = req.file;
 
       // Check if user has admin permissions for system backups
-      const user = await storage.getUser(req.user.id);
+      const user = await storage.getUser(req.user.claims.sub);
       if (!user || user.role !== 'admin') {
         return res.status(403).json({ error: "Admin access required for system backups" });
       }
@@ -4957,7 +5182,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const assetPath = req.params.assetPath;
 
       // Check if user has permission to delete this asset type
-      const user = await storage.getUser(req.user.id);
+      const user = await storage.getUser(req.user.claims.sub);
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
@@ -5001,7 +5226,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         category: categoriesArray[index],
         metadata: {
           contentType: file.mimetype,
-          uploadedBy: req.user.id,
+          uploadedBy: req.user.claims.sub,
           ...metadataArray[index]
         }
       }));
@@ -5029,7 +5254,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { retentionDays } = req.body;
 
       // Check if user has admin permissions
-      const user = await storage.getUser(req.user.id);
+      const user = await storage.getUser(req.user.claims.sub);
       if (!user || user.role !== 'admin') {
         return res.status(403).json({ error: "Admin access required for asset cleanup" });
       }
@@ -5058,7 +5283,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/assets/statistics', isAuthenticated, async (req: any, res) => {
     try {
       // Check if user has admin permissions
-      const user = await storage.getUser(req.user.id);
+      const user = await storage.getUser(req.user.claims.sub);
       if (!user || user.role !== 'admin') {
         return res.status(403).json({ error: "Admin access required for asset statistics" });
       }
@@ -5102,7 +5327,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/permissions/grant', isAuthenticated, async (req: any, res) => {
     try {
       const { resourceType, resourceId, principalType, principalId, permissions } = req.body;
-      const grantedBy = req.user.id;
+      const grantedBy = req.user.claims.sub;
       
       // Validate input
       const grantData = insertAccessGrantSchema.parse({
@@ -5139,7 +5364,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/permissions/:grantId', isAuthenticated, async (req: any, res) => {
     try {
       const { grantId } = req.params;
-      const revokedBy = req.user.id;
+      const revokedBy = req.user.claims.sub;
       
       const success = await storage.revokeAccess(grantId, revokedBy);
       if (!success) {
@@ -5168,7 +5393,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/resources/:resourceType/:resourceId/permissions', isAuthenticated, async (req: any, res) => {
     try {
       const { resourceType, resourceId } = req.params;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       const permissions = await storage.getUserPermissions(userId, resourceType, resourceId);
       res.json({ permissions });
@@ -5182,7 +5407,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/teams', isAuthenticated, async (req: any, res) => {
     try {
       const { name, description } = req.body;
-      const ownerId = req.user.id;
+      const ownerId = req.user.claims.sub;
       
       const teamData = insertTeamSchema.parse({
         name,
@@ -5202,7 +5427,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { teamId } = req.params;
       const { userId, role } = req.body;
-      const requesterId = req.user.id;
+      const requesterId = req.user.claims.sub;
       
       // Check if requester has permission to add members (must be owner or admin)
       const team = await storage.getTeam(teamId);
@@ -5231,7 +5456,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/teams/:teamId/members/:userId', isAuthenticated, async (req: any, res) => {
     try {
       const { teamId, userId } = req.params;
-      const requesterId = req.user.id;
+      const requesterId = req.user.claims.sub;
       
       // Check if requester has permission to remove members
       const team = await storage.getTeam(teamId);
@@ -5257,7 +5482,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/teams/my-teams', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       const teams = await storage.getUserTeams(userId);
       res.json(teams);
@@ -5270,7 +5495,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/teams/:teamId/members', isAuthenticated, async (req: any, res) => {
     try {
       const { teamId } = req.params;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       // Check if user is member of the team
       const userTeams = await storage.getUserTeams(userId);
@@ -5291,7 +5516,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/share/invite', isAuthenticated, async (req: any, res) => {
     try {
       const { resourceType, resourceId, inviteeEmail, permissions, expiresIn } = req.body;
-      const inviterUserId = req.user.id;
+      const inviterUserId = req.user.claims.sub;
       
       // Check if user can share the resource
       const canShare = await storage.checkPermission(inviterUserId, resourceType, resourceId, 'share');
@@ -5372,7 +5597,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/share/accept/:token', isAuthenticated, async (req: any, res) => {
     try {
       const { token } = req.params;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       // Get invitation details before accepting
       const invitation = await storage.getShareInvite(token);
@@ -5451,7 +5676,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/share/invites', isAuthenticated, async (req: any, res) => {
     try {
-      const userEmail = req.user.email;
+      const userEmail = req.user.claims.email;
       
       const invites = await storage.getShareInvites(userEmail);
       res.json(invites);
@@ -5463,7 +5688,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/share/sent-invites', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       const invites = await storage.getUserSentInvites(userId);
       res.json(invites);
@@ -5477,7 +5702,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/share/link', isAuthenticated, async (req: any, res) => {
     try {
       const { resourceType, resourceId, permissions, expiresIn, maxAccessCount } = req.body;
-      const createdBy = req.user.id;
+      const createdBy = req.user.claims.sub;
       
       // Check if user can share the resource
       const canShare = await storage.checkPermission(createdBy, resourceType, resourceId, 'share');
@@ -5540,7 +5765,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/share/links/:linkId', isAuthenticated, async (req: any, res) => {
     try {
       const { linkId } = req.params;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       // Get the share link to check ownership
       const shareLink = await storage.getShareLink(linkId);
@@ -5567,7 +5792,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Productivity Boards Routes
   app.get('/api/productivity/boards', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { type } = req.query;
       
       let boards;
@@ -5587,7 +5812,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/productivity/boards/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       const board = await storage.getProductivityBoard(id);
       if (!board) {
@@ -5614,7 +5839,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/productivity/boards', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const boardData = insertProductivityBoardSchema.parse({ ...req.body, userId });
       
       const board = await storage.createProductivityBoard(boardData);
@@ -5654,7 +5879,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put('/api/productivity/boards/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       const board = await storage.getProductivityBoard(id);
       if (!board || board.userId !== userId) {
@@ -5688,7 +5913,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/productivity/boards/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       const board = await storage.getProductivityBoard(id);
       if (!board || board.userId !== userId) {
@@ -5751,7 +5976,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/productivity/boards/:boardId/items', isAuthenticated, async (req: any, res) => {
     try {
       const { boardId } = req.params;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       const itemData = insertProductivityItemSchema.parse({
         ...req.body,
@@ -5790,7 +6015,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put('/api/productivity/items/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       const existingItem = await storage.getProductivityItem(id);
       if (!existingItem) {
@@ -5833,7 +6058,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/productivity/items/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       const item = await storage.getProductivityItem(id);
       if (!item) {
@@ -5867,7 +6092,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/productivity/items/bulk-update', isAuthenticated, async (req: any, res) => {
     try {
       const { itemIds, updates } = req.body;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       const updatedItems = await storage.bulkUpdateProductivityItems(itemIds, updates);
       
@@ -5890,7 +6115,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/productivity/items/bulk-delete', isAuthenticated, async (req: any, res) => {
     try {
       const { itemIds } = req.body;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       const success = await storage.bulkDeleteProductivityItems(itemIds);
       
@@ -5925,7 +6150,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/productivity/boards/:boardId/columns', isAuthenticated, async (req: any, res) => {
     try {
       const { boardId } = req.params;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       const columnData = insertItemColumnSchema.parse({ ...req.body, boardId });
       const column = await storage.createItemColumn(columnData);
@@ -5953,7 +6178,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put('/api/productivity/columns/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       const updates = req.body;
       const updatedColumn = await storage.updateItemColumn(id, updates);
@@ -5982,7 +6207,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/productivity/columns/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       const column = await storage.getItemColumn(id);
       if (!column) {
@@ -6016,7 +6241,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { itemId } = req.params;
       const { columnId, value, metadata } = req.body;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       // Check if value already exists, update it instead
       const existingValue = await storage.getColumnValueByItemAndColumn(itemId, columnId);
@@ -6053,7 +6278,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Notifications Routes
   app.get('/api/productivity/notifications', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { limit, unreadOnly } = req.query;
       
       let notifications;
@@ -6088,7 +6313,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put('/api/productivity/notifications/mark-all-read', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const count = await storage.markAllProductivityNotificationsRead(userId);
       res.json({ markedCount: count });
     } catch (error: any) {
@@ -6100,7 +6325,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Reminders Routes
   app.get('/api/productivity/reminders', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const reminders = await storage.getUserProductivityReminders(userId);
       res.json({ reminders });
     } catch (error: any) {
@@ -6111,7 +6336,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/productivity/reminders', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const reminderData = insertProductivityReminderSchema.parse({ ...req.body, userId });
       
       const reminder = await storage.createProductivityReminder(reminderData);
@@ -6172,7 +6397,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/productivity/templates', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const templateData = insertBoardTemplateSchema.parse({ ...req.body, createdBy: userId });
       
       const template = await storage.createBoardTemplate(templateData);
@@ -6190,7 +6415,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const { boardTitle } = req.body;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       const board = await storage.createBoardFromTemplate(id, userId, boardTitle);
       await storage.incrementTemplateUsage(id);
@@ -6205,7 +6430,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Analytics Routes
   app.get('/api/productivity/analytics', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { boardId } = req.query;
       
       const analytics = await storage.getProductivityAnalytics(userId, boardId);
@@ -6218,7 +6443,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/productivity/stats', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const stats = await storage.getUserProductivityStats(userId);
       res.json({ stats });
     } catch (error: any) {
@@ -6284,7 +6509,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Search Routes
   app.get('/api/productivity/search', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { query, ...filters } = req.query;
       
       const items = await storage.searchProductivityItems(userId, query, filters);
@@ -6327,7 +6552,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { boardId } = req.params;
       const { anomalyIds } = req.body;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       const items = await storage.createItemsFromAnomalies(anomalyIds, boardId, userId);
       res.json({ items });
@@ -6341,7 +6566,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { boardId } = req.params;
       const { patterns } = req.body;
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       const items = await storage.createItemsFromPatterns(patterns, boardId, userId);
       res.json({ items });
@@ -6358,7 +6583,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Notification Preferences Routes
   app.get('/api/notifications/preferences', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const preferences = await storage.getOrCreateUserNotificationPreferences(userId);
       res.json({ preferences });
     } catch (error: any) {
@@ -6369,7 +6594,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put('/api/notifications/preferences', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       
       // Validate the request body
       const validatedUpdates = insertUserNotificationPreferencesSchema.omit({ 
@@ -6395,7 +6620,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // In-App Notifications Routes
   app.get('/api/notifications', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { 
         limit = 20, 
         offset = 0, 
@@ -6424,7 +6649,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/notifications/count', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const unreadCount = await storage.getUnreadNotificationCount(userId);
       const countsByType = await storage.getNotificationCountsByType(userId);
       
@@ -6440,7 +6665,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/notifications/recent', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { limit = 5 } = req.query;
       
       const notifications = await storage.getRecentInAppNotifications(userId, parseInt(limit as string));
@@ -6453,7 +6678,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put('/api/notifications/:id/read', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { id } = req.params;
       
       const updatedNotification = await storage.markInAppNotificationRead(id, userId);
@@ -6471,7 +6696,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put('/api/notifications/mark-all-read', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const count = await storage.markAllInAppNotificationsRead(userId);
       
       res.json({ 
@@ -6486,7 +6711,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/notifications/:id', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { id } = req.params;
       
       const deleted = await storage.deleteInAppNotification(id, userId);
@@ -6504,7 +6729,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/notifications', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { notificationIds } = req.body;
       
       if (!Array.isArray(notificationIds) || notificationIds.length === 0) {
@@ -6526,7 +6751,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Notification creation endpoints (for testing and admin purposes)
   app.post('/api/notifications/create-test', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.claims.sub;
       const { type = 'system_update', title, message } = req.body;
       
       let notification;

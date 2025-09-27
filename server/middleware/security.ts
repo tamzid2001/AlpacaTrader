@@ -13,7 +13,8 @@ export function setupSecurityHeaders(app: Express) {
           "'unsafe-inline'", 
           "https://apis.google.com",
           "https://www.gstatic.com",
-          "https://firebase.googleapis.com"
+          "https://firebase.googleapis.com",
+          "https://js.stripe.com"
         ],
         styleSrc: [
           "'self'", 
@@ -31,7 +32,8 @@ export function setupSecurityHeaders(app: Express) {
           "wss:", 
           "https://api.replit.com",
           "https://firebase.googleapis.com",
-          "https://firestore.googleapis.com"
+          "https://firestore.googleapis.com",
+          "https://api.stripe.com"
         ],
         fontSrc: [
           "'self'", 
@@ -39,7 +41,7 @@ export function setupSecurityHeaders(app: Express) {
         ],
         objectSrc: ["'none'"],
         mediaSrc: ["'self'"],
-        frameSrc: ["'none'"],
+        frameSrc: ["'self'", "https://js.stripe.com"],
         baseUri: ["'self'"],
         formAction: ["'self'"],
       },
