@@ -68,11 +68,28 @@ export const courses = pgTable("courses", {
   slidesUrl: text("slides_url"),
   documentsUrl: text("documents_url"),
   codeUrl: text("code_url"),
+  // Extended fields for comprehensive video course system
+  instructor: text("instructor"),
+  duration: integer("duration"), // Total course duration in minutes
+  category: text("category"), // finance, trading, ml, analytics, etc.
+  thumbnailUrl: text("thumbnail_url"),
+  previewVideoUrl: text("preview_video_url"), // Short preview/trailer video
+  status: text("status").default("draft"), // draft, published, archived
+  totalLessons: integer("total_lessons").default(0),
+  estimatedCompletionHours: integer("estimated_completion_hours"),
+  prerequisites: text("prerequisites").array(), // Array of prerequisite course IDs or skills
+  learningObjectives: text("learning_objectives").array(), // What students will learn
+  tags: text("tags").array(), // SEO and filtering tags
+  publishedAt: timestamp("published_at"),
   ownerId: varchar("owner_id").references(() => users.id), // Track course ownership for permissions
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
   index("IDX_courses_owner_id").on(table.ownerId),
   index("IDX_courses_level").on(table.level),
+  index("IDX_courses_category").on(table.category),
+  index("IDX_courses_status").on(table.status),
+  index("IDX_courses_published_at").on(table.publishedAt),
   index("IDX_courses_created_at").on(table.createdAt),
 ]);
 
@@ -80,14 +97,21 @@ export const courseEnrollments = pgTable("course_enrollments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
   courseId: varchar("course_id").notNull().references(() => courses.id),
-  progress: integer("progress").default(0),
+  progress: integer("progress").default(0), // Overall course progress percentage
   completed: boolean("completed").default(false),
   enrolledAt: timestamp("enrolled_at").defaultNow().notNull(),
+  completionDate: timestamp("completion_date"), // When the course was completed
+  lastAccessedAt: timestamp("last_accessed_at"), // Track learning engagement
+  totalTimeSpent: integer("total_time_spent").default(0), // Minutes spent in course
+  certificateIssued: boolean("certificate_issued").default(false),
+  certificateUrl: text("certificate_url"), // Link to certificate if issued
 }, (table) => [
   index("IDX_course_enrollments_user_id").on(table.userId),
   index("IDX_course_enrollments_course_id").on(table.courseId),
   index("IDX_course_enrollments_completed").on(table.completed),
   index("IDX_course_enrollments_enrolled_at").on(table.enrolledAt),
+  index("IDX_course_enrollments_completion_date").on(table.completionDate),
+  index("IDX_course_enrollments_last_accessed").on(table.lastAccessedAt),
 ]);
 
 export const quizzes = pgTable("quizzes", {
@@ -113,6 +137,82 @@ export const quizResults = pgTable("quiz_results", {
   index("IDX_quiz_results_user_id").on(table.userId),
   index("IDX_quiz_results_quiz_id").on(table.quizId),
   index("IDX_quiz_results_completed_at").on(table.completedAt),
+]);
+
+// ===================
+// VIDEO COURSE LESSON SYSTEM TABLES
+// ===================
+
+// Lessons - Individual video lessons within courses
+export const lessons = pgTable("lessons", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  courseId: varchar("course_id").notNull().references(() => courses.id, { onDelete: 'cascade' }),
+  title: text("title").notNull(),
+  description: text("description"),
+  videoUrl: text("video_url"), // Object storage video URL
+  videoMetadata: json("video_metadata"), // Duration, resolution, file size, etc.
+  order: integer("order").notNull(), // Lesson order within course
+  duration: integer("duration"), // Video duration in seconds
+  isPreview: boolean("is_preview").default(false), // Can be viewed without enrollment
+  transcriptUrl: text("transcript_url"), // Captions/transcript file URL
+  thumbnailUrl: text("thumbnail_url"),
+  objectStoragePath: text("object_storage_path"), // Full object storage path
+  uploadStatus: text("upload_status").default("pending"), // pending, processing, completed, failed
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_lessons_course_id").on(table.courseId),
+  index("IDX_lessons_order").on(table.order),
+  index("IDX_lessons_upload_status").on(table.uploadStatus),
+  index("IDX_lessons_is_preview").on(table.isPreview),
+  index("IDX_lessons_created_at").on(table.createdAt),
+]);
+
+// Course Materials - Downloadable resources for lessons
+export const courseMaterials = pgTable("course_materials", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  lessonId: varchar("lesson_id").references(() => lessons.id, { onDelete: 'cascade' }),
+  courseId: varchar("course_id").references(() => courses.id, { onDelete: 'cascade' }), // Some materials may be course-wide
+  title: text("title").notNull(),
+  description: text("description"),
+  type: text("type").notNull(), // pdf, doc, docx, zip, code, slides, worksheet
+  downloadUrl: text("download_url").notNull(), // Object storage download URL
+  objectStoragePath: text("object_storage_path").notNull(),
+  fileSize: integer("file_size"), // File size in bytes
+  mimeType: text("mime_type"),
+  isRequired: boolean("is_required").default(false), // Required for lesson completion
+  downloadCount: integer("download_count").default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_course_materials_lesson_id").on(table.lessonId),
+  index("IDX_course_materials_course_id").on(table.courseId),
+  index("IDX_course_materials_type").on(table.type),
+  index("IDX_course_materials_is_required").on(table.isRequired),
+  index("IDX_course_materials_created_at").on(table.createdAt),
+]);
+
+// User Progress - Detailed progress tracking for lessons
+export const userProgress = pgTable("user_progress", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  courseId: varchar("course_id").notNull().references(() => courses.id, { onDelete: 'cascade' }),
+  lessonId: varchar("lesson_id").references(() => lessons.id, { onDelete: 'cascade' }),
+  completed: boolean("completed").default(false),
+  progressPercentage: integer("progress_percentage").default(0), // 0-100
+  lastWatched: integer("last_watched").default(0), // Seconds into video where user left off
+  totalWatchTime: integer("total_watch_time").default(0), // Total seconds watched (for analytics)
+  watchingSessions: json("watching_sessions"), // Array of session data for analytics
+  startedAt: timestamp("started_at"), // When user first started this lesson
+  completedAt: timestamp("completed_at"), // When user completed this lesson
+  lastAccessedAt: timestamp("last_accessed_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_user_progress_user_id").on(table.userId),
+  index("IDX_user_progress_course_id").on(table.courseId),
+  index("IDX_user_progress_lesson_id").on(table.lessonId),
+  index("IDX_user_progress_completed").on(table.completed),
+  index("IDX_user_progress_last_accessed").on(table.lastAccessedAt),
+  // Composite index for efficient user course progress queries
+  index("IDX_user_progress_user_course").on(table.userId, table.courseId),
 ]);
 
 export const supportMessages = pgTable("support_messages", {
@@ -668,6 +768,24 @@ export const insertCourseEnrollmentSchema = createInsertSchema(courseEnrollments
   enrolledAt: true,
 });
 
+// Video course lesson system schemas
+export const insertLessonSchema = createInsertSchema(lessons).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertCourseMaterialSchema = createInsertSchema(courseMaterials).omit({
+  id: true,
+  createdAt: true,
+  downloadCount: true,
+});
+
+export const insertUserProgressSchema = createInsertSchema(userProgress).omit({
+  id: true,
+  lastAccessedAt: true,
+});
+
 export const insertQuizSchema = createInsertSchema(quizzes).omit({
   id: true,
   createdAt: true,
@@ -875,6 +993,13 @@ export type InsertCourse = z.infer<typeof insertCourseSchema>;
 export type Course = typeof courses.$inferSelect;
 export type InsertCourseEnrollment = z.infer<typeof insertCourseEnrollmentSchema>;
 export type CourseEnrollment = typeof courseEnrollments.$inferSelect;
+// Video course lesson system types
+export type InsertLesson = z.infer<typeof insertLessonSchema>;
+export type Lesson = typeof lessons.$inferSelect;
+export type InsertCourseMaterial = z.infer<typeof insertCourseMaterialSchema>;
+export type CourseMaterial = typeof courseMaterials.$inferSelect;
+export type InsertUserProgress = z.infer<typeof insertUserProgressSchema>;
+export type UserProgress = typeof userProgress.$inferSelect;
 export type InsertQuiz = z.infer<typeof insertQuizSchema>;
 export type Quiz = typeof quizzes.$inferSelect;
 export type InsertQuizResult = z.infer<typeof insertQuizResultSchema>;

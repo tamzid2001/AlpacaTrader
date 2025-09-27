@@ -736,6 +736,350 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===================
+  // COMPREHENSIVE VIDEO COURSE SYSTEM ENDPOINTS
+  // ===================
+
+  // Enhanced Course Management
+  app.post("/api/courses", isAuthenticated, async (req: any, res) => {
+    try {
+      const course = await storage.createCourse({
+        ...req.body,
+        ownerId: req.user.claims.sub
+      });
+      res.json(course);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.put("/api/courses/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const course = await storage.updateCourse(req.params.id, req.body);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+      res.json(course);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/courses/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const deleted = await storage.deleteCourse(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/courses/published", async (req, res) => {
+    try {
+      const courses = await storage.getPublishedCourses();
+      res.json(courses);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/courses/search", async (req, res) => {
+    try {
+      const query = req.query.q as string;
+      const courses = await storage.searchCourses(query || "");
+      res.json(courses);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/courses/category/:category", async (req, res) => {
+    try {
+      const courses = await storage.getCoursesByCategory(req.params.category);
+      res.json(courses);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Lesson Management
+  app.get("/api/courses/:courseId/lessons", async (req, res) => {
+    try {
+      const lessons = await storage.getCourseLessons(req.params.courseId);
+      res.json(lessons);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/lessons/:id", async (req, res) => {
+    try {
+      const lesson = await storage.getLesson(req.params.id);
+      if (!lesson) {
+        return res.status(404).json({ error: "Lesson not found" });
+      }
+      res.json(lesson);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/courses/:courseId/lessons", isAuthenticated, async (req: any, res) => {
+    try {
+      const lesson = await storage.createLesson({
+        ...req.body,
+        courseId: req.params.courseId
+      });
+      res.json(lesson);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.put("/api/lessons/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const lesson = await storage.updateLesson(req.params.id, req.body);
+      if (!lesson) {
+        return res.status(404).json({ error: "Lesson not found" });
+      }
+      res.json(lesson);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/lessons/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const deleted = await storage.deleteLesson(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Lesson not found" });
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.put("/api/courses/:courseId/lessons/reorder", isAuthenticated, async (req: any, res) => {
+    try {
+      await storage.updateLessonOrder(req.params.courseId, req.body.lessonOrders);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Course Materials Management
+  app.get("/api/lessons/:lessonId/materials", async (req, res) => {
+    try {
+      const materials = await storage.getLessonMaterials(req.params.lessonId);
+      res.json(materials);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/courses/:courseId/materials", async (req, res) => {
+    try {
+      const materials = await storage.getCourseMaterials(req.params.courseId);
+      res.json(materials);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/materials", isAuthenticated, upload.single('file'), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      // Upload to object storage
+      const uploadPath = `course-materials/${req.body.courseId || req.body.lessonId}/${req.file.originalname}`;
+      const downloadUrl = await objectStorage.uploadFile(uploadPath, req.file.buffer, req.file.mimetype);
+
+      const material = await storage.createMaterial({
+        ...req.body,
+        downloadUrl,
+        objectStoragePath: uploadPath,
+        fileSize: req.file.size,
+        mimeType: req.file.mimetype
+      });
+
+      res.json(material);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/materials/:id/download", isAuthenticated, async (req: any, res) => {
+    try {
+      const material = await storage.getMaterial(req.params.id);
+      if (!material) {
+        return res.status(404).json({ error: "Material not found" });
+      }
+
+      // Increment download count
+      await storage.incrementDownloadCount(req.params.id);
+
+      // Generate signed download URL
+      const downloadUrl = await objectStorage.getSignedDownloadURL(material.objectStoragePath);
+      res.json({ downloadUrl });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/materials/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const deleted = await storage.deleteMaterial(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Material not found" });
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // User Progress Tracking
+  app.get("/api/user/progress/:courseId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const progress = await storage.getUserProgress(userId, req.params.courseId);
+      res.json(progress);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/user/progress/:courseId/summary", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const summary = await storage.getCourseProgressSummary(userId, req.params.courseId);
+      res.json(summary);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/user/progress", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const progress = await storage.updateUserProgress({
+        ...req.body,
+        userId
+      });
+      res.json(progress);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/user/progress/:lessonId/video", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { lastWatched, progressPercentage } = req.body;
+      await storage.updateVideoProgress(userId, req.params.lessonId, lastWatched, progressPercentage);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/user/progress/:lessonId/complete", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      await storage.markLessonCompleted(userId, req.params.lessonId);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Enhanced Enrollment System
+  app.post("/api/courses/:courseId/enroll", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const enrollment = await storage.enrollUserInCourse({
+        userId,
+        courseId: req.params.courseId
+      });
+      res.json(enrollment);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/user/courses", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const enrollments = await storage.getUserEnrollments(userId);
+      res.json(enrollments);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/user/courses/:courseId/enrollment", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const enrollment = await storage.getEnrollment(userId, req.params.courseId);
+      if (!enrollment) {
+        return res.status(404).json({ error: "Enrollment not found" });
+      }
+      res.json(enrollment);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/user/courses/:courseId/complete", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      await storage.completeCourse(userId, req.params.courseId);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Video Upload Endpoints
+  app.post("/api/lessons/:lessonId/video", isAuthenticated, upload.single('video'), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No video file uploaded" });
+      }
+
+      // Validate video file type
+      if (!req.file.mimetype.startsWith('video/')) {
+        return res.status(400).json({ error: "File must be a video" });
+      }
+
+      const uploadPath = `course-videos/${req.params.lessonId}/${req.file.originalname}`;
+      const videoUrl = await objectStorage.uploadFile(uploadPath, req.file.buffer, req.file.mimetype);
+
+      // Update lesson with video URL and metadata
+      const lesson = await storage.updateLesson(req.params.lessonId, {
+        videoUrl,
+        objectStoragePath: uploadPath,
+        uploadStatus: 'completed',
+        videoMetadata: {
+          fileSize: req.file.size,
+          mimeType: req.file.mimetype,
+          originalName: req.file.originalname
+        }
+      });
+
+      res.json(lesson);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // Support routes
   app.post("/api/support/message", async (req, res) => {
     try {

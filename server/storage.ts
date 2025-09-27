@@ -6,6 +6,13 @@ import {
   type InsertCourse,
   type CourseEnrollment,
   type InsertCourseEnrollment,
+  // Video course lesson system types
+  type Lesson,
+  type InsertLesson,
+  type CourseMaterial,
+  type InsertCourseMaterial,
+  type UserProgress,
+  type InsertUserProgress,
   type Quiz,
   type InsertQuiz,
   type QuizResult,
@@ -118,11 +125,43 @@ export interface IStorage {
   getCourse(id: string): Promise<Course | undefined>;
   createCourse(course: InsertCourse): Promise<Course>;
   updateCourse(id: string, updates: Partial<Course>): Promise<Course | undefined>;
+  deleteCourse(id: string): Promise<boolean>;
+  getPublishedCourses(): Promise<Course[]>;
+  getCoursesByCategory(category: string): Promise<Course[]>;
+  searchCourses(query: string): Promise<Course[]>;
+
+  // Lessons
+  getCourseLessons(courseId: string): Promise<Lesson[]>;
+  getLesson(id: string): Promise<Lesson | undefined>;
+  createLesson(lesson: InsertLesson): Promise<Lesson>;
+  updateLesson(id: string, updates: Partial<Lesson>): Promise<Lesson | undefined>;
+  deleteLesson(id: string): Promise<boolean>;
+  updateLessonOrder(courseId: string, lessonOrders: { id: string; order: number }[]): Promise<void>;
+
+  // Course Materials
+  getLessonMaterials(lessonId: string): Promise<CourseMaterial[]>;
+  getCourseMaterials(courseId: string): Promise<CourseMaterial[]>;
+  getMaterial(id: string): Promise<CourseMaterial | undefined>;
+  createMaterial(material: InsertCourseMaterial): Promise<CourseMaterial>;
+  updateMaterial(id: string, updates: Partial<CourseMaterial>): Promise<CourseMaterial | undefined>;
+  deleteMaterial(id: string): Promise<boolean>;
+  incrementDownloadCount(materialId: string): Promise<void>;
+
+  // User Progress Tracking
+  getUserProgress(userId: string, courseId: string): Promise<UserProgress[]>;
+  getUserLessonProgress(userId: string, lessonId: string): Promise<UserProgress | undefined>;
+  updateUserProgress(progress: InsertUserProgress): Promise<UserProgress>;
+  markLessonCompleted(userId: string, lessonId: string): Promise<void>;
+  updateVideoProgress(userId: string, lessonId: string, lastWatched: number, progressPercentage: number): Promise<void>;
+  getCourseProgressSummary(userId: string, courseId: string): Promise<{ completedLessons: number; totalLessons: number; overallProgress: number }>;
 
   // Enrollments
   getUserEnrollments(userId: string): Promise<(CourseEnrollment & { course: Course })[]>;
+  getEnrollment(userId: string, courseId: string): Promise<CourseEnrollment | undefined>;
   enrollUserInCourse(enrollment: InsertCourseEnrollment): Promise<CourseEnrollment>;
   updateEnrollmentProgress(userId: string, courseId: string, progress: number): Promise<void>;
+  updateEnrollmentAccess(userId: string, courseId: string): Promise<void>;
+  completeCourse(userId: string, courseId: string): Promise<void>;
 
   // Quizzes
   getCourseQuizzes(courseId: string): Promise<Quiz[]>;
