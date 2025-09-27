@@ -306,26 +306,59 @@ export const lessons = pgTable("lessons", {
   index("IDX_lessons_created_at").on(table.createdAt),
 ]);
 
-// Course Materials - Downloadable resources for lessons
+// Course Materials - Comprehensive content support for courses and lessons
 export const courseMaterials = pgTable("course_materials", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   lessonId: varchar("lesson_id").references(() => lessons.id, { onDelete: 'cascade' }),
   courseId: varchar("course_id").references(() => courses.id, { onDelete: 'cascade' }), // Some materials may be course-wide
   title: text("title").notNull(),
   description: text("description"),
-  type: text("type").notNull(), // pdf, doc, docx, zip, code, slides, worksheet
+  // Expanded content type support
+  type: text("type").notNull(), // document, presentation, spreadsheet, image, audio, video, archive, code, ebook, design
+  fileExtension: text("file_extension").notNull(), // pdf, docx, pptx, xlsx, png, mp3, mp4, zip, js, epub, psd, etc.
+  category: text("category"), // learning_material, assignment, reference, template, example
   downloadUrl: text("download_url").notNull(), // Object storage download URL
   objectStoragePath: text("object_storage_path").notNull(),
-  fileSize: integer("file_size"), // File size in bytes
-  mimeType: text("mime_type"),
+  
+  // Enhanced file metadata
+  originalFilename: text("original_filename").notNull(),
+  fileSize: integer("file_size").notNull(), // File size in bytes
+  mimeType: text("mime_type").notNull(),
+  checksum: text("checksum"), // File integrity verification
+  
+  // Content organization and management
+  order: integer("order").default(0), // Content ordering within lesson/course
   isRequired: boolean("is_required").default(false), // Required for lesson completion
+  isPreviewable: boolean("is_previewable").default(false), // Can be previewed without download
+  tags: text("tags").array(), // Content tags for organization
+  
+  // Version and access control
+  version: integer("version").default(1), // Content versioning
+  isActive: boolean("is_active").default(true), // Content visibility
+  accessLevel: text("access_level").default("enrolled"), // enrolled, preview, free
+  
+  // Usage tracking and analytics
   downloadCount: integer("download_count").default(0),
+  viewCount: integer("view_count").default(0), // For previewable content
+  lastAccessedAt: timestamp("last_accessed_at"),
+  
+  // Additional metadata for different content types
+  metadata: json("metadata"), // Type-specific metadata (duration for audio/video, page count for docs, etc.)
+  thumbnailUrl: text("thumbnail_url"), // Preview thumbnail for images/videos/documents
+  previewUrl: text("preview_url"), // Preview version (lower quality/watermarked)
+  
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
   index("IDX_course_materials_lesson_id").on(table.lessonId),
   index("IDX_course_materials_course_id").on(table.courseId),
   index("IDX_course_materials_type").on(table.type),
+  index("IDX_course_materials_file_extension").on(table.fileExtension),
+  index("IDX_course_materials_category").on(table.category),
   index("IDX_course_materials_is_required").on(table.isRequired),
+  index("IDX_course_materials_is_active").on(table.isActive),
+  index("IDX_course_materials_access_level").on(table.accessLevel),
+  index("IDX_course_materials_order").on(table.order),
   index("IDX_course_materials_created_at").on(table.createdAt),
 ]);
 
@@ -916,7 +949,10 @@ export const insertLessonSchema = createInsertSchema(lessons).omit({
 export const insertCourseMaterialSchema = createInsertSchema(courseMaterials).omit({
   id: true,
   createdAt: true,
+  updatedAt: true,
   downloadCount: true,
+  viewCount: true,
+  lastAccessedAt: true,
 });
 
 export const insertUserProgressSchema = createInsertSchema(userProgress).omit({

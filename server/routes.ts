@@ -230,7 +230,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Configure multer for file uploads (memory storage for processing)
+  // Configure multer for CSV file uploads (legacy support)
   const upload = multer({
     storage: multer.memoryStorage(),
     limits: {
@@ -243,6 +243,109 @@ export async function registerRoutes(app: Express): Promise<Server> {
         cb(null, true);
       } else {
         cb(new Error('Only CSV files are allowed'));
+      }
+    },
+  });
+
+  // Enhanced multer configuration for course materials with comprehensive file type support
+  const courseContentUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      fileSize: 500 * 1024 * 1024, // 500MB max file size for course content
+      files: 10, // Allow multiple files
+    },
+    fileFilter: (req, file, cb) => {
+      try {
+        const fileName = file.originalname.toLowerCase();
+        const mimeType = file.mimetype.toLowerCase();
+        
+        // Define supported file types with their MIME types
+        const supportedTypes = {
+          // Documents
+          'pdf': ['application/pdf'],
+          'doc': ['application/msword'],
+          'docx': ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+          'txt': ['text/plain'],
+          'rtf': ['application/rtf', 'text/rtf'],
+          'md': ['text/markdown', 'text/x-markdown'],
+          
+          // Presentations
+          'ppt': ['application/vnd.ms-powerpoint'],
+          'pptx': ['application/vnd.openxmlformats-officedocument.presentationml.presentation'],
+          'odp': ['application/vnd.oasis.opendocument.presentation'],
+          
+          // Spreadsheets
+          'xls': ['application/vnd.ms-excel'],
+          'xlsx': ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+          'csv': ['text/csv'],
+          'ods': ['application/vnd.oasis.opendocument.spreadsheet'],
+          
+          // Images
+          'png': ['image/png'],
+          'jpg': ['image/jpeg'],
+          'jpeg': ['image/jpeg'],
+          'gif': ['image/gif'],
+          'svg': ['image/svg+xml'],
+          'webp': ['image/webp'],
+          
+          // Audio
+          'mp3': ['audio/mpeg', 'audio/mp3'],
+          'wav': ['audio/wav', 'audio/wave'],
+          'aac': ['audio/aac'],
+          'ogg': ['audio/ogg'],
+          
+          // Video
+          'mp4': ['video/mp4'],
+          'mov': ['video/quicktime'],
+          'avi': ['video/x-msvideo'],
+          'webm': ['video/webm'],
+          'mkv': ['video/x-matroska'],
+          
+          // Archives
+          'zip': ['application/zip'],
+          'rar': ['application/vnd.rar', 'application/x-rar-compressed'],
+          '7z': ['application/x-7z-compressed'],
+          
+          // Code Files
+          'js': ['application/javascript', 'text/javascript'],
+          'ts': ['application/typescript', 'text/typescript'],
+          'html': ['text/html'],
+          'css': ['text/css'],
+          'json': ['application/json'],
+          'xml': ['application/xml', 'text/xml'],
+          
+          // Other
+          'epub': ['application/epub+zip'],
+          'psd': ['image/vnd.adobe.photoshop'],
+          'ai': ['application/postscript']
+        };
+        
+        // Get file extension
+        const extension = fileName.split('.').pop() || '';
+        
+        // Check if extension is supported
+        if (!supportedTypes[extension]) {
+          return cb(new Error(`File type .${extension} is not supported. Please check the supported file types list.`));
+        }
+        
+        // Check if MIME type matches the extension
+        const allowedMimeTypes = supportedTypes[extension];
+        if (!allowedMimeTypes.includes(mimeType)) {
+          return cb(new Error(`MIME type ${mimeType} does not match expected types for .${extension} files.`));
+        }
+        
+        // Additional security checks
+        if (fileName.includes('../') || fileName.includes('..\\')) {
+          return cb(new Error('Invalid file name - path traversal not allowed'));
+        }
+        
+        if (fileName.length > 255) {
+          return cb(new Error('File name too long - maximum 255 characters'));
+        }
+        
+        cb(null, true);
+      } catch (error: any) {
+        cb(new Error(`File validation error: ${error.message}`));
       }
     },
   });
@@ -1639,22 +1742,194 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/materials", isAuthenticated, upload.single('file'), async (req: any, res) => {
+  // Enhanced course material upload - supports multiple files and comprehensive file types
+  app.post("/api/materials", isAuthenticated, requireAdmin, courseContentUpload.array('files', 10), async (req: any, res) => {
+    try {
+      const files = req.files as Express.Multer.File[];
+      
+      if (!files || files.length === 0) {
+        return res.status(400).json({ error: "No files uploaded" });
+      }
+
+      const { courseId, lessonId, category = 'learning_material', isRequired = false, accessLevel = 'enrolled' } = req.body;
+      
+      if (!courseId && !lessonId) {
+        return res.status(400).json({ error: "Either courseId or lessonId is required" });
+      }
+
+      const uploadedMaterials = [];
+      
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const materialData = JSON.parse(req.body[`material_${i}`] || '{}');
+        
+        try {
+          // Helper function to determine content type and file extension
+          const getContentTypeInfo = (filename: string, mimetype: string) => {
+            const extension = filename.toLowerCase().split('.').pop() || '';
+            
+            // Map file extensions to content types
+            const typeMapping = {
+              // Documents
+              'pdf': 'document', 'doc': 'document', 'docx': 'document', 'txt': 'document', 'rtf': 'document', 'md': 'document',
+              // Presentations
+              'ppt': 'presentation', 'pptx': 'presentation', 'odp': 'presentation',
+              // Spreadsheets
+              'xls': 'spreadsheet', 'xlsx': 'spreadsheet', 'csv': 'spreadsheet', 'ods': 'spreadsheet',
+              // Images
+              'png': 'image', 'jpg': 'image', 'jpeg': 'image', 'gif': 'image', 'svg': 'image', 'webp': 'image',
+              // Audio
+              'mp3': 'audio', 'wav': 'audio', 'aac': 'audio', 'ogg': 'audio',
+              // Video
+              'mp4': 'video', 'mov': 'video', 'avi': 'video', 'webm': 'video', 'mkv': 'video',
+              // Archives
+              'zip': 'archive', 'rar': 'archive', '7z': 'archive',
+              // Code
+              'js': 'code', 'ts': 'code', 'html': 'code', 'css': 'code', 'json': 'code', 'xml': 'code',
+              // Other
+              'epub': 'ebook', 'psd': 'design', 'ai': 'design'
+            };
+            
+            return {
+              type: typeMapping[extension] || 'document',
+              fileExtension: extension
+            };
+          };
+
+          const { type, fileExtension } = getContentTypeInfo(file.originalname, file.mimetype);
+          
+          // Create unique upload path
+          const timestamp = Date.now();
+          const sanitizedFilename = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const uploadPath = `course-materials/${courseId || lessonId}/${type}/${timestamp}_${sanitizedFilename}`;
+          
+          // Upload to object storage
+          const uploadResult = await objectStorage.uploadFile(uploadPath, file.buffer, file.mimetype);
+          
+          if (!uploadResult) {
+            throw new Error(`Failed to upload file: ${file.originalname}`);
+          }
+
+          // Create material record with enhanced metadata
+          const materialRecord = {
+            courseId: courseId || null,
+            lessonId: lessonId || null,
+            title: materialData.title || file.originalname.replace(/\.[^/.]+$/, ""), // Remove extension for title
+            description: materialData.description || '',
+            type,
+            fileExtension,
+            category: materialData.category || category,
+            downloadUrl: uploadResult,
+            objectStoragePath: uploadPath,
+            originalFilename: file.originalname,
+            fileSize: file.size,
+            mimeType: file.mimetype,
+            order: materialData.order || i,
+            isRequired: materialData.isRequired !== undefined ? materialData.isRequired : isRequired,
+            isPreviewable: ['image', 'document'].includes(type), // Auto-enable preview for suitable types
+            accessLevel: materialData.accessLevel || accessLevel,
+            tags: materialData.tags || [],
+            version: 1,
+            isActive: true,
+            metadata: {
+              uploadedBy: req.user.claims.sub,
+              uploadedAt: new Date().toISOString(),
+              fileType: type,
+              ...materialData.metadata
+            }
+          };
+
+          const material = await storage.createMaterial(materialRecord);
+          uploadedMaterials.push(material);
+          
+        } catch (fileError: any) {
+          console.error(`Error processing file ${file.originalname}:`, fileError);
+          // Continue with other files, but log the error
+          uploadedMaterials.push({
+            error: `Failed to upload ${file.originalname}: ${fileError.message}`,
+            filename: file.originalname
+          });
+        }
+      }
+
+      res.status(201).json({
+        message: `Uploaded ${uploadedMaterials.filter(m => !m.error).length} out of ${files.length} files successfully`,
+        materials: uploadedMaterials,
+        success: uploadedMaterials.filter(m => !m.error).length,
+        failed: uploadedMaterials.filter(m => m.error).length
+      });
+      
+    } catch (error: any) {
+      console.error("Material upload error:", error);
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Single file upload endpoint for legacy compatibility
+  app.post("/api/materials/single", isAuthenticated, requireAdmin, courseContentUpload.single('file'), async (req: any, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
       }
 
-      // Upload to object storage
-      const uploadPath = `course-materials/${req.body.courseId || req.body.lessonId}/${req.file.originalname}`;
+      const { courseId, lessonId, title, description, category = 'learning_material', isRequired = false } = req.body;
+      
+      if (!courseId && !lessonId) {
+        return res.status(400).json({ error: "Either courseId or lessonId is required" });
+      }
+
+      const getContentTypeInfo = (filename: string, mimetype: string) => {
+        const extension = filename.toLowerCase().split('.').pop() || '';
+        const typeMapping = {
+          'pdf': 'document', 'doc': 'document', 'docx': 'document', 'txt': 'document', 'rtf': 'document', 'md': 'document',
+          'ppt': 'presentation', 'pptx': 'presentation', 'odp': 'presentation',
+          'xls': 'spreadsheet', 'xlsx': 'spreadsheet', 'csv': 'spreadsheet', 'ods': 'spreadsheet',
+          'png': 'image', 'jpg': 'image', 'jpeg': 'image', 'gif': 'image', 'svg': 'image', 'webp': 'image',
+          'mp3': 'audio', 'wav': 'audio', 'aac': 'audio', 'ogg': 'audio',
+          'mp4': 'video', 'mov': 'video', 'avi': 'video', 'webm': 'video', 'mkv': 'video',
+          'zip': 'archive', 'rar': 'archive', '7z': 'archive',
+          'js': 'code', 'ts': 'code', 'html': 'code', 'css': 'code', 'json': 'code', 'xml': 'code',
+          'epub': 'ebook', 'psd': 'design', 'ai': 'design'
+        };
+        return {
+          type: typeMapping[extension] || 'document',
+          fileExtension: extension
+        };
+      };
+
+      const { type, fileExtension } = getContentTypeInfo(req.file.originalname, req.file.mimetype);
+      
+      const timestamp = Date.now();
+      const sanitizedFilename = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const uploadPath = `course-materials/${courseId || lessonId}/${type}/${timestamp}_${sanitizedFilename}`;
+      
       const downloadUrl = await objectStorage.uploadFile(uploadPath, req.file.buffer, req.file.mimetype);
 
       const material = await storage.createMaterial({
-        ...req.body,
+        courseId: courseId || null,
+        lessonId: lessonId || null,
+        title: title || req.file.originalname.replace(/\.[^/.]+$/, ""),
+        description: description || '',
+        type,
+        fileExtension,
+        category,
         downloadUrl,
         objectStoragePath: uploadPath,
+        originalFilename: req.file.originalname,
         fileSize: req.file.size,
-        mimeType: req.file.mimetype
+        mimeType: req.file.mimetype,
+        order: 0,
+        isRequired,
+        isPreviewable: ['image', 'document'].includes(type),
+        accessLevel: 'enrolled',
+        tags: [],
+        version: 1,
+        isActive: true,
+        metadata: {
+          uploadedBy: req.user.claims.sub,
+          uploadedAt: new Date().toISOString(),
+          fileType: type
+        }
       });
 
       res.json(material);
