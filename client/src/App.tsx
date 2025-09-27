@@ -21,6 +21,9 @@ import { ProductivityBoardPage } from "@/pages/productivity-board-page";
 import PrivacyPage from "@/pages/privacy";
 import PrivacySettings from "@/pages/privacy-settings";
 import TermsPage from "@/pages/terms";
+import CoursesPage from "@/pages/courses";
+import MyCoursesPage from "@/pages/my-courses";
+import CourseViewer from "@/pages/course-viewer";
 import NotFound from "@/pages/not-found";
 import { CookieConsent } from "@/components/gdpr/cookie-consent";
 import SupportChat from "@/components/support/support-chat";
@@ -72,6 +75,12 @@ function Router() {
             <Route path="/terms">
               {() => <ErrorBoundary><PublicLayout><TermsPage /></PublicLayout></ErrorBoundary>}
             </Route>
+            <Route path="/courses">
+              {() => <ErrorBoundary><PublicLayout><CoursesPage /></PublicLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/courses/:courseId">
+              {() => <ErrorBoundary><PublicLayout><CourseViewer /></PublicLayout></ErrorBoundary>}
+            </Route>
             <Route>
               {() => <ErrorBoundary><PublicLayout><LandingPage /></PublicLayout></ErrorBoundary>}
             </Route>
@@ -116,6 +125,15 @@ function Router() {
             </Route>
             <Route path="/terms">
               {() => <ErrorBoundary><AuthenticatedLayout><TermsPage /></AuthenticatedLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/courses">
+              {() => <ErrorBoundary><AuthenticatedLayout><CoursesPage /></AuthenticatedLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/courses/:courseId">
+              {() => <ErrorBoundary><AuthenticatedLayout><CourseViewer /></AuthenticatedLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/my-courses">
+              {() => <ErrorBoundary><AuthenticatedLayout><MyCoursesPage /></AuthenticatedLayout></ErrorBoundary>}
             </Route>
             <Route>
               {() => <ErrorBoundary fallback={<NotFoundFallback />}><AuthenticatedLayout><NotFound /></AuthenticatedLayout></ErrorBoundary>}

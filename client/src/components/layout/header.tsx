@@ -57,14 +57,14 @@ export default function Header() {
             >
               Features
             </button>
-            <button 
-              onClick={() => scrollToSection('courses')}
+            <Link 
+              href="/courses"
               className="text-muted-foreground hover:text-foreground transition-colors"
               data-testid="link-courses"
-              aria-label="Navigate to courses section"
+              aria-label="Browse course catalog"
             >
               Courses
-            </button>
+            </Link>
             <Link 
               href="/privacy"
               className="text-muted-foreground hover:text-foreground transition-colors"
@@ -141,6 +141,9 @@ export default function Header() {
                         </>
                       )}
                       <DropdownMenuItem asChild>
+                        <Link href="/my-courses" data-testid="link-my-courses">My Courses</Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
                         <Link href="/anomaly-detection" data-testid="link-anomaly-detection">Anomaly Detection</Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>
@@ -195,13 +198,14 @@ export default function Header() {
                 >
                   Features
                 </button>
-                <button 
-                  onClick={() => scrollToSection('courses')}
+                <Link 
+                  href="/courses"
                   className="text-left text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setIsOpen(false)}
                   data-testid="link-mobile-courses"
                 >
                   Courses
-                </button>
+                </Link>
                 <Link 
                   href="/privacy"
                   className="text-muted-foreground hover:text-foreground transition-colors"

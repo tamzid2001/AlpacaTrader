@@ -7,6 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbSeparator, BreadcrumbPage } from "@/components/ui/breadcrumb";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import VideoPlayer from "@/components/courses/video-player";
 import type { Course, Lesson, CourseEnrollment, UserProgress } from "@shared/schema";
 import { 
@@ -18,7 +21,15 @@ import {
   PlayCircle,
   Lock,
   ArrowLeft,
-  ArrowRight
+  ArrowRight,
+  Star,
+  Target,
+  Users,
+  FileText,
+  Award,
+  Globe,
+  Heart,
+  Download
 } from "lucide-react";
 
 export default function CourseViewer() {
@@ -33,6 +44,12 @@ export default function CourseViewer() {
   const { data: course, isLoading: courseLoading } = useQuery<Course>({
     queryKey: ["/api/courses", courseId],
     enabled: !!courseId
+  });
+
+  // Fetch related courses
+  const { data: relatedCourses } = useQuery<Course[]>({
+    queryKey: ["/api/courses/category", course?.category],
+    enabled: !!course?.category
   });
 
   // Fetch course lessons
@@ -135,17 +152,25 @@ export default function CourseViewer() {
   return (
     <div className="min-h-screen bg-background" data-testid="course-viewer">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Breadcrumb Navigation */}
+        <Breadcrumb className="mb-6">
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/" data-testid="breadcrumb-home">Home</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/courses" data-testid="breadcrumb-courses">Courses</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage data-testid="breadcrumb-current">{course?.title}</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+
         {/* Course Header */}
         <div className="mb-8">
-          <Button 
-            variant="ghost" 
-            onClick={() => setLocation("/courses")}
-            className="mb-4"
-            data-testid="back-to-courses"
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Courses
-          </Button>
           
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-2">
@@ -196,6 +221,26 @@ export default function CourseViewer() {
                   />
                 </div>
               )}
+              
+              {/* Course Stats */}
+              <div className="flex flex-wrap items-center gap-6 mb-6 text-sm text-muted-foreground">
+                <div className="flex items-center gap-1">
+                  <Star className="h-4 w-4 text-yellow-500" />
+                  <span>{(course.rating || 0) / 10} rating</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Users className="h-4 w-4" />
+                  <span>{course.totalLessons || 0} lessons</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Globe className="h-4 w-4" />
+                  <span>Online</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Award className="h-4 w-4" />
+                  <span>Certificate</span>
+                </div>
+              </div>
             </div>
 
             <div>
@@ -214,9 +259,24 @@ export default function CourseViewer() {
                         className="w-full mb-4" 
                         size="lg"
                         data-testid="enroll-button"
+                        onClick={() => {
+                          // TODO: Integrate with Stripe payment
+                          console.log('Enroll in course:', courseId);
+                        }}
                       >
                         Enroll Now
                       </Button>
+                      
+                      <div className="flex items-center justify-center gap-2 mb-4">
+                        <Button variant="outline" size="sm" className="flex-1">
+                          <Heart className="h-4 w-4 mr-1" />
+                          Save
+                        </Button>
+                        <Button variant="outline" size="sm" className="flex-1">
+                          <FileText className="h-4 w-4 mr-1" />
+                          Preview
+                        </Button>
+                      </div>
                       
                       <div className="text-xs text-muted-foreground text-center">
                         30-day money-back guarantee
@@ -240,6 +300,105 @@ export default function CourseViewer() {
               </Card>
             </div>
           </div>
+        </div>
+
+        {/* Course Details Tabs */}
+        <div className="mb-8">
+          <Tabs defaultValue="overview" className="w-full">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="curriculum">Curriculum</TabsTrigger>
+              <TabsTrigger value="instructor">Instructor</TabsTrigger>
+              <TabsTrigger value="reviews">Reviews</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="overview" className="mt-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Card>
+                  <CardContent className="p-6">
+                    <h3 className="font-semibold mb-4 flex items-center gap-2">
+                      <Target className="h-5 w-5" />
+                      Learning Objectives
+                    </h3>
+                    {course.learningObjectives && course.learningObjectives.length > 0 ? (
+                      <ul className="space-y-2">
+                        {course.learningObjectives.map((objective, index) => (
+                          <li key={index} className="flex items-start gap-2">
+                            <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
+                            <span className="text-sm">{objective}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-muted-foreground text-sm">No learning objectives specified.</p>
+                    )}
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardContent className="p-6">
+                    <h3 className="font-semibold mb-4 flex items-center gap-2">
+                      <BookOpen className="h-5 w-5" />
+                      Prerequisites
+                    </h3>
+                    {course.prerequisites && course.prerequisites.length > 0 ? (
+                      <ul className="space-y-2">
+                        {course.prerequisites.map((prereq, index) => (
+                          <li key={index} className="flex items-start gap-2">
+                            <div className="w-2 h-2 bg-primary rounded-full mt-2 flex-shrink-0" />
+                            <span className="text-sm">{prereq}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-muted-foreground text-sm">No prerequisites required.</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="curriculum" className="mt-6">
+              <Card>
+                <CardContent className="p-6">
+                  <h3 className="font-semibold mb-4">Course Curriculum</h3>
+                  <div className="text-muted-foreground">
+                    Curriculum content will be displayed here based on lessons data.
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+            
+            <TabsContent value="instructor" className="mt-6">
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-start gap-4">
+                    <Avatar className="w-16 h-16">
+                      <AvatarFallback>{course.instructor?.[0] || 'I'}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <h3 className="font-semibold text-lg">{course.instructor}</h3>
+                      <p className="text-muted-foreground mb-4">Expert Instructor</p>
+                      <p className="text-sm">
+                        Experienced professional with extensive knowledge in {course.category}.
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+            
+            <TabsContent value="reviews" className="mt-6">
+              <Card>
+                <CardContent className="p-6">
+                  <h3 className="font-semibold mb-4">Student Reviews</h3>
+                  <div className="text-muted-foreground">
+                    Student reviews and ratings will be displayed here.
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </div>
 
         {/* Main Content */}
@@ -384,6 +543,43 @@ export default function CourseViewer() {
             </Card>
           </div>
         </div>
+
+        {/* Related Courses */}
+        {relatedCourses && relatedCourses.length > 1 && (
+          <div className="mt-12">
+            <h2 className="text-2xl font-bold mb-6">Related Courses</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {relatedCourses
+                .filter(relatedCourse => relatedCourse.id !== courseId)
+                .slice(0, 3)
+                .map(relatedCourse => (
+                  <Card key={relatedCourse.id} className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
+                        onClick={() => setLocation(`/courses/${relatedCourse.id}`)}>
+                    <img 
+                      src={relatedCourse.thumbnailUrl || relatedCourse.imageUrl || ""} 
+                      alt={relatedCourse.title}
+                      className="w-full h-32 object-cover"
+                    />
+                    <CardContent className="p-4">
+                      <Badge className="mb-2" variant="outline">{relatedCourse.level}</Badge>
+                      <h3 className="font-semibold mb-2 line-clamp-2">{relatedCourse.title}</h3>
+                      <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
+                        {relatedCourse.description}
+                      </p>
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold">${formatPrice(relatedCourse.price)}</span>
+                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                          <Star className="h-3 w-3 text-yellow-500" />
+                          {(relatedCourse.rating || 0) / 10}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              }
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
