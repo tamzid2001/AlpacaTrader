@@ -16,6 +16,8 @@ import AnomalyDetection from "@/pages/anomaly-detection";
 import MarketDataPage from "@/pages/market-data";
 import SharedResultsViewer from "@/pages/shared-results";
 import MySharedResults from "@/pages/my-shared-results";
+import { ProductivityDashboard } from "@/pages/productivity-dashboard";
+import { ProductivityBoardPage } from "@/pages/productivity-board-page";
 import PrivacyPage from "@/pages/privacy";
 import PrivacySettings from "@/pages/privacy-settings";
 import TermsPage from "@/pages/terms";
@@ -96,6 +98,12 @@ function Router() {
             </Route>
             <Route path="/my-shared-results">
               {() => <ErrorBoundary><AuthenticatedLayout><MySharedResults /></AuthenticatedLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/productivity">
+              {() => <ErrorBoundary><AuthenticatedLayout><ProductivityDashboard /></AuthenticatedLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/productivity/boards/:boardId">
+              {() => <ErrorBoundary><AuthenticatedLayout><ProductivityBoardPage /></AuthenticatedLayout></ErrorBoundary>}
             </Route>
             <Route path="/shared/:token">
               {() => <ErrorBoundary><PublicLayout><SharedResultsViewer /></PublicLayout></ErrorBoundary>}

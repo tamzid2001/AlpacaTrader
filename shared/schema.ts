@@ -1416,6 +1416,110 @@ export const marketDataCache = pgTable("market_data_cache", {
 ]);
 
 // ===========================================
+// COMPREHENSIVE AI CHAT SYSTEM TABLES
+// ===========================================
+
+// Chat Sessions - Manage conversation sessions with context awareness
+export const chatSessions = pgTable("chat_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  title: text("title").notNull().default("New Chat"),
+  contextType: text("context_type").notNull().default("general"), // course, quiz, lesson, general
+  contextId: varchar("context_id"), // courseId, lessonId, quizId when contextType is not general
+  isActive: boolean("is_active").notNull().default(true),
+  messageCount: integer("message_count").default(0),
+  lastMessageAt: timestamp("last_message_at"),
+  metadata: json("metadata"), // Additional context data, user preferences, etc.
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_chat_sessions_user_id").on(table.userId),
+  index("IDX_chat_sessions_context_type").on(table.contextType),
+  index("IDX_chat_sessions_context_id").on(table.contextId),
+  index("IDX_chat_sessions_is_active").on(table.isActive),
+  index("IDX_chat_sessions_created_at").on(table.createdAt),
+  index("IDX_chat_sessions_last_message_at").on(table.lastMessageAt),
+]);
+
+// Chat Messages - Individual messages within chat sessions
+export const chatMessages = pgTable("chat_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull().references(() => chatSessions.id, { onDelete: 'cascade' }),
+  role: text("role").notNull(), // user, assistant, system
+  content: text("content").notNull(),
+  contentType: text("content_type").default("text"), // text, markdown, code, image_url
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+  // Context and learning assistance metadata
+  courseContext: json("course_context"), // Course info, lesson details, quiz context
+  aiModelUsed: varchar("ai_model_used"), // Track which AI model generated the response
+  promptTokens: integer("prompt_tokens"), // For usage tracking and optimization
+  completionTokens: integer("completion_tokens"),
+  responseTime: integer("response_time"), // Response generation time in milliseconds
+  qualityScore: real("quality_score"), // AI response quality rating (0-1)
+  userFeedback: integer("user_feedback"), // User feedback: -1 (negative), 0 (neutral), 1 (positive)
+  metadata: json("metadata"), // Additional context, citations, suggested follow-ups
+  editedAt: timestamp("edited_at"), // Track message edits
+  isEdited: boolean("is_edited").default(false),
+}, (table) => [
+  index("IDX_chat_messages_session_id").on(table.sessionId),
+  index("IDX_chat_messages_role").on(table.role),
+  index("IDX_chat_messages_timestamp").on(table.timestamp),
+  index("IDX_chat_messages_content_type").on(table.contentType),
+  index("IDX_chat_messages_user_feedback").on(table.userFeedback),
+  index("IDX_chat_messages_quality_score").on(table.qualityScore),
+]);
+
+// Chat Contexts - Store and manage contextual information for intelligent responses
+export const chatContexts = pgTable("chat_contexts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull().references(() => chatSessions.id, { onDelete: 'cascade' }),
+  contextType: text("context_type").notNull(), // course, lesson, quiz, user_progress, learning_path
+  contextId: varchar("context_id").notNull(), // The ID of the referenced entity
+  priority: integer("priority").default(1), // Context priority for response generation (1-10)
+  relevanceScore: real("relevance_score"), // How relevant this context is (0-1)
+  lastUsedAt: timestamp("last_used_at"), // Track when context was last referenced
+  // Rich contextual metadata for intelligent assistance
+  metadata: json("metadata"), // Detailed context info: course content, progress, preferences
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_chat_contexts_session_id").on(table.sessionId),
+  index("IDX_chat_contexts_type").on(table.contextType),
+  index("IDX_chat_contexts_context_id").on(table.contextId),
+  index("IDX_chat_contexts_priority").on(table.priority),
+  index("IDX_chat_contexts_relevance_score").on(table.relevanceScore),
+  index("IDX_chat_contexts_is_active").on(table.isActive),
+  index("IDX_chat_contexts_last_used_at").on(table.lastUsedAt),
+]);
+
+// Chat Analytics - Track usage patterns and AI performance for optimization
+export const chatAnalytics = pgTable("chat_analytics", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id, { onDelete: 'cascade' }),
+  sessionId: varchar("session_id").references(() => chatSessions.id, { onDelete: 'cascade' }),
+  messageId: varchar("message_id").references(() => chatMessages.id, { onDelete: 'cascade' }),
+  eventType: text("event_type").notNull(), // session_start, message_sent, feedback_given, export_request, etc.
+  contextType: text("context_type"), // course, lesson, quiz, general
+  contextId: varchar("context_id"),
+  // Performance and usage metrics
+  responseTime: integer("response_time"), // AI response time in milliseconds
+  tokenUsage: integer("token_usage"), // Total tokens used
+  successfulResponse: boolean("successful_response").default(true),
+  errorType: text("error_type"), // Track error patterns
+  userSatisfaction: integer("user_satisfaction"), // User rating (1-5)
+  metadata: json("metadata"), // Additional analytics data
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_chat_analytics_user_id").on(table.userId),
+  index("IDX_chat_analytics_session_id").on(table.sessionId),
+  index("IDX_chat_analytics_event_type").on(table.eventType),
+  index("IDX_chat_analytics_context_type").on(table.contextType),
+  index("IDX_chat_analytics_created_at").on(table.createdAt),
+  index("IDX_chat_analytics_successful_response").on(table.successfulResponse),
+  index("IDX_chat_analytics_user_satisfaction").on(table.userSatisfaction),
+]);
+
+// ===========================================
 // COMPREHENSIVE NOTIFICATION SYSTEM SCHEMAS & TYPES
 // ===========================================
 
@@ -1461,6 +1565,53 @@ export const insertMarketDataCacheSchema = createInsertSchema(marketDataCache).o
   id: true,
   lastUpdated: true,
 });
+
+// ===========================================
+// COMPREHENSIVE AI CHAT SYSTEM SCHEMAS & TYPES
+// ===========================================
+
+// Chat System Insert Schemas
+export const insertChatSessionSchema = createInsertSchema(chatSessions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({
+  id: true,
+  timestamp: true,
+});
+
+export const insertChatContextSchema = createInsertSchema(chatContexts).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertChatAnalyticsSchema = createInsertSchema(chatAnalytics).omit({
+  id: true,
+  createdAt: true,
+});
+
+// Chat System Type Exports
+export type InsertChatSession = z.infer<typeof insertChatSessionSchema>;
+export type ChatSession = typeof chatSessions.$inferSelect;
+export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
+export type ChatMessage = typeof chatMessages.$inferSelect;
+export type InsertChatContext = z.infer<typeof insertChatContextSchema>;
+export type ChatContext = typeof chatContexts.$inferSelect;
+export type InsertChatAnalytics = z.infer<typeof insertChatAnalyticsSchema>;
+export type ChatAnalytics = typeof chatAnalytics.$inferSelect;
+
+// Chat System Constants
+export const CHAT_ROLES = ["user", "assistant", "system"] as const;
+export const CHAT_CONTEXT_TYPES = ["course", "lesson", "quiz", "user_progress", "learning_path", "general"] as const;
+export const CHAT_CONTENT_TYPES = ["text", "markdown", "code", "image_url"] as const;
+export const CHAT_EVENT_TYPES = ["session_start", "session_end", "message_sent", "feedback_given", "export_request", "context_switch"] as const;
+
+export type ChatRole = typeof CHAT_ROLES[number];
+export type ChatContextType = typeof CHAT_CONTEXT_TYPES[number];
+export type ChatContentType = typeof CHAT_CONTENT_TYPES[number];
+export type ChatEventType = typeof CHAT_EVENT_TYPES[number];
 
 // Comprehensive Notification Type Exports
 export type InsertNotificationTemplate = z.infer<typeof insertNotificationTemplateSchema>;
@@ -1548,3 +1699,319 @@ export type NotificationQueueStatus = typeof NOTIFICATION_QUEUE_STATUSES[number]
 export type NotificationEventType = typeof NOTIFICATION_EVENTS[number];
 export type AdminApprovalStatus = typeof ADMIN_APPROVAL_STATUSES[number];
 export type AdminApprovalResourceType = typeof ADMIN_APPROVAL_RESOURCE_TYPES[number];
+
+// ===================
+// PRODUCTIVITY TABLE SYSTEM - MONDAY.COM INSPIRED
+// ===================
+
+// Productivity Boards - Main containers for productivity items
+export const productivityBoards = pgTable("productivity_boards", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  title: text("title").notNull(),
+  description: text("description"),
+  boardType: varchar("board_type").notNull().default("tasks"), // anomalies, patterns, tasks, general
+  color: varchar("color").default("#037ffc"), // Board theme color
+  isTemplate: boolean("is_template").default(false), // Whether this is a template board
+  templateCategory: varchar("template_category"), // Category for template boards
+  isPublic: boolean("is_public").default(false), // Public boards visible to all users
+  settings: json("settings"), // Board-specific settings and preferences
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_productivity_boards_user_id").on(table.userId),
+  index("IDX_productivity_boards_board_type").on(table.boardType),
+  index("IDX_productivity_boards_is_template").on(table.isTemplate),
+  index("IDX_productivity_boards_created_at").on(table.createdAt),
+]);
+
+// Productivity Items - Individual rows/items in boards
+export const productivityItems = pgTable("productivity_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  boardId: varchar("board_id").notNull().references(() => productivityBoards.id, { onDelete: 'cascade' }),
+  title: text("title").notNull(),
+  status: varchar("status").default("not_started"), // not_started, in_progress, completed, blocked, cancelled
+  priority: varchar("priority").default("medium"), // low, medium, high, urgent
+  assignedTo: varchar("assigned_to").references(() => users.id), // User assigned to this item
+  createdBy: varchar("created_by").notNull().references(() => users.id),
+  dueDate: timestamp("due_date"), // When this item is due
+  completedAt: timestamp("completed_at"), // When this item was completed
+  estimatedHours: real("estimated_hours"), // Estimated time to complete
+  actualHours: real("actual_hours"), // Actual time spent
+  tags: text("tags").array(), // Tags for categorization and filtering
+  position: real("position").notNull().default(0), // Position for ordering items
+  parentItemId: varchar("parent_item_id").references(() => productivityItems.id), // For sub-items
+  sourceType: varchar("source_type"), // anomaly, pattern, manual, import
+  sourceId: varchar("source_id"), // ID of source (e.g., anomaly ID, CSV upload ID)
+  metadata: json("metadata"), // Additional item-specific data
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_productivity_items_board_id").on(table.boardId),
+  index("IDX_productivity_items_status").on(table.status),
+  index("IDX_productivity_items_priority").on(table.priority),
+  index("IDX_productivity_items_assigned_to").on(table.assignedTo),
+  index("IDX_productivity_items_created_by").on(table.createdBy),
+  index("IDX_productivity_items_due_date").on(table.dueDate),
+  index("IDX_productivity_items_position").on(table.position),
+  index("IDX_productivity_items_parent").on(table.parentItemId),
+  index("IDX_productivity_items_source").on(table.sourceType, table.sourceId),
+  index("IDX_productivity_items_created_at").on(table.createdAt),
+]);
+
+// Item Columns - Dynamic column definitions for boards
+export const itemColumns = pgTable("item_columns", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  boardId: varchar("board_id").notNull().references(() => productivityBoards.id, { onDelete: 'cascade' }),
+  name: text("name").notNull(),
+  type: varchar("type").notNull(), // text, date, status, priority, timeline, numbers, people, dropdown, checkbox, rating, formula
+  position: integer("position").notNull(), // Column order
+  isRequired: boolean("is_required").default(false),
+  isVisible: boolean("is_visible").default(true),
+  width: integer("width").default(150), // Column width in pixels
+  settings: json("settings"), // Column-specific settings (options for dropdown, formula, etc.)
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_item_columns_board_id").on(table.boardId),
+  index("IDX_item_columns_type").on(table.type),
+  index("IDX_item_columns_position").on(table.position),
+  index("IDX_item_columns_created_at").on(table.createdAt),
+]);
+
+// Column Values - Actual values for dynamic columns
+export const columnValues = pgTable("column_values", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  itemId: varchar("item_id").notNull().references(() => productivityItems.id, { onDelete: 'cascade' }),
+  columnId: varchar("column_id").notNull().references(() => itemColumns.id, { onDelete: 'cascade' }),
+  value: text("value"), // String representation of the value
+  metadata: json("metadata"), // Additional data for complex types (timeline, formula results, etc.)
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_column_values_item_id").on(table.itemId),
+  index("IDX_column_values_column_id").on(table.columnId),
+  index("IDX_column_values_created_at").on(table.createdAt),
+  // Composite index for efficient lookups
+  index("IDX_column_values_item_column").on(table.itemId, table.columnId),
+]);
+
+// Productivity Notifications - Board-specific notifications and reminders
+export const productivityNotifications = pgTable("productivity_notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  itemId: varchar("item_id").references(() => productivityItems.id, { onDelete: 'cascade' }),
+  boardId: varchar("board_id").references(() => productivityBoards.id, { onDelete: 'cascade' }),
+  type: varchar("type").notNull(), // due_date, assignment, status_change, mention, reminder, overdue
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  scheduledFor: timestamp("scheduled_for"), // When to send the notification
+  sentAt: timestamp("sent_at"), // When notification was actually sent
+  isRead: boolean("is_read").default(false),
+  isActive: boolean("is_active").default(true),
+  channel: varchar("channel").default("email"), // email, in_app, push
+  metadata: json("metadata"), // Additional notification data
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_productivity_notifications_user_id").on(table.userId),
+  index("IDX_productivity_notifications_item_id").on(table.itemId),
+  index("IDX_productivity_notifications_board_id").on(table.boardId),
+  index("IDX_productivity_notifications_type").on(table.type),
+  index("IDX_productivity_notifications_scheduled").on(table.scheduledFor),
+  index("IDX_productivity_notifications_is_read").on(table.isRead),
+  index("IDX_productivity_notifications_created_at").on(table.createdAt),
+]);
+
+// Productivity Reminders - Recurring reminders for items
+export const productivityReminders = pgTable("productivity_reminders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  itemId: varchar("item_id").notNull().references(() => productivityItems.id, { onDelete: 'cascade' }),
+  reminderDate: timestamp("reminder_date").notNull(),
+  frequency: varchar("frequency"), // once, daily, weekly, monthly, custom
+  customSchedule: text("custom_schedule"), // Cron-like expression for custom frequencies
+  isActive: boolean("is_active").default(true),
+  lastSent: timestamp("last_sent"), // When this reminder was last sent
+  nextScheduled: timestamp("next_scheduled"), // When this reminder is next scheduled
+  message: text("message"), // Custom reminder message
+  channel: varchar("channel").default("email"), // email, in_app, push
+  metadata: json("metadata"), // Additional reminder configuration
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_productivity_reminders_user_id").on(table.userId),
+  index("IDX_productivity_reminders_item_id").on(table.itemId),
+  index("IDX_productivity_reminders_reminder_date").on(table.reminderDate),
+  index("IDX_productivity_reminders_is_active").on(table.isActive),
+  index("IDX_productivity_reminders_next_scheduled").on(table.nextScheduled),
+  index("IDX_productivity_reminders_created_at").on(table.createdAt),
+]);
+
+// Board Templates - Predefined board configurations
+export const boardTemplates = pgTable("board_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  category: varchar("category").notNull(), // project_management, data_analysis, marketing, etc.
+  icon: varchar("icon"), // Icon identifier
+  boardConfig: json("board_config").notNull(), // Complete board configuration
+  columnConfig: json("column_config").notNull(), // Default columns configuration
+  isPublic: boolean("is_public").default(true), // Public templates available to all users
+  createdBy: varchar("created_by").references(() => users.id),
+  usageCount: integer("usage_count").default(0), // How many times this template was used
+  rating: real("rating").default(0), // User rating for template
+  tags: text("tags").array(), // Tags for template discovery
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_board_templates_category").on(table.category),
+  index("IDX_board_templates_is_public").on(table.isPublic),
+  index("IDX_board_templates_created_by").on(table.createdBy),
+  index("IDX_board_templates_usage_count").on(table.usageCount),
+  index("IDX_board_templates_rating").on(table.rating),
+  index("IDX_board_templates_created_at").on(table.createdAt),
+]);
+
+// Board Automations - Workflow automation rules
+export const boardAutomations = pgTable("board_automations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  boardId: varchar("board_id").notNull().references(() => productivityBoards.id, { onDelete: 'cascade' }),
+  name: text("name").notNull(),
+  description: text("description"),
+  isActive: boolean("is_active").default(true),
+  trigger: json("trigger").notNull(), // Trigger conditions (when X happens)
+  actions: json("actions").notNull(), // Actions to perform (do Y)
+  conditions: json("conditions"), // Additional conditions to check
+  lastTriggered: timestamp("last_triggered"), // When this automation last ran
+  triggerCount: integer("trigger_count").default(0), // How many times this automation has run
+  createdBy: varchar("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_board_automations_board_id").on(table.boardId),
+  index("IDX_board_automations_is_active").on(table.isActive),
+  index("IDX_board_automations_created_by").on(table.createdBy),
+  index("IDX_board_automations_created_at").on(table.createdAt),
+]);
+
+// Activity Log - Track all changes and activities
+export const activityLog = pgTable("activity_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  boardId: varchar("board_id").references(() => productivityBoards.id, { onDelete: 'cascade' }),
+  itemId: varchar("item_id").references(() => productivityItems.id, { onDelete: 'cascade' }),
+  action: varchar("action").notNull(), // created, updated, deleted, assigned, completed, etc.
+  entityType: varchar("entity_type").notNull(), // board, item, column, value, etc.
+  entityId: varchar("entity_id").notNull(), // ID of the affected entity
+  oldValue: json("old_value"), // Previous value (for updates)
+  newValue: json("new_value"), // New value (for updates)
+  description: text("description"), // Human-readable description of the change
+  ipAddress: varchar("ip_address"), // IP address of the user
+  userAgent: text("user_agent"), // Browser/client information
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_activity_log_user_id").on(table.userId),
+  index("IDX_activity_log_board_id").on(table.boardId),
+  index("IDX_activity_log_item_id").on(table.itemId),
+  index("IDX_activity_log_action").on(table.action),
+  index("IDX_activity_log_entity_type").on(table.entityType),
+  index("IDX_activity_log_created_at").on(table.createdAt),
+]);
+
+// Productivity Board Insert Schemas
+export const insertProductivityBoardSchema = createInsertSchema(productivityBoards).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertProductivityItemSchema = createInsertSchema(productivityItems).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertItemColumnSchema = createInsertSchema(itemColumns).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertColumnValueSchema = createInsertSchema(columnValues).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertProductivityNotificationSchema = createInsertSchema(productivityNotifications).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertProductivityReminderSchema = createInsertSchema(productivityReminders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertBoardTemplateSchema = createInsertSchema(boardTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  usageCount: true,
+  rating: true,
+});
+
+export const insertBoardAutomationSchema = createInsertSchema(boardAutomations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastTriggered: true,
+  triggerCount: true,
+});
+
+export const insertActivityLogSchema = createInsertSchema(activityLog).omit({
+  id: true,
+  createdAt: true,
+});
+
+// Productivity Types
+export type InsertProductivityBoard = z.infer<typeof insertProductivityBoardSchema>;
+export type ProductivityBoard = typeof productivityBoards.$inferSelect;
+export type InsertProductivityItem = z.infer<typeof insertProductivityItemSchema>;
+export type ProductivityItem = typeof productivityItems.$inferSelect;
+export type InsertItemColumn = z.infer<typeof insertItemColumnSchema>;
+export type ItemColumn = typeof itemColumns.$inferSelect;
+export type InsertColumnValue = z.infer<typeof insertColumnValueSchema>;
+export type ColumnValue = typeof columnValues.$inferSelect;
+export type InsertProductivityNotification = z.infer<typeof insertProductivityNotificationSchema>;
+export type ProductivityNotification = typeof productivityNotifications.$inferSelect;
+export type InsertProductivityReminder = z.infer<typeof insertProductivityReminderSchema>;
+export type ProductivityReminder = typeof productivityReminders.$inferSelect;
+export type InsertBoardTemplate = z.infer<typeof insertBoardTemplateSchema>;
+export type BoardTemplate = typeof boardTemplates.$inferSelect;
+export type InsertBoardAutomation = z.infer<typeof insertBoardAutomationSchema>;
+export type BoardAutomation = typeof boardAutomations.$inferSelect;
+export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;
+export type ActivityLog = typeof activityLog.$inferSelect;
+
+// Productivity Constants
+export const BOARD_TYPES = ["anomalies", "patterns", "tasks", "general"] as const;
+export const ITEM_STATUSES = ["not_started", "in_progress", "completed", "blocked", "cancelled"] as const;
+export const ITEM_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
+export const COLUMN_TYPES = ["text", "date", "status", "priority", "timeline", "numbers", "people", "dropdown", "checkbox", "rating", "formula"] as const;
+export const NOTIFICATION_TYPES = ["due_date", "assignment", "status_change", "mention", "reminder", "overdue"] as const;
+export const REMINDER_FREQUENCIES = ["once", "daily", "weekly", "monthly", "custom"] as const;
+export const PRODUCTIVITY_NOTIFICATION_CHANNELS = ["email", "in_app", "push"] as const;
+export const ACTIVITY_ACTIONS = ["created", "updated", "deleted", "assigned", "completed", "moved", "copied", "archived"] as const;
+export const ENTITY_TYPES = ["board", "item", "column", "value", "automation", "template"] as const;
+
+export type BoardType = typeof BOARD_TYPES[number];
+export type ItemStatus = typeof ITEM_STATUSES[number];
+export type ItemPriority = typeof ITEM_PRIORITIES[number];
+export type ColumnType = typeof COLUMN_TYPES[number];
+export type ProductivityNotificationType = typeof NOTIFICATION_TYPES[number];
+export type ReminderFrequency = typeof REMINDER_FREQUENCIES[number];
+export type ProductivityNotificationChannel = typeof PRODUCTIVITY_NOTIFICATION_CHANNELS[number];
+export type ActivityAction = typeof ACTIVITY_ACTIONS[number];
+export type EntityType = typeof ENTITY_TYPES[number];

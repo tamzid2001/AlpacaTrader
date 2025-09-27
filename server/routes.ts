@@ -21,7 +21,17 @@ import {
   insertQuestionOptionSchema,
   insertQuizAttemptSchema,
   insertQuestionResponseSchema,
-  insertCertificateSchema
+  insertCertificateSchema,
+  // Productivity System Schemas
+  insertProductivityBoardSchema,
+  insertProductivityItemSchema,
+  insertItemColumnSchema,
+  insertColumnValueSchema,
+  insertProductivityNotificationSchema,
+  insertProductivityReminderSchema,
+  insertBoardTemplateSchema,
+  insertBoardAutomationSchema,
+  insertActivityLogSchema
 } from "@shared/schema";
 import { z } from "zod";
 import { setupAuth, isAuthenticated } from "./replitAuth";
@@ -4998,6 +5008,797 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('Delete share link error:', error);
       res.status(500).json({ error: 'Failed to delete share link' });
+    }
+  });
+
+  // ===========================================
+  // PRODUCTIVITY TABLE SYSTEM API ENDPOINTS
+  // ===========================================
+
+  // Productivity Boards Routes
+  app.get('/api/productivity/boards', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { type } = req.query;
+      
+      let boards;
+      if (type) {
+        boards = await storage.getBoardsByType(userId, type);
+      } else {
+        boards = await storage.getUserProductivityBoards(userId);
+      }
+      
+      res.json({ boards });
+    } catch (error: any) {
+      console.error('Get productivity boards error:', error);
+      res.status(500).json({ error: 'Failed to get productivity boards' });
+    }
+  });
+
+  app.get('/api/productivity/boards/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      
+      const board = await storage.getProductivityBoard(id);
+      if (!board) {
+        return res.status(404).json({ error: 'Board not found' });
+      }
+      
+      // Check access permission
+      if (board.userId !== userId && !board.isPublic) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
+      // Get board items and columns
+      const [items, columns] = await Promise.all([
+        storage.getBoardProductivityItems(id),
+        storage.getBoardColumns(id)
+      ]);
+      
+      res.json({ board, items, columns });
+    } catch (error: any) {
+      console.error('Get productivity board error:', error);
+      res.status(500).json({ error: 'Failed to get productivity board' });
+    }
+  });
+
+  app.post('/api/productivity/boards', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const boardData = insertProductivityBoardSchema.parse({ ...req.body, userId });
+      
+      const board = await storage.createProductivityBoard(boardData);
+      
+      // Create default columns for the board
+      const defaultColumns = [
+        { boardId: board.id, name: 'Status', type: 'status', position: 0 },
+        { boardId: board.id, name: 'Priority', type: 'priority', position: 1 },
+        { boardId: board.id, name: 'Due Date', type: 'date', position: 2 },
+        { boardId: board.id, name: 'Assigned To', type: 'people', position: 3 }
+      ];
+      
+      for (const column of defaultColumns) {
+        await storage.createItemColumn(column);
+      }
+      
+      // Log activity
+      await storage.createActivityLog({
+        userId,
+        boardId: board.id,
+        action: 'created',
+        entityType: 'board',
+        entityId: board.id,
+        description: `Created board "${board.title}"`
+      });
+      
+      res.json({ board });
+    } catch (error: any) {
+      console.error('Create productivity board error:', error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: 'Invalid board data', details: error.errors });
+      }
+      res.status(500).json({ error: 'Failed to create productivity board' });
+    }
+  });
+
+  app.put('/api/productivity/boards/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      
+      const board = await storage.getProductivityBoard(id);
+      if (!board || board.userId !== userId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
+      const updates = req.body;
+      const updatedBoard = await storage.updateProductivityBoard(id, updates);
+      
+      if (!updatedBoard) {
+        return res.status(404).json({ error: 'Board not found' });
+      }
+      
+      // Log activity
+      await storage.createActivityLog({
+        userId,
+        boardId: id,
+        action: 'updated',
+        entityType: 'board',
+        entityId: id,
+        description: `Updated board "${updatedBoard.title}"`
+      });
+      
+      res.json({ board: updatedBoard });
+    } catch (error: any) {
+      console.error('Update productivity board error:', error);
+      res.status(500).json({ error: 'Failed to update productivity board' });
+    }
+  });
+
+  app.delete('/api/productivity/boards/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      
+      const board = await storage.getProductivityBoard(id);
+      if (!board || board.userId !== userId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
+      const success = await storage.deleteProductivityBoard(id);
+      if (!success) {
+        return res.status(404).json({ error: 'Board not found' });
+      }
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Delete productivity board error:', error);
+      res.status(500).json({ error: 'Failed to delete productivity board' });
+    }
+  });
+
+  // Productivity Items Routes
+  app.get('/api/productivity/boards/:boardId/items', isAuthenticated, async (req: any, res) => {
+    try {
+      const { boardId } = req.params;
+      const { status, priority, assignedTo, search } = req.query;
+      
+      let items = await storage.getBoardProductivityItems(boardId);
+      
+      // Apply filters
+      if (status) {
+        items = items.filter(item => item.status === status);
+      }
+      if (priority) {
+        items = items.filter(item => item.priority === priority);
+      }
+      if (assignedTo) {
+        items = items.filter(item => item.assignedTo === assignedTo);
+      }
+      if (search) {
+        const searchTerm = search.toLowerCase();
+        items = items.filter(item => 
+          item.title.toLowerCase().includes(searchTerm) ||
+          (item.tags && item.tags.some(tag => tag.toLowerCase().includes(searchTerm)))
+        );
+      }
+      
+      // Get column values for each item
+      const itemsWithValues = await Promise.all(
+        items.map(async (item) => {
+          const columnValues = await storage.getItemColumnValues(item.id);
+          return { ...item, columnValues };
+        })
+      );
+      
+      res.json({ items: itemsWithValues });
+    } catch (error: any) {
+      console.error('Get productivity items error:', error);
+      res.status(500).json({ error: 'Failed to get productivity items' });
+    }
+  });
+
+  app.post('/api/productivity/boards/:boardId/items', isAuthenticated, async (req: any, res) => {
+    try {
+      const { boardId } = req.params;
+      const userId = req.user.claims.sub;
+      
+      const itemData = insertProductivityItemSchema.parse({
+        ...req.body,
+        boardId,
+        createdBy: userId
+      });
+      
+      const item = await storage.createProductivityItem(itemData);
+      
+      // Log activity
+      await storage.createActivityLog({
+        userId,
+        boardId,
+        itemId: item.id,
+        action: 'created',
+        entityType: 'item',
+        entityId: item.id,
+        description: `Created item "${item.title}"`
+      });
+      
+      // Create assignment notification if item is assigned
+      if (item.assignedTo && item.assignedTo !== userId) {
+        await storage.createAssignmentNotification(item.id, item.assignedTo, userId);
+      }
+      
+      res.json({ item });
+    } catch (error: any) {
+      console.error('Create productivity item error:', error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: 'Invalid item data', details: error.errors });
+      }
+      res.status(500).json({ error: 'Failed to create productivity item' });
+    }
+  });
+
+  app.put('/api/productivity/items/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      
+      const existingItem = await storage.getProductivityItem(id);
+      if (!existingItem) {
+        return res.status(404).json({ error: 'Item not found' });
+      }
+      
+      const updates = req.body;
+      const updatedItem = await storage.updateProductivityItem(id, updates);
+      
+      // Log activity
+      await storage.createActivityLog({
+        userId,
+        boardId: existingItem.boardId,
+        itemId: id,
+        action: 'updated',
+        entityType: 'item',
+        entityId: id,
+        oldValue: existingItem,
+        newValue: updatedItem,
+        description: `Updated item "${updatedItem?.title}"`
+      });
+      
+      // Create notifications for status changes
+      if (updates.status && updates.status !== existingItem.status) {
+        await storage.createStatusChangeNotification(id, existingItem.status, updates.status, userId);
+      }
+      
+      // Create assignment notification if assignee changed
+      if (updates.assignedTo && updates.assignedTo !== existingItem.assignedTo) {
+        await storage.createAssignmentNotification(id, updates.assignedTo, userId);
+      }
+      
+      res.json({ item: updatedItem });
+    } catch (error: any) {
+      console.error('Update productivity item error:', error);
+      res.status(500).json({ error: 'Failed to update productivity item' });
+    }
+  });
+
+  app.delete('/api/productivity/items/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      
+      const item = await storage.getProductivityItem(id);
+      if (!item) {
+        return res.status(404).json({ error: 'Item not found' });
+      }
+      
+      const success = await storage.deleteProductivityItem(id);
+      if (!success) {
+        return res.status(404).json({ error: 'Item not found' });
+      }
+      
+      // Log activity
+      await storage.createActivityLog({
+        userId,
+        boardId: item.boardId,
+        itemId: id,
+        action: 'deleted',
+        entityType: 'item',
+        entityId: id,
+        description: `Deleted item "${item.title}"`
+      });
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Delete productivity item error:', error);
+      res.status(500).json({ error: 'Failed to delete productivity item' });
+    }
+  });
+
+  // Bulk operations for items
+  app.post('/api/productivity/items/bulk-update', isAuthenticated, async (req: any, res) => {
+    try {
+      const { itemIds, updates } = req.body;
+      const userId = req.user.claims.sub;
+      
+      const updatedItems = await storage.bulkUpdateProductivityItems(itemIds, updates);
+      
+      // Log bulk activity
+      await storage.createActivityLog({
+        userId,
+        action: 'updated',
+        entityType: 'item',
+        entityId: 'bulk',
+        description: `Bulk updated ${itemIds.length} items`
+      });
+      
+      res.json({ items: updatedItems });
+    } catch (error: any) {
+      console.error('Bulk update items error:', error);
+      res.status(500).json({ error: 'Failed to bulk update items' });
+    }
+  });
+
+  app.post('/api/productivity/items/bulk-delete', isAuthenticated, async (req: any, res) => {
+    try {
+      const { itemIds } = req.body;
+      const userId = req.user.claims.sub;
+      
+      const success = await storage.bulkDeleteProductivityItems(itemIds);
+      
+      // Log bulk activity
+      await storage.createActivityLog({
+        userId,
+        action: 'deleted',
+        entityType: 'item',
+        entityId: 'bulk',
+        description: `Bulk deleted ${itemIds.length} items`
+      });
+      
+      res.json({ success });
+    } catch (error: any) {
+      console.error('Bulk delete items error:', error);
+      res.status(500).json({ error: 'Failed to bulk delete items' });
+    }
+  });
+
+  // Columns Routes
+  app.get('/api/productivity/boards/:boardId/columns', isAuthenticated, async (req: any, res) => {
+    try {
+      const { boardId } = req.params;
+      const columns = await storage.getBoardColumns(boardId);
+      res.json({ columns });
+    } catch (error: any) {
+      console.error('Get board columns error:', error);
+      res.status(500).json({ error: 'Failed to get board columns' });
+    }
+  });
+
+  app.post('/api/productivity/boards/:boardId/columns', isAuthenticated, async (req: any, res) => {
+    try {
+      const { boardId } = req.params;
+      const userId = req.user.claims.sub;
+      
+      const columnData = insertItemColumnSchema.parse({ ...req.body, boardId });
+      const column = await storage.createItemColumn(columnData);
+      
+      // Log activity
+      await storage.createActivityLog({
+        userId,
+        boardId,
+        action: 'created',
+        entityType: 'column',
+        entityId: column.id,
+        description: `Created column "${column.name}"`
+      });
+      
+      res.json({ column });
+    } catch (error: any) {
+      console.error('Create column error:', error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: 'Invalid column data', details: error.errors });
+      }
+      res.status(500).json({ error: 'Failed to create column' });
+    }
+  });
+
+  app.put('/api/productivity/columns/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      
+      const updates = req.body;
+      const updatedColumn = await storage.updateItemColumn(id, updates);
+      
+      if (!updatedColumn) {
+        return res.status(404).json({ error: 'Column not found' });
+      }
+      
+      // Log activity
+      await storage.createActivityLog({
+        userId,
+        boardId: updatedColumn.boardId,
+        action: 'updated',
+        entityType: 'column',
+        entityId: id,
+        description: `Updated column "${updatedColumn.name}"`
+      });
+      
+      res.json({ column: updatedColumn });
+    } catch (error: any) {
+      console.error('Update column error:', error);
+      res.status(500).json({ error: 'Failed to update column' });
+    }
+  });
+
+  app.delete('/api/productivity/columns/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      
+      const column = await storage.getItemColumn(id);
+      if (!column) {
+        return res.status(404).json({ error: 'Column not found' });
+      }
+      
+      const success = await storage.deleteItemColumn(id);
+      if (!success) {
+        return res.status(404).json({ error: 'Column not found' });
+      }
+      
+      // Log activity
+      await storage.createActivityLog({
+        userId,
+        boardId: column.boardId,
+        action: 'deleted',
+        entityType: 'column',
+        entityId: id,
+        description: `Deleted column "${column.name}"`
+      });
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Delete column error:', error);
+      res.status(500).json({ error: 'Failed to delete column' });
+    }
+  });
+
+  // Column Values Routes
+  app.post('/api/productivity/items/:itemId/values', isAuthenticated, async (req: any, res) => {
+    try {
+      const { itemId } = req.params;
+      const { columnId, value, metadata } = req.body;
+      const userId = req.user.claims.sub;
+      
+      // Check if value already exists, update it instead
+      const existingValue = await storage.getColumnValueByItemAndColumn(itemId, columnId);
+      
+      let columnValue;
+      if (existingValue) {
+        columnValue = await storage.updateColumnValue(existingValue.id, { value, metadata });
+      } else {
+        const valueData = insertColumnValueSchema.parse({ itemId, columnId, value, metadata });
+        columnValue = await storage.createColumnValue(valueData);
+      }
+      
+      res.json({ columnValue });
+    } catch (error: any) {
+      console.error('Create/update column value error:', error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: 'Invalid value data', details: error.errors });
+      }
+      res.status(500).json({ error: 'Failed to save column value' });
+    }
+  });
+
+  app.post('/api/productivity/values/bulk-update', isAuthenticated, async (req: any, res) => {
+    try {
+      const { updates } = req.body;
+      const columnValues = await storage.bulkUpdateColumnValues(updates);
+      res.json({ columnValues });
+    } catch (error: any) {
+      console.error('Bulk update column values error:', error);
+      res.status(500).json({ error: 'Failed to bulk update column values' });
+    }
+  });
+
+  // Notifications Routes
+  app.get('/api/productivity/notifications', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { limit, unreadOnly } = req.query;
+      
+      let notifications;
+      if (unreadOnly === 'true') {
+        notifications = await storage.getUnreadProductivityNotifications(userId);
+      } else {
+        notifications = await storage.getUserProductivityNotifications(userId, parseInt(limit) || 50);
+      }
+      
+      res.json({ notifications });
+    } catch (error: any) {
+      console.error('Get notifications error:', error);
+      res.status(500).json({ error: 'Failed to get notifications' });
+    }
+  });
+
+  app.put('/api/productivity/notifications/:id/read', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const notification = await storage.markProductivityNotificationRead(id);
+      
+      if (!notification) {
+        return res.status(404).json({ error: 'Notification not found' });
+      }
+      
+      res.json({ notification });
+    } catch (error: any) {
+      console.error('Mark notification read error:', error);
+      res.status(500).json({ error: 'Failed to mark notification as read' });
+    }
+  });
+
+  app.put('/api/productivity/notifications/mark-all-read', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const count = await storage.markAllProductivityNotificationsRead(userId);
+      res.json({ markedCount: count });
+    } catch (error: any) {
+      console.error('Mark all notifications read error:', error);
+      res.status(500).json({ error: 'Failed to mark all notifications as read' });
+    }
+  });
+
+  // Reminders Routes
+  app.get('/api/productivity/reminders', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const reminders = await storage.getUserProductivityReminders(userId);
+      res.json({ reminders });
+    } catch (error: any) {
+      console.error('Get reminders error:', error);
+      res.status(500).json({ error: 'Failed to get reminders' });
+    }
+  });
+
+  app.post('/api/productivity/reminders', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const reminderData = insertProductivityReminderSchema.parse({ ...req.body, userId });
+      
+      const reminder = await storage.createProductivityReminder(reminderData);
+      res.json({ reminder });
+    } catch (error: any) {
+      console.error('Create reminder error:', error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: 'Invalid reminder data', details: error.errors });
+      }
+      res.status(500).json({ error: 'Failed to create reminder' });
+    }
+  });
+
+  app.put('/api/productivity/reminders/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      
+      const reminder = await storage.updateProductivityReminder(id, updates);
+      if (!reminder) {
+        return res.status(404).json({ error: 'Reminder not found' });
+      }
+      
+      res.json({ reminder });
+    } catch (error: any) {
+      console.error('Update reminder error:', error);
+      res.status(500).json({ error: 'Failed to update reminder' });
+    }
+  });
+
+  app.delete('/api/productivity/reminders/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.deleteProductivityReminder(id);
+      
+      if (!success) {
+        return res.status(404).json({ error: 'Reminder not found' });
+      }
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Delete reminder error:', error);
+      res.status(500).json({ error: 'Failed to delete reminder' });
+    }
+  });
+
+  // Templates Routes
+  app.get('/api/productivity/templates', isAuthenticated, async (req: any, res) => {
+    try {
+      const { category } = req.query;
+      const templates = await storage.getBoardTemplates(category);
+      res.json({ templates });
+    } catch (error: any) {
+      console.error('Get templates error:', error);
+      res.status(500).json({ error: 'Failed to get templates' });
+    }
+  });
+
+  app.post('/api/productivity/templates', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const templateData = insertBoardTemplateSchema.parse({ ...req.body, createdBy: userId });
+      
+      const template = await storage.createBoardTemplate(templateData);
+      res.json({ template });
+    } catch (error: any) {
+      console.error('Create template error:', error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: 'Invalid template data', details: error.errors });
+      }
+      res.status(500).json({ error: 'Failed to create template' });
+    }
+  });
+
+  app.post('/api/productivity/templates/:id/use', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { boardTitle } = req.body;
+      const userId = req.user.claims.sub;
+      
+      const board = await storage.createBoardFromTemplate(id, userId, boardTitle);
+      await storage.incrementTemplateUsage(id);
+      
+      res.json({ board });
+    } catch (error: any) {
+      console.error('Use template error:', error);
+      res.status(500).json({ error: 'Failed to create board from template' });
+    }
+  });
+
+  // Analytics Routes
+  app.get('/api/productivity/analytics', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { boardId } = req.query;
+      
+      const analytics = await storage.getProductivityAnalytics(userId, boardId);
+      res.json({ analytics });
+    } catch (error: any) {
+      console.error('Get analytics error:', error);
+      res.status(500).json({ error: 'Failed to get analytics' });
+    }
+  });
+
+  app.get('/api/productivity/stats', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const stats = await storage.getUserProductivityStats(userId);
+      res.json({ stats });
+    } catch (error: any) {
+      console.error('Get productivity stats error:', error);
+      res.status(500).json({ error: 'Failed to get productivity stats' });
+    }
+  });
+
+  // Export Routes
+  app.get('/api/productivity/boards/:boardId/export', isAuthenticated, async (req: any, res) => {
+    try {
+      const { boardId } = req.params;
+      const { format = 'csv' } = req.query;
+      
+      const exportData = await storage.exportBoardData(boardId, format);
+      
+      res.setHeader('Content-Disposition', `attachment; filename="${exportData.filename}"`);
+      if (format === 'csv') {
+        res.setHeader('Content-Type', 'text/csv');
+      } else if (format === 'excel') {
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      } else {
+        res.setHeader('Content-Type', 'application/json');
+      }
+      
+      res.send(exportData.data);
+    } catch (error: any) {
+      console.error('Export board error:', error);
+      res.status(500).json({ error: 'Failed to export board data' });
+    }
+  });
+
+  // Import Routes
+  app.post('/api/productivity/boards/:boardId/import', isAuthenticated, upload.single('file'), async (req: any, res) => {
+    try {
+      const { boardId } = req.params;
+      const { format = 'csv' } = req.body;
+      const file = req.file;
+      
+      if (!file) {
+        return res.status(400).json({ error: 'File is required' });
+      }
+      
+      let data;
+      if (format === 'csv') {
+        const csvContent = file.buffer.toString('utf8');
+        data = csvContent; // Will be parsed in storage implementation
+      } else if (format === 'excel') {
+        const workbook = XLSX.read(file.buffer);
+        data = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+      } else {
+        data = JSON.parse(file.buffer.toString('utf8'));
+      }
+      
+      const result = await storage.importBoardData(boardId, data, format);
+      res.json(result);
+    } catch (error: any) {
+      console.error('Import board data error:', error);
+      res.status(500).json({ error: 'Failed to import board data' });
+    }
+  });
+
+  // Search Routes
+  app.get('/api/productivity/search', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { query, ...filters } = req.query;
+      
+      const items = await storage.searchProductivityItems(userId, query, filters);
+      res.json({ items });
+    } catch (error: any) {
+      console.error('Search productivity items error:', error);
+      res.status(500).json({ error: 'Failed to search productivity items' });
+    }
+  });
+
+  // Activity Log Routes
+  app.get('/api/productivity/boards/:boardId/activity', isAuthenticated, async (req: any, res) => {
+    try {
+      const { boardId } = req.params;
+      const { limit = 50 } = req.query;
+      
+      const activities = await storage.getBoardActivityLog(boardId, parseInt(limit));
+      res.json({ activities });
+    } catch (error: any) {
+      console.error('Get board activity error:', error);
+      res.status(500).json({ error: 'Failed to get board activity' });
+    }
+  });
+
+  app.get('/api/productivity/items/:itemId/activity', isAuthenticated, async (req: any, res) => {
+    try {
+      const { itemId } = req.params;
+      const { limit = 20 } = req.query;
+      
+      const activities = await storage.getItemActivityLog(itemId, parseInt(limit));
+      res.json({ activities });
+    } catch (error: any) {
+      console.error('Get item activity error:', error);
+      res.status(500).json({ error: 'Failed to get item activity' });
+    }
+  });
+
+  // Data Integration Routes
+  app.post('/api/productivity/boards/:boardId/from-anomalies', isAuthenticated, async (req: any, res) => {
+    try {
+      const { boardId } = req.params;
+      const { anomalyIds } = req.body;
+      const userId = req.user.claims.sub;
+      
+      const items = await storage.createItemsFromAnomalies(anomalyIds, boardId, userId);
+      res.json({ items });
+    } catch (error: any) {
+      console.error('Create items from anomalies error:', error);
+      res.status(500).json({ error: 'Failed to create items from anomalies' });
+    }
+  });
+
+  app.post('/api/productivity/boards/:boardId/from-patterns', isAuthenticated, async (req: any, res) => {
+    try {
+      const { boardId } = req.params;
+      const { patterns } = req.body;
+      const userId = req.user.claims.sub;
+      
+      const items = await storage.createItemsFromPatterns(patterns, boardId, userId);
+      res.json({ items });
+    } catch (error: any) {
+      console.error('Create items from patterns error:', error);
+      res.status(500).json({ error: 'Failed to create items from patterns' });
     }
   });
 

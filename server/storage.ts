@@ -100,7 +100,34 @@ import {
   type NotificationQueueStatus,
   type NotificationEventType,
   type AdminApprovalStatus,
-  type AdminApprovalResourceType
+  type AdminApprovalResourceType,
+  // Productivity Table System Types
+  type ProductivityBoard,
+  type InsertProductivityBoard,
+  type ProductivityItem,
+  type InsertProductivityItem,
+  type ItemColumn,
+  type InsertItemColumn,
+  type ColumnValue,
+  type InsertColumnValue,
+  type ProductivityNotification,
+  type InsertProductivityNotification,
+  type ProductivityReminder,
+  type InsertProductivityReminder,
+  type BoardTemplate,
+  type InsertBoardTemplate,
+  type BoardAutomation,
+  type InsertBoardAutomation,
+  type ActivityLog,
+  type InsertActivityLog,
+  type BoardType,
+  type ItemStatus,
+  type ItemPriority,
+  type ColumnType,
+  type ProductivityNotificationType,
+  type ReminderFrequency,
+  type ActivityAction,
+  type EntityType
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -613,6 +640,167 @@ export interface IStorage {
   updateMarketDataCache(ticker: string, updates: Partial<MarketDataCache>): Promise<MarketDataCache | undefined>;
   deleteMarketDataCache(ticker: string): Promise<boolean>;
   cleanupStaleMarketData(olderThanHours: number): Promise<number>;
+
+  // ===========================================
+  // PRODUCTIVITY TABLE SYSTEM METHODS
+  // ===========================================
+
+  // Productivity Boards Management
+  createProductivityBoard(board: InsertProductivityBoard): Promise<ProductivityBoard>;
+  getProductivityBoard(id: string): Promise<ProductivityBoard | undefined>;
+  getUserProductivityBoards(userId: string): Promise<ProductivityBoard[]>;
+  updateProductivityBoard(id: string, updates: Partial<ProductivityBoard>): Promise<ProductivityBoard | undefined>;
+  deleteProductivityBoard(id: string): Promise<boolean>;
+  duplicateProductivityBoard(id: string, newTitle: string, userId: string): Promise<ProductivityBoard>;
+  getPublicTemplateBoards(): Promise<ProductivityBoard[]>;
+  getBoardsByType(userId: string, boardType: BoardType): Promise<ProductivityBoard[]>;
+
+  // Productivity Items Management
+  createProductivityItem(item: InsertProductivityItem): Promise<ProductivityItem>;
+  getProductivityItem(id: string): Promise<ProductivityItem | undefined>;
+  getBoardProductivityItems(boardId: string): Promise<ProductivityItem[]>;
+  updateProductivityItem(id: string, updates: Partial<ProductivityItem>): Promise<ProductivityItem | undefined>;
+  deleteProductivityItem(id: string): Promise<boolean>;
+  bulkUpdateProductivityItems(itemIds: string[], updates: Partial<ProductivityItem>): Promise<ProductivityItem[]>;
+  bulkDeleteProductivityItems(itemIds: string[]): Promise<boolean>;
+  getItemsByStatus(boardId: string, status: ItemStatus): Promise<ProductivityItem[]>;
+  getItemsByPriority(boardId: string, priority: ItemPriority): Promise<ProductivityItem[]>;
+  getItemsByAssignee(assigneeId: string): Promise<ProductivityItem[]>;
+  getOverdueItems(userId: string): Promise<ProductivityItem[]>;
+  getDueSoonItems(userId: string, days: number): Promise<ProductivityItem[]>;
+  moveItemToBoard(itemId: string, targetBoardId: string): Promise<ProductivityItem | undefined>;
+  reorderItems(boardId: string, itemOrders: { id: string; position: number }[]): Promise<void>;
+  createItemFromAnomaly(anomalyId: string, boardId: string, userId: string): Promise<ProductivityItem>;
+  getItemSubtasks(parentItemId: string): Promise<ProductivityItem[]>;
+
+  // Item Columns Management
+  createItemColumn(column: InsertItemColumn): Promise<ItemColumn>;
+  getItemColumn(id: string): Promise<ItemColumn | undefined>;
+  getBoardColumns(boardId: string): Promise<ItemColumn[]>;
+  updateItemColumn(id: string, updates: Partial<ItemColumn>): Promise<ItemColumn | undefined>;
+  deleteItemColumn(id: string): Promise<boolean>;
+  reorderColumns(boardId: string, columnOrders: { id: string; position: number }[]): Promise<void>;
+  duplicateColumn(columnId: string, targetBoardId?: string): Promise<ItemColumn>;
+
+  // Column Values Management
+  createColumnValue(value: InsertColumnValue): Promise<ColumnValue>;
+  getColumnValue(id: string): Promise<ColumnValue | undefined>;
+  getItemColumnValues(itemId: string): Promise<ColumnValue[]>;
+  getBoardColumnValues(boardId: string): Promise<ColumnValue[]>;
+  updateColumnValue(id: string, updates: Partial<ColumnValue>): Promise<ColumnValue | undefined>;
+  deleteColumnValue(id: string): Promise<boolean>;
+  getColumnValueByItemAndColumn(itemId: string, columnId: string): Promise<ColumnValue | undefined>;
+  bulkUpdateColumnValues(updates: { itemId: string; columnId: string; value: string; metadata?: any }[]): Promise<ColumnValue[]>;
+
+  // Productivity Notifications Management
+  createProductivityNotification(notification: InsertProductivityNotification): Promise<ProductivityNotification>;
+  getProductivityNotification(id: string): Promise<ProductivityNotification | undefined>;
+  getUserProductivityNotifications(userId: string, limit?: number): Promise<ProductivityNotification[]>;
+  getUnreadProductivityNotifications(userId: string): Promise<ProductivityNotification[]>;
+  markProductivityNotificationRead(id: string): Promise<ProductivityNotification | undefined>;
+  markAllProductivityNotificationsRead(userId: string): Promise<number>;
+  deleteProductivityNotification(id: string): Promise<boolean>;
+  getItemNotifications(itemId: string): Promise<ProductivityNotification[]>;
+  createDueDateNotification(itemId: string, userId: string): Promise<ProductivityNotification>;
+  createAssignmentNotification(itemId: string, assigneeId: string, assignedBy: string): Promise<ProductivityNotification>;
+  createStatusChangeNotification(itemId: string, oldStatus: ItemStatus, newStatus: ItemStatus, changedBy: string): Promise<ProductivityNotification>;
+
+  // Productivity Reminders Management
+  createProductivityReminder(reminder: InsertProductivityReminder): Promise<ProductivityReminder>;
+  getProductivityReminder(id: string): Promise<ProductivityReminder | undefined>;
+  getUserProductivityReminders(userId: string): Promise<ProductivityReminder[]>;
+  getActiveReminders(): Promise<ProductivityReminder[]>;
+  getDueReminders(): Promise<ProductivityReminder[]>;
+  updateProductivityReminder(id: string, updates: Partial<ProductivityReminder>): Promise<ProductivityReminder | undefined>;
+  deactivateProductivityReminder(id: string): Promise<ProductivityReminder | undefined>;
+  deleteProductivityReminder(id: string): Promise<boolean>;
+  updateReminderLastSent(id: string, sentAt: Date): Promise<ProductivityReminder | undefined>;
+  scheduleNextReminder(id: string, nextDate: Date): Promise<ProductivityReminder | undefined>;
+
+  // Board Templates Management
+  createBoardTemplate(template: InsertBoardTemplate): Promise<BoardTemplate>;
+  getBoardTemplate(id: string): Promise<BoardTemplate | undefined>;
+  getBoardTemplates(category?: string): Promise<BoardTemplate[]>;
+  getPublicBoardTemplates(): Promise<BoardTemplate[]>;
+  getUserBoardTemplates(userId: string): Promise<BoardTemplate[]>;
+  updateBoardTemplate(id: string, updates: Partial<BoardTemplate>): Promise<BoardTemplate | undefined>;
+  deleteBoardTemplate(id: string): Promise<boolean>;
+  incrementTemplateUsage(id: string): Promise<BoardTemplate | undefined>;
+  rateBoardTemplate(id: string, rating: number): Promise<BoardTemplate | undefined>;
+  createBoardFromTemplate(templateId: string, userId: string, boardTitle: string): Promise<ProductivityBoard>;
+
+  // Board Automations Management
+  createBoardAutomation(automation: InsertBoardAutomation): Promise<BoardAutomation>;
+  getBoardAutomation(id: string): Promise<BoardAutomation | undefined>;
+  getBoardAutomations(boardId: string): Promise<BoardAutomation[]>;
+  getActiveBoardAutomations(boardId: string): Promise<BoardAutomation[]>;
+  updateBoardAutomation(id: string, updates: Partial<BoardAutomation>): Promise<BoardAutomation | undefined>;
+  toggleBoardAutomation(id: string, isActive: boolean): Promise<BoardAutomation | undefined>;
+  deleteBoardAutomation(id: string): Promise<boolean>;
+  updateAutomationLastTriggered(id: string, triggeredAt: Date): Promise<BoardAutomation | undefined>;
+  incrementAutomationTriggerCount(id: string): Promise<BoardAutomation | undefined>;
+
+  // Activity Log Management
+  createActivityLog(log: InsertActivityLog): Promise<ActivityLog>;
+  getActivityLog(id: string): Promise<ActivityLog | undefined>;
+  getBoardActivityLog(boardId: string, limit?: number): Promise<ActivityLog[]>;
+  getItemActivityLog(itemId: string, limit?: number): Promise<ActivityLog[]>;
+  getUserActivityLog(userId: string, limit?: number): Promise<ActivityLog[]>;
+  deleteOldActivityLogs(olderThanDays: number): Promise<number>;
+
+  // Search and Analytics
+  searchProductivityItems(
+    userId: string, 
+    query: string, 
+    filters?: {
+      boardId?: string;
+      status?: ItemStatus[];
+      priority?: ItemPriority[];
+      assignedTo?: string[];
+      tags?: string[];
+      dueDateFrom?: Date;
+      dueDateTo?: Date;
+    }
+  ): Promise<ProductivityItem[]>;
+  
+  getProductivityAnalytics(userId: string, boardId?: string): Promise<{
+    totalItems: number;
+    completedItems: number;
+    overdue: number;
+    dueSoon: number;
+    byStatus: Record<ItemStatus, number>;
+    byPriority: Record<ItemPriority, number>;
+    avgCompletionTime: number;
+    productivityTrend: Array<{ date: Date; completed: number; created: number }>;
+  }>;
+
+  getUserProductivityStats(userId: string): Promise<{
+    totalBoards: number;
+    totalItems: number;
+    completedThisWeek: number;
+    overdueItems: number;
+    upcomingDeadlines: number;
+    mostProductiveDay: string;
+    averageCompletionTime: number;
+  }>;
+
+  // Data Integration Methods
+  createItemsFromAnomalies(anomalyIds: string[], boardId: string, userId: string): Promise<ProductivityItem[]>;
+  createItemsFromPatterns(patterns: any[], boardId: string, userId: string): Promise<ProductivityItem[]>;
+  linkItemToData(itemId: string, sourceType: string, sourceId: string): Promise<ProductivityItem | undefined>;
+  
+  // Export and Import Methods
+  exportBoardData(boardId: string, format: 'csv' | 'excel' | 'json'): Promise<{
+    filename: string;
+    data: any;
+    downloadUrl?: string;
+  }>;
+  
+  importBoardData(boardId: string, data: any, format: 'csv' | 'excel' | 'json'): Promise<{
+    itemsCreated: number;
+    itemsUpdated: number;
+    errors: string[];
+  }>;
 }
 
 export class MemStorage implements IStorage {
