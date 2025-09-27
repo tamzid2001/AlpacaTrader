@@ -178,9 +178,9 @@ export class DatabaseStorage implements IStorage {
     this.initializeData();
   }
 
-  private async initializeData() {
-    // Check if admin user exists, if not create one
+  private async initializeData(): Promise<void> {
     try {
+      // Check if admin user exists, if not create one
       const existingAdmin = await db.select({
         id: users.id,
         email: users.email,
@@ -196,121 +196,97 @@ export class DatabaseStorage implements IStorage {
           email: "tamzid257@gmail.com",
           firstName: "Tamzid",
           lastName: "Admin",
-        profileImageUrl: null,
-        role: "admin",
-        isApproved: true,
-        dataRetentionUntil: null,
-        marketingConsent: true,
-        analyticsConsent: true,
-        dataProcessingBasis: "consent",
-        lastConsentUpdate: new Date(),
-        stripeCustomerId: null,
-        stripeSubscriptionId: null,
-        subscriptionStatus: null,
-        subscriptionPlan: null,
-        subscriptionStartDate: null,
-        subscriptionEndDate: null,
-        automlCreditsRemaining: 100,
-        automlCreditsTotal: 100,
-        monthlyUsageResetDate: new Date(),
-        defaultPaymentMethodId: null,
-        isPremiumApproved: true,
-        premiumApprovedAt: new Date(),
-        premiumApprovedBy: "system",
-        premiumTier: "professional",
-        premiumStatus: "premium",
-        premiumRequestedAt: null,
-        premiumRequestJustification: null,
-      };
+          profileImageUrl: null,
+          role: "admin",
+          isApproved: true,
+          dataRetentionUntil: null,
+          marketingConsent: true,
+          analyticsConsent: true,
+          dataProcessingBasis: "consent",
+          lastConsentUpdate: new Date(),
+          stripeCustomerId: null,
+          stripeSubscriptionId: null,
+          subscriptionStatus: null,
+          subscriptionPlan: null,
+          subscriptionStartDate: null,
+          subscriptionEndDate: null,
+          automlCreditsRemaining: 100,
+          automlCreditsTotal: 100,
+          monthlyUsageResetDate: new Date(),
+          defaultPaymentMethodId: null,
+          isPremiumApproved: true,
+          premiumApprovedAt: new Date(),
+          premiumApprovedBy: "system",
+          premiumTier: "professional",
+          premiumStatus: "premium",
+          premiumRequestedAt: null,
+          premiumRequestJustification: null,
+        };
 
-      await db.insert(users).values(adminUser);
-      console.log("✅ Admin user created successfully");
-      
-      // Create sample courses if they don't exist
-      const existingCourses = await db.select().from(courses).limit(1);
-      if (existingCourses.length === 0) {
-        const sampleCourses: InsertCourse[] = [
-          {
-            title: "Financial Markets Fundamentals",
-            description: "Learn the basics of financial markets, trading strategies, and risk management.",
-            level: "beginner",
-            price: 99,
-            rating: 48,
-            imageUrl: "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=240",
-            videoUrl: "/api/courses/1/video",
-            slidesUrl: "/api/courses/1/slides",
-            documentsUrl: "/api/courses/1/documents", 
-            codeUrl: "/api/courses/1/code",
-            status: "published",
-            instructor: "Dr. Sarah Johnson",
-            duration: 120,
-            category: "Finance",
-            thumbnailUrl: null,
-            previewVideoUrl: null,
-            totalLessons: 0,
-            estimatedCompletionHours: 4,
-            prerequisites: null,
-            learningObjectives: ["Understand financial markets", "Learn trading basics", "Master risk management"],
-            tags: ["finance", "markets", "beginner"],
-            publishedAt: new Date(),
-            ownerId: "tamzid-admin-id"
-          },
-          {
-            title: "Machine Learning for Finance",
-            description: "Apply machine learning techniques to financial data using Python and SageMaker.",
-            level: "intermediate",
-            price: 199,
-            rating: 49,
-            imageUrl: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=240",
-            videoUrl: "/api/courses/2/video",
-            slidesUrl: "/api/courses/2/slides",
-            documentsUrl: "/api/courses/2/documents",
-            codeUrl: "/api/courses/2/code",
-            status: "published",
-            instructor: "Prof. Michael Chen",
-            duration: 180,
-            category: "Machine Learning",
-            thumbnailUrl: null,
-            previewVideoUrl: null,
-            totalLessons: 0,
-            estimatedCompletionHours: 6,
-            prerequisites: ["Basic Python knowledge"],
-            learningObjectives: ["Master ML algorithms", "Apply ML to finance", "Use Python libraries"],
-            tags: ["ml", "finance", "python", "intermediate"],
-            publishedAt: new Date(),
-            ownerId: "tamzid-admin-id"
-          },
-          {
-            title: "Algorithmic Trading Strategies",
-            description: "Build and deploy sophisticated trading algorithms with real-time market data.",
-            level: "advanced",
-            price: 299,
-            rating: 47,
-            imageUrl: "https://images.unsplash.com/photo-1560472354-b33ff0c44a43?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=240",
-            videoUrl: "/api/courses/3/video",
-            slidesUrl: "/api/courses/3/slides",
-            documentsUrl: "/api/courses/3/documents",
-            codeUrl: "/api/courses/3/code",
-            status: "published",
-            instructor: "Dr. Alex Rodriguez",
-            duration: 240,
-            category: "Trading",
-            thumbnailUrl: null,
-            previewVideoUrl: null,
-            totalLessons: 0,
-            estimatedCompletionHours: 8,
-            prerequisites: ["Financial Markets Fundamentals", "Programming experience"],
-            learningObjectives: ["Build trading algorithms", "Deploy trading systems", "Manage risk"],
-            tags: ["trading", "algorithms", "advanced"],
-            publishedAt: new Date(),
-            ownerId: "tamzid-admin-id"
-          }
-        ];
+        await db.insert(users).values(adminUser);
+        console.log("✅ Admin user created successfully");
+        
+        // Create sample courses if they don't exist
+        const existingCourses = await db.select().from(courses).limit(1);
+        if (existingCourses.length === 0) {
+          const sampleCourses: InsertCourse[] = [
+            {
+              title: "Financial Markets Fundamentals",
+              description: "Learn the basics of financial markets, trading strategies, and risk management.",
+              level: "beginner",
+              price: 99,
+              rating: 48,
+              imageUrl: "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=240",
+              videoUrl: "/api/courses/1/video",
+              slidesUrl: "/api/courses/1/slides",
+              documentsUrl: "/api/courses/1/documents", 
+              codeUrl: "/api/courses/1/code",
+              status: "published",
+              instructor: "Dr. Sarah Johnson",
+              duration: 120,
+              category: "Finance",
+              thumbnailUrl: null,
+              previewVideoUrl: null,
+              totalLessons: 0,
+              estimatedCompletionHours: 4,
+              prerequisites: null,
+              learningObjectives: ["Understand financial markets", "Learn trading basics", "Master risk management"],
+              tags: ["finance", "markets", "beginner"],
+              publishedAt: new Date(),
+              ownerId: "tamzid-admin-id"
+            },
+            {
+              title: "Machine Learning for Finance",
+              description: "Apply machine learning techniques to financial data using Python and SageMaker.",
+              level: "intermediate",
+              price: 199,
+              rating: 49,
+              imageUrl: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=240",
+              videoUrl: "/api/courses/2/video",
+              slidesUrl: "/api/courses/2/slides",
+              documentsUrl: "/api/courses/2/documents",
+              codeUrl: "/api/courses/2/code",
+              status: "published",
+              instructor: "Prof. Michael Chen",
+              duration: 180,
+              category: "Machine Learning",
+              thumbnailUrl: null,
+              previewVideoUrl: null,
+              totalLessons: 0,
+              estimatedCompletionHours: 6,
+              prerequisites: ["Basic Python knowledge"],
+              learningObjectives: ["Master ML algorithms", "Apply ML to finance", "Use Python libraries"],
+              tags: ["ml", "finance", "python", "intermediate"],
+              publishedAt: new Date(),
+              ownerId: "tamzid-admin-id"
+            }
+          ];
 
-        await db.insert(courses).values(sampleCourses);
-        console.log("✅ Sample courses created successfully");
+          await db.insert(courses).values(sampleCourses);
+          console.log("✅ Sample courses created successfully");
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.warn("⚠️ Database initialization had issues, but continuing...", error.message);
     }
   }
@@ -333,13 +309,8 @@ export class DatabaseStorage implements IStorage {
     
     if (existingUser) {
       // Update existing user
-      const updatedData = {
-        ...userData,
-        updatedAt: new Date(),
-      };
-      
       const result = await db.update(users)
-        .set(updatedData)
+        .set(userData)
         .where(eq(users.id, userData.id))
         .returning();
       
@@ -347,12 +318,13 @@ export class DatabaseStorage implements IStorage {
     } else {
       // Create new user
       const newUser: InsertUser = {
+        id: userData.id,
         email: userData.email ?? null,
         firstName: userData.firstName ?? null,
         lastName: userData.lastName ?? null,
         profileImageUrl: userData.profileImageUrl ?? null,
         role: userData.role ?? "user",
-        isApproved: userData.isApproved ?? true, // Auto-approve Replit Auth users
+        isApproved: userData.isApproved ?? true,
         dataRetentionUntil: null,
         marketingConsent: false,
         analyticsConsent: false,
@@ -376,395 +348,95 @@ export class DatabaseStorage implements IStorage {
         premiumRequestedAt: null,
         premiumRequestJustification: null,
       };
-      
+
       const result = await db.insert(users).values(newUser).returning();
       return result[0];
     }
   }
 
-  async getUserByEmail(email: string): Promise<User | undefined> {
-    const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
-    return result[0];
-  }
-
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const user: InsertUser = {
-      ...insertUser,
-      email: insertUser.email ?? null,
-      firstName: insertUser.firstName ?? null,
-      lastName: insertUser.lastName ?? null,
-      profileImageUrl: insertUser.profileImageUrl ?? null,
-      role: insertUser.role ?? "user",
-      isApproved: insertUser.isApproved ?? false,
-    };
-    
-    const result = await db.insert(users).values(user).returning();
-    return result[0];
-  }
-
-  async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
-    const updatedData = { 
-      ...updates, 
-      updatedAt: new Date() 
-    };
-    
-    const result = await db.update(users)
-      .set(updatedData)
-      .where(eq(users.id, id))
-      .returning();
-    
-    return result[0];
-  }
-
   async getAllUsers(): Promise<User[]> {
-    return await db.select().from(users).orderBy(desc(users.createdAt));
+    return await db.select().from(users).orderBy(desc(users.id));
   }
 
-  async getPendingUsers(): Promise<User[]> {
-    return await db.select().from(users).where(eq(users.isApproved, false));
-  }
-
-  async approveUser(id: string): Promise<User | undefined> {
-    return this.updateUser(id, { isApproved: true });
-  }
-
-  // ===================
-  // STRIPE INTEGRATION
-  // ===================
-
-  async updateStripeCustomerId(userId: string, customerId: string): Promise<User | undefined> {
-    return this.updateUser(userId, { stripeCustomerId: customerId });
-  }
-
-  async updateUserStripeInfo(userId: string, stripeInfo: { customerId?: string; subscriptionId?: string }): Promise<User | undefined> {
-    const updates: Partial<User> = {};
-    if (stripeInfo.customerId !== undefined) {
-      updates.stripeCustomerId = stripeInfo.customerId;
-    }
-    if (stripeInfo.subscriptionId !== undefined) {
-      updates.stripeSubscriptionId = stripeInfo.subscriptionId;
-    }
-    return this.updateUser(userId, updates);
-  }
-
-  async findUserByEmail(email: string): Promise<User | undefined> {
-    return this.getUserByEmail(email);
-  }
-
-  async updateUserSubscription(userId: string, subscriptionData: any): Promise<User | undefined> {
-    const updates: Partial<User> = {
-      subscriptionStatus: subscriptionData.status,
-      subscriptionPlan: subscriptionData.plan,
-      subscriptionStartDate: subscriptionData.startDate ? new Date(subscriptionData.startDate) : null,
-      subscriptionEndDate: subscriptionData.endDate ? new Date(subscriptionData.endDate) : null,
-    };
-    return this.updateUser(userId, updates);
-  }
-
-  async cancelUserSubscription(userId: string): Promise<void> {
-    await this.updateUser(userId, {
-      subscriptionStatus: "cancelled",
-      stripeSubscriptionId: null,
-    });
-  }
-
-  async deductAutoMLCredits(userId: string, credits: number): Promise<void> {
-    const user = await this.getUser(userId);
-    if (user && user.automlCreditsRemaining && user.automlCreditsRemaining >= credits) {
-      await this.updateUser(userId, {
-        automlCreditsRemaining: user.automlCreditsRemaining - credits,
-      });
-    } else {
-      throw new Error("Insufficient AutoML credits");
-    }
-  }
-
-  async recordPayment(paymentData: InsertPayment): Promise<Payment> {
-    const result = await db.insert(payments).values(paymentData).returning();
-    return result[0];
+  async updateUserStripeInfo(userId: string, stripeData: { customerId?: string; subscriptionId?: string }): Promise<void> {
+    await db.update(users)
+      .set(stripeData)
+      .where(eq(users.id, userId));
   }
 
   // ===================
   // COURSE MANAGEMENT
   // ===================
 
-  async getAllCourses(): Promise<Course[]> {
-    return await db.select().from(courses).orderBy(desc(courses.createdAt));
-  }
-
   async getCourse(id: string): Promise<Course | undefined> {
     const result = await db.select().from(courses).where(eq(courses.id, id)).limit(1);
     return result[0];
   }
 
-  async createCourse(insertCourse: InsertCourse): Promise<Course> {
-    const course: InsertCourse = {
-      ...insertCourse,
-      rating: insertCourse.rating ?? null,
-      imageUrl: insertCourse.imageUrl ?? null,
-      videoUrl: insertCourse.videoUrl ?? null,
-      slidesUrl: insertCourse.slidesUrl ?? null,
-      documentsUrl: insertCourse.documentsUrl ?? null,
-      codeUrl: insertCourse.codeUrl ?? null,
-    };
-    
+  async getAllCourses(): Promise<Course[]> {
+    return await db.select().from(courses).orderBy(desc(courses.publishedAt));
+  }
+
+  async createCourse(course: InsertCourse): Promise<Course> {
     const result = await db.insert(courses).values(course).returning();
     return result[0];
   }
 
-  async updateCourse(id: string, updates: Partial<Course>): Promise<Course | undefined> {
-    const updatedData = { 
-      ...updates, 
-      updatedAt: new Date() 
-    };
-    
+  async updateCourse(id: string, updates: Partial<InsertCourse>): Promise<Course> {
     const result = await db.update(courses)
-      .set(updatedData)
+      .set(updates)
       .where(eq(courses.id, id))
       .returning();
-    
     return result[0];
   }
 
-  async deleteCourse(id: string): Promise<boolean> {
-    try {
-      // Delete related enrollments first (foreign key constraint)
-      await db.delete(courseEnrollments).where(eq(courseEnrollments.courseId, id));
-      
-      // Delete related quizzes
-      await db.delete(quizzes).where(eq(quizzes.courseId, id));
-      
-      // Delete the course
-      const result = await db.delete(courses).where(eq(courses.id, id));
-      
-      return true;
-    } catch (error) {
-      console.error("Error deleting course:", error);
-      return false;
-    }
-  }
-
-  async getPublishedCourses(): Promise<Course[]> {
-    return await db.select().from(courses)
-      .where(and(
-        eq(courses.status, "published"),
-        not(isNull(courses.publishedAt))
-      ))
-      .orderBy(desc(courses.publishedAt));
-  }
-
-  async getCoursesByCategory(category: string): Promise<Course[]> {
-    return await db.select().from(courses).where(eq(courses.category, category));
-  }
-
-  async searchCourses(query: string): Promise<Course[]> {
-    const searchTerm = `%${query.toLowerCase()}%`;
-    return await db.select().from(courses)
-      .where(or(
-        like(sql`lower(${courses.title})`, searchTerm),
-        like(sql`lower(${courses.description})`, searchTerm),
-        like(sql`lower(${courses.instructor})`, searchTerm)
-      ));
+  async deleteCourse(id: string): Promise<void> {
+    await db.delete(courses).where(eq(courses.id, id));
   }
 
   // ===================
   // ENROLLMENT MANAGEMENT
   // ===================
 
-  async getUserEnrollments(userId: string): Promise<(CourseEnrollment & { course: Course })[]> {
-    const result = await db.select({
-      id: courseEnrollments.id,
-      userId: courseEnrollments.userId,
-      courseId: courseEnrollments.courseId,
-      progress: courseEnrollments.progress,
-      completed: courseEnrollments.completed,
-      enrolledAt: courseEnrollments.enrolledAt,
-      completionDate: courseEnrollments.completionDate,
-      lastAccessedAt: courseEnrollments.lastAccessedAt,
-      totalTimeSpent: courseEnrollments.totalTimeSpent,
-      certificateIssued: courseEnrollments.certificateIssued,
-      certificateUrl: courseEnrollments.certificateUrl,
-      course: courses,
-    })
-    .from(courseEnrollments)
-    .innerJoin(courses, eq(courseEnrollments.courseId, courses.id))
-    .where(eq(courseEnrollments.userId, userId))
-    .orderBy(desc(courseEnrollments.enrolledAt));
-
-    return result;
-  }
-
   async getEnrollment(userId: string, courseId: string): Promise<CourseEnrollment | undefined> {
-    const result = await db.select().from(courseEnrollments)
-      .where(and(
-        eq(courseEnrollments.userId, userId),
-        eq(courseEnrollments.courseId, courseId)
-      ))
+    const result = await db.select()
+      .from(courseEnrollments)
+      .where(and(eq(courseEnrollments.userId, userId), eq(courseEnrollments.courseId, courseId)))
       .limit(1);
-    
     return result[0];
   }
 
   async enrollUserInCourse(enrollment: InsertCourseEnrollment): Promise<CourseEnrollment> {
-    const enrollmentData: InsertCourseEnrollment = {
-      ...enrollment,
-      progress: enrollment.progress ?? 0,
-      completed: enrollment.completed ?? false,
-    };
-    
-    const result = await db.insert(courseEnrollments).values(enrollmentData).returning();
+    const result = await db.insert(courseEnrollments).values(enrollment).returning();
     return result[0];
   }
 
-  async updateEnrollmentProgress(userId: string, courseId: string, progress: number): Promise<void> {
-    await db.update(courseEnrollments)
-      .set({
-        progress,
-        lastAccessedAt: new Date(),
-      })
-      .where(and(
-        eq(courseEnrollments.userId, userId),
-        eq(courseEnrollments.courseId, courseId)
-      ));
-  }
-
-  async updateEnrollmentAccess(userId: string, courseId: string): Promise<void> {
-    await db.update(courseEnrollments)
-      .set({
-        lastAccessedAt: new Date(),
-      })
-      .where(and(
-        eq(courseEnrollments.userId, userId),
-        eq(courseEnrollments.courseId, courseId)
-      ));
-  }
-
-  async completeCourse(userId: string, courseId: string): Promise<void> {
-    await db.update(courseEnrollments)
-      .set({
-        completed: true,
-        progress: 100,
-        completionDate: new Date(),
-      })
-      .where(and(
-        eq(courseEnrollments.userId, userId),
-        eq(courseEnrollments.courseId, courseId)
-      ));
+  async getUserEnrollments(userId: string): Promise<CourseEnrollment[]> {
+    return await db.select()
+      .from(courseEnrollments)
+      .where(eq(courseEnrollments.userId, userId))
+      .orderBy(desc(courseEnrollments.enrolledAt));
   }
 
   // ===================
-  // PLACEHOLDER IMPLEMENTATIONS
-  // Note: These need to be implemented based on the full IStorage interface
-  // For now, returning mock data to ensure the interface is satisfied
+  // SUPPORT MESSAGES
   // ===================
 
-  async getUserPremiumAnalytics(userId: string): Promise<any> {
-    // TODO: Implement with real database queries
-    return {
-      totalLearningHours: 0,
-      learningVelocity: 0,
-      skillProgression: [],
-      performanceComparison: { userAvgScore: 0, platformAvgScore: 0, ranking: "N/A" },
-      completionTrends: { last30Days: 0, averagePerWeek: 0, trend: "stable" },
-      timeAllocation: { videoWatching: 0, quizzes: 0, reading: 0 }
-    };
-  }
-
-  async getUserCareerInsights(userId: string): Promise<any> {
-    // TODO: Implement with real database queries
-    return {
-      skillAssessments: [],
-      careerRecommendations: [],
-      industrySkills: {},
-      learningPaths: [],
-      jobMarketInsights: { demandTrends: {}, salaryRanges: {}, locations: [] },
-      resumeOptimization: { suggestions: [], keySkills: [], improvements: [] }
-    };
-  }
-
-  // AutoML Jobs
-  async createAutoMLJob(jobData: InsertAutoMLJob): Promise<AutoMLJob> {
-    const result = await db.insert(automlJobs).values(jobData).returning();
-    return result[0];
-  }
-
-  async updateAutoMLJob(jobId: string, updates: Partial<AutoMLJob>): Promise<AutoMLJob | undefined> {
-    const result = await db.update(automlJobs)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(eq(automlJobs.id, jobId))
-      .returning();
-    return result[0];
-  }
-
-  async getUserAutoMLJobs(userId: string): Promise<AutoMLJob[]> {
-    return await db.select().from(automlJobs)
-      .where(eq(automlJobs.userId, userId))
-      .orderBy(desc(automlJobs.createdAt));
-  }
-
-  // PLACEHOLDER METHODS - TO BE IMPLEMENTED
-  // These are temporary implementations to satisfy the interface
-  // Each should be replaced with proper database operations
-
-  async getCourseLessons(courseId: string): Promise<Lesson[]> { return []; }
-  async getLesson(id: string): Promise<Lesson | undefined> { return undefined; }
-  async createLesson(lesson: InsertLesson): Promise<Lesson> { throw new Error("Not implemented"); }
-  async updateLesson(id: string, updates: Partial<Lesson>): Promise<Lesson | undefined> { return undefined; }
-  async deleteLesson(id: string): Promise<boolean> { return false; }
-  async updateLessonOrder(courseId: string, lessonOrders: { id: string; order: number }[]): Promise<void> {}
-
-  async getLessonMaterials(lessonId: string): Promise<CourseMaterial[]> { return []; }
-  async getCourseMaterials(courseId: string): Promise<CourseMaterial[]> { return []; }
-  async getMaterial(id: string): Promise<CourseMaterial | undefined> { return undefined; }
-  async createMaterial(material: InsertCourseMaterial): Promise<CourseMaterial> { throw new Error("Not implemented"); }
-  async updateMaterial(id: string, updates: Partial<CourseMaterial>): Promise<CourseMaterial | undefined> { return undefined; }
-  async deleteMaterial(id: string): Promise<boolean> { return false; }
-  async incrementDownloadCount(materialId: string): Promise<void> {}
-
-  async getUserProgress(userId: string, courseId: string): Promise<UserProgress[]> { return []; }
-  async getUserLessonProgress(userId: string, lessonId: string): Promise<UserProgress | undefined> { return undefined; }
-  async updateUserProgress(progress: InsertUserProgress): Promise<UserProgress> { throw new Error("Not implemented"); }
-  async markLessonCompleted(userId: string, lessonId: string): Promise<void> {}
-  async updateVideoProgress(userId: string, lessonId: string, lastWatched: number, progressPercentage: number): Promise<void> {}
-  async getCourseProgressSummary(userId: string, courseId: string): Promise<{ completedLessons: number; totalLessons: number; overallProgress: number }> {
-    return { completedLessons: 0, totalLessons: 0, overallProgress: 0 };
-  }
-
-  // Quiz System - Placeholder implementations
-  async getAllQuizzes(): Promise<Quiz[]> { return []; }
-  async getCourseQuizzes(courseId: string): Promise<(Quiz & { questionsCount: number })[]> { return []; }
-  async getLessonQuizzes(lessonId: string): Promise<Quiz[]> { return []; }
-  async getQuiz(id: string): Promise<Quiz | undefined> { return undefined; }
-  async getQuizWithQuestions(id: string): Promise<(Quiz & { questions: (Question & { options: QuestionOption[] })[] }) | undefined> { return undefined; }
-  async createQuiz(quiz: InsertQuiz): Promise<Quiz> { throw new Error("Not implemented"); }
-  async updateQuiz(id: string, updates: Partial<Quiz>): Promise<Quiz | undefined> { return undefined; }
-  async deleteQuiz(id: string): Promise<boolean> { return false; }
-  async publishQuiz(id: string): Promise<Quiz | undefined> { return undefined; }
-  async unpublishQuiz(id: string): Promise<Quiz | undefined> { return undefined; }
-  async duplicateQuiz(id: string, title: string): Promise<Quiz> { throw new Error("Not implemented"); }
-
-  // Support
   async createSupportMessage(message: InsertSupportMessage): Promise<SupportMessage> {
     const result = await db.insert(supportMessages).values(message).returning();
     return result[0];
   }
 
-  async getAllSupportMessages(): Promise<SupportMessage[]> {
+  async getSupportMessages(): Promise<SupportMessage[]> {
     return await db.select().from(supportMessages).orderBy(desc(supportMessages.createdAt));
   }
 
-  async updateSupportMessage(id: string, updates: Partial<SupportMessage>): Promise<SupportMessage | undefined> {
-    const result = await db.update(supportMessages)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(eq(supportMessages.id, id))
-      .returning();
-    return result[0];
-  }
+  // ===================
+  // CSV UPLOADS
+  // ===================
 
-  // CSV Uploads
-  async createCsvUpload(upload: InsertCsvUpload, userId: string): Promise<CsvUpload> {
-    const uploadData: InsertCsvUpload = { ...upload, userId };
-    const result = await db.insert(csvUploads).values(uploadData).returning();
+  async createCsvUpload(csvData: InsertCsvUpload): Promise<CsvUpload> {
+    const result = await db.insert(csvUploads).values(csvData).returning();
     return result[0];
   }
 
@@ -774,58 +446,578 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserCsvUploads(userId: string): Promise<CsvUpload[]> {
-    return await db.select().from(csvUploads)
+    return await db.select()
+      .from(csvUploads)
       .where(eq(csvUploads.userId, userId))
       .orderBy(desc(csvUploads.createdAt));
   }
 
-  async updateCsvUpload(id: string, updates: Partial<CsvUpload>): Promise<CsvUpload | undefined> {
+  async updateCsvUpload(id: string, updates: Partial<InsertCsvUpload>): Promise<CsvUpload> {
     const result = await db.update(csvUploads)
-      .set({ ...updates, updatedAt: new Date() })
+      .set(updates)
       .where(eq(csvUploads.id, id))
       .returning();
     return result[0];
   }
 
-  async deleteCsvUpload(id: string): Promise<boolean> {
-    try {
-      await db.delete(csvUploads).where(eq(csvUploads.id, id));
-      return true;
-    } catch {
-      return false;
-    }
+  async deleteCsvUpload(id: string): Promise<void> {
+    await db.delete(csvUploads).where(eq(csvUploads.id, id));
   }
 
-  // For now, implement remaining methods as placeholders
-  // Each will need proper database implementation
-  
-  // NOTE: This is a partial implementation to get the critical user management working
-  // All other methods need to be implemented with proper database operations
-  // This will be done incrementally to fix the immediate webhook failures
+  // ===================
+  // ANOMALY DETECTION
+  // ===================
 
-  // Add placeholder implementations for all remaining interface methods
-  // ... (continuing with minimal implementations to satisfy interface)
-  
-  // Temporary implementations for immediate interface satisfaction
-  async createAnomaly(anomaly: InsertAnomaly): Promise<Anomaly> { throw new Error("Not implemented"); }
-  async getUploadAnomalies(uploadId: string): Promise<Anomaly[]> { return []; }
-  async getUserAnomalies(userId: string): Promise<(Anomaly & { upload: CsvUpload })[]> { return []; }
-  async getAllAnomalies(): Promise<(Anomaly & { upload: CsvUpload })[]> { return []; }
-  async deleteAnomaly(id: string): Promise<boolean> { return false; }
+  async createAnomaly(anomaly: InsertAnomaly): Promise<Anomaly> {
+    const result = await db.insert(anomalies).values(anomaly).returning();
+    return result[0];
+  }
 
-  async createSharedResult(sharedResult: InsertSharedResult, userId: string): Promise<SharedResult> { throw new Error("Not implemented"); }
-  async getSharedResult(id: string): Promise<SharedResult | undefined> { return undefined; }
-  async getSharedResultByToken(token: string): Promise<(SharedResult & { upload: CsvUpload; user: User }) | undefined> { return undefined; }
-  async getUserSharedResults(userId: string): Promise<(SharedResult & { upload: CsvUpload })[]> { return []; }
-  async updateSharedResult(id: string, updates: Partial<SharedResult>): Promise<SharedResult | undefined> { return undefined; }
-  async deleteSharedResult(id: string): Promise<boolean> { return false; }
-  async incrementViewCount(id: string): Promise<void> {}
-  async logAccess(id: string, accessInfo: { ip: string; userAgent: string; timestamp: Date }): Promise<void> {}
+  async getAnomalies(uploadId: string): Promise<Anomaly[]> {
+    return await db.select()
+      .from(anomalies)
+      .where(eq(anomalies.uploadId, uploadId))
+      .orderBy(desc(anomalies.createdAt));
+  }
 
-  // Add all other placeholder methods to satisfy the interface...
-  // (This would be very long, so I'll implement the critical ones and add others as needed)
+  // ===================
+  // SHARED RESULTS
+  // ===================
 
-  // For now, throw "Not implemented" errors for methods that aren't critical for immediate testing
-  
-  [key: string]: any; // Allow any property to satisfy interface temporarily
+  async createSharedResult(result: InsertSharedResult): Promise<SharedResult> {
+    const dbResult = await db.insert(sharedResults).values(result).returning();
+    return dbResult[0];
+  }
+
+  async getSharedResult(id: string): Promise<SharedResult | undefined> {
+    const result = await db.select().from(sharedResults).where(eq(sharedResults.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getUserSharedResults(userId: string): Promise<SharedResult[]> {
+    return await db.select()
+      .from(sharedResults)
+      .where(eq(sharedResults.userId, userId))
+      .orderBy(desc(sharedResults.createdAt));
+  }
+
+  // ===================
+  // QUIZ SYSTEM
+  // ===================
+
+  async createQuiz(quiz: InsertQuiz): Promise<Quiz> {
+    const result = await db.insert(quizzes).values(quiz).returning();
+    return result[0];
+  }
+
+  async getQuiz(id: string): Promise<Quiz | undefined> {
+    const result = await db.select().from(quizzes).where(eq(quizzes.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getQuizQuestions(quizId: string): Promise<Question[]> {
+    return await db.select()
+      .from(questions)
+      .where(eq(questions.quizId, quizId))
+      .orderBy(asc(questions.order));
+  }
+
+  async getQuestion(id: string): Promise<Question | undefined> {
+    const result = await db.select().from(questions).where(eq(questions.id, id)).limit(1);
+    return result[0];
+  }
+
+  async createQuestion(question: InsertQuestion): Promise<Question> {
+    const result = await db.insert(questions).values(question).returning();
+    return result[0];
+  }
+
+  async createQuestionOption(option: InsertQuestionOption): Promise<QuestionOption> {
+    const result = await db.insert(questionOptions).values(option).returning();
+    return result[0];
+  }
+
+  async getQuestionOptions(questionId: string): Promise<QuestionOption[]> {
+    return await db.select()
+      .from(questionOptions)
+      .where(eq(questionOptions.questionId, questionId))
+      .orderBy(asc(questionOptions.order));
+  }
+
+  async createQuizAttempt(attempt: InsertQuizAttempt): Promise<QuizAttempt> {
+    const result = await db.insert(quizAttempts).values(attempt).returning();
+    return result[0];
+  }
+
+  async getUserQuizAttempts(userId: string, quizId: string): Promise<QuizAttempt[]> {
+    return await db.select()
+      .from(quizAttempts)
+      .where(and(eq(quizAttempts.userId, userId), eq(quizAttempts.quizId, quizId)))
+      .orderBy(desc(quizAttempts.createdAt));
+  }
+
+  async createQuestionResponse(response: InsertQuestionResponse): Promise<QuestionResponse> {
+    const result = await db.insert(questionResponses).values(response).returning();
+    return result[0];
+  }
+
+  async getQuizAttemptResponses(attemptId: string): Promise<QuestionResponse[]> {
+    return await db.select()
+      .from(questionResponses)
+      .where(eq(questionResponses.attemptId, attemptId));
+  }
+
+  // ===================
+  // CERTIFICATES
+  // ===================
+
+  async createCertificate(certificate: InsertCertificate): Promise<Certificate> {
+    const result = await db.insert(certificates).values(certificate).returning();
+    return result[0];
+  }
+
+  async getUserCertificates(userId: string): Promise<Certificate[]> {
+    return await db.select()
+      .from(certificates)
+      .where(eq(certificates.userId, userId))
+      .orderBy(desc(certificates.createdAt));
+  }
+
+  async getCertificate(id: string): Promise<Certificate | undefined> {
+    const result = await db.select().from(certificates).where(eq(certificates.id, id)).limit(1);
+    return result[0];
+  }
+
+  // ===================
+  // GDPR COMPLIANCE
+  // ===================
+
+  async createUserConsent(consent: InsertUserConsent): Promise<UserConsent> {
+    const result = await db.insert(userConsent).values(consent).returning();
+    return result[0];
+  }
+
+  async getUserConsent(userId: string): Promise<UserConsent[]> {
+    return await db.select()
+      .from(userConsent)
+      .where(eq(userConsent.userId, userId))
+      .orderBy(desc(userConsent.createdAt));
+  }
+
+  async createAnonymousConsent(consent: InsertAnonymousConsent): Promise<AnonymousConsent> {
+    const result = await db.insert(anonymousConsent).values(consent).returning();
+    return result[0];
+  }
+
+  async logDataProcessing(log: InsertDataProcessingLog): Promise<DataProcessingLog> {
+    const result = await db.insert(dataProcessingLog).values(log).returning();
+    return result[0];
+  }
+
+  // ===================
+  // AUTH AUDIT
+  // ===================
+
+  async logAuthEvent(log: InsertAuthAuditLog): Promise<AuthAuditLog> {
+    const result = await db.insert(authAuditLog).values(log).returning();
+    return result[0];
+  }
+
+  async getAuthAuditLogs(userId?: string): Promise<AuthAuditLog[]> {
+    if (userId) {
+      return await db.select()
+        .from(authAuditLog)
+        .where(eq(authAuditLog.userId, userId))
+        .orderBy(desc(authAuditLog.createdAt));
+    }
+    return await db.select()
+      .from(authAuditLog)
+      .orderBy(desc(authAuditLog.createdAt));
+  }
+
+  // ===================
+  // USER SESSIONS
+  // ===================
+
+  async createUserSession(session: InsertUserSession): Promise<UserSession> {
+    const result = await db.insert(userSessions).values(session).returning();
+    return result[0];
+  }
+
+  async getUserSession(sessionId: string): Promise<UserSession | undefined> {
+    const result = await db.select().from(userSessions).where(eq(userSessions.sessionId, sessionId)).limit(1);
+    return result[0];
+  }
+
+  async updateUserSession(sessionId: string, updates: Partial<InsertUserSession>): Promise<UserSession> {
+    const result = await db.update(userSessions)
+      .set(updates)
+      .where(eq(userSessions.sessionId, sessionId))
+      .returning();
+    return result[0];
+  }
+
+  async deleteUserSession(sessionId: string): Promise<void> {
+    await db.delete(userSessions).where(eq(userSessions.sessionId, sessionId));
+  }
+
+  // ===================
+  // MARKET DATA
+  // ===================
+
+  async createMarketDataDownload(download: InsertMarketDataDownload): Promise<MarketDataDownload> {
+    const result = await db.insert(marketDataDownloads).values(download).returning();
+    return result[0];
+  }
+
+  async getUserMarketDataDownloads(userId: string): Promise<MarketDataDownload[]> {
+    return await db.select()
+      .from(marketDataDownloads)
+      .where(eq(marketDataDownloads.userId, userId))
+      .orderBy(desc(marketDataDownloads.downloadedAt));
+  }
+
+  async createPopularSymbol(symbol: InsertPopularSymbol): Promise<PopularSymbol> {
+    const result = await db.insert(popularSymbols).values(symbol).returning();
+    return result[0];
+  }
+
+  async getPopularSymbols(): Promise<PopularSymbol[]> {
+    return await db.select()
+      .from(popularSymbols)
+      .where(eq(popularSymbols.isActive, true))
+      .orderBy(desc(popularSymbols.downloadCount));
+  }
+
+  async updatePopularSymbol(symbol: string, updates: Partial<InsertPopularSymbol>): Promise<PopularSymbol> {
+    const result = await db.update(popularSymbols)
+      .set(updates)
+      .where(eq(popularSymbols.symbol, symbol))
+      .returning();
+    return result[0];
+  }
+
+  // ===================
+  // ACCESS CONTROL
+  // ===================
+
+  async createAccessGrant(grant: InsertAccessGrant): Promise<AccessGrant> {
+    const result = await db.insert(accessGrants).values(grant).returning();
+    return result[0];
+  }
+
+  async getUserAccessGrants(userId: string): Promise<AccessGrant[]> {
+    return await db.select()
+      .from(accessGrants)
+      .where(eq(accessGrants.userId, userId));
+  }
+
+  async getResourceAccessGrants(resourceType: ResourceType, resourceId: string): Promise<AccessGrant[]> {
+    return await db.select()
+      .from(accessGrants)
+      .where(and(
+        eq(accessGrants.resourceType, resourceType),
+        eq(accessGrants.resourceId, resourceId)
+      ));
+  }
+
+  async deleteAccessGrant(id: string): Promise<void> {
+    await db.delete(accessGrants).where(eq(accessGrants.id, id));
+  }
+
+  // ===================
+  // TEAMS
+  // ===================
+
+  async createTeam(team: InsertTeam): Promise<Team> {
+    const result = await db.insert(teams).values(team).returning();
+    return result[0];
+  }
+
+  async getTeam(id: string): Promise<Team | undefined> {
+    const result = await db.select().from(teams).where(eq(teams.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getUserTeams(userId: string): Promise<Team[]> {
+    const teamMemberships = await db.select()
+      .from(teamMembers)
+      .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+      .where(eq(teamMembers.userId, userId));
+
+    return teamMemberships.map(tm => tm.teams);
+  }
+
+  async addTeamMember(member: InsertTeamMember): Promise<TeamMember> {
+    const result = await db.insert(teamMembers).values(member).returning();
+    return result[0];
+  }
+
+  async getTeamMembers(teamId: string): Promise<TeamMember[]> {
+    return await db.select()
+      .from(teamMembers)
+      .where(eq(teamMembers.teamId, teamId));
+  }
+
+  // ===================
+  // SHARING
+  // ===================
+
+  async createShareInvite(invite: InsertShareInvite): Promise<ShareInvite> {
+    const result = await db.insert(shareInvites).values(invite).returning();
+    return result[0];
+  }
+
+  async getShareInvite(id: string): Promise<ShareInvite | undefined> {
+    const result = await db.select().from(shareInvites).where(eq(shareInvites.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getUserShareInvites(userId: string): Promise<ShareInvite[]> {
+    return await db.select()
+      .from(shareInvites)
+      .where(or(eq(shareInvites.senderId, userId), eq(shareInvites.recipientEmail, userId)))
+      .orderBy(desc(shareInvites.createdAt));
+  }
+
+  async updateShareInvite(id: string, updates: Partial<InsertShareInvite>): Promise<ShareInvite> {
+    const result = await db.update(shareInvites)
+      .set(updates)
+      .where(eq(shareInvites.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async createShareLink(link: InsertShareLink): Promise<ShareLink> {
+    const result = await db.insert(shareLinks).values(link).returning();
+    return result[0];
+  }
+
+  async getShareLink(id: string): Promise<ShareLink | undefined> {
+    const result = await db.select().from(shareLinks).where(eq(shareLinks.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getUserShareLinks(userId: string): Promise<ShareLink[]> {
+    return await db.select()
+      .from(shareLinks)
+      .where(eq(shareLinks.ownerId, userId))
+      .orderBy(desc(shareLinks.createdAt));
+  }
+
+  // ===================
+  // BACKGROUND JOBS
+  // ===================
+
+  async createBackgroundJob(job: InsertBackgroundJob): Promise<BackgroundJob> {
+    const result = await db.insert(backgroundJobs).values(job).returning();
+    return result[0];
+  }
+
+  async getBackgroundJob(id: string): Promise<BackgroundJob | undefined> {
+    const result = await db.select().from(backgroundJobs).where(eq(backgroundJobs.id, id)).limit(1);
+    return result[0];
+  }
+
+  async updateBackgroundJob(id: string, updates: Partial<InsertBackgroundJob>): Promise<BackgroundJob> {
+    const result = await db.update(backgroundJobs)
+      .set(updates)
+      .where(eq(backgroundJobs.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async getUserBackgroundJobs(userId: string): Promise<BackgroundJob[]> {
+    return await db.select()
+      .from(backgroundJobs)
+      .where(eq(backgroundJobs.userId, userId))
+      .orderBy(desc(backgroundJobs.createdAt));
+  }
+
+  // ===================
+  // PRODUCTIVITY BOARDS
+  // ===================
+
+  async createProductivityBoard(board: InsertProductivityBoard): Promise<ProductivityBoard> {
+    const result = await db.insert(productivityBoards).values(board).returning();
+    return result[0];
+  }
+
+  async getProductivityBoard(id: string): Promise<ProductivityBoard | undefined> {
+    const result = await db.select().from(productivityBoards).where(eq(productivityBoards.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getUserProductivityBoards(userId: string): Promise<ProductivityBoard[]> {
+    return await db.select()
+      .from(productivityBoards)
+      .where(eq(productivityBoards.ownerId, userId))
+      .orderBy(desc(productivityBoards.createdAt));
+  }
+
+  async updateProductivityBoard(id: string, updates: Partial<InsertProductivityBoard>): Promise<ProductivityBoard> {
+    const result = await db.update(productivityBoards)
+      .set(updates)
+      .where(eq(productivityBoards.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async deleteProductivityBoard(id: string): Promise<void> {
+    await db.delete(productivityBoards).where(eq(productivityBoards.id, id));
+  }
+
+  // ===================
+  // PRODUCTIVITY ITEMS
+  // ===================
+
+  async createProductivityItem(item: InsertProductivityItem): Promise<ProductivityItem> {
+    const result = await db.insert(productivityItems).values(item).returning();
+    return result[0];
+  }
+
+  async getProductivityItem(id: string): Promise<ProductivityItem | undefined> {
+    const result = await db.select().from(productivityItems).where(eq(productivityItems.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getBoardProductivityItems(boardId: string): Promise<ProductivityItem[]> {
+    return await db.select()
+      .from(productivityItems)
+      .where(eq(productivityItems.boardId, boardId))
+      .orderBy(asc(productivityItems.order));
+  }
+
+  async updateProductivityItem(id: string, updates: Partial<InsertProductivityItem>): Promise<ProductivityItem> {
+    const result = await db.update(productivityItems)
+      .set(updates)
+      .where(eq(productivityItems.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async deleteProductivityItem(id: string): Promise<void> {
+    await db.delete(productivityItems).where(eq(productivityItems.id, id));
+  }
+
+  // ===================
+  // ITEM COLUMNS & VALUES
+  // ===================
+
+  async createItemColumn(column: InsertItemColumn): Promise<ItemColumn> {
+    const result = await db.insert(itemColumns).values(column).returning();
+    return result[0];
+  }
+
+  async getBoardItemColumns(boardId: string): Promise<ItemColumn[]> {
+    return await db.select()
+      .from(itemColumns)
+      .where(eq(itemColumns.boardId, boardId))
+      .orderBy(asc(itemColumns.order));
+  }
+
+  async updateItemColumn(id: string, updates: Partial<InsertItemColumn>): Promise<ItemColumn> {
+    const result = await db.update(itemColumns)
+      .set(updates)
+      .where(eq(itemColumns.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async deleteItemColumn(id: string): Promise<void> {
+    await db.delete(itemColumns).where(eq(itemColumns.id, id));
+  }
+
+  async createColumnValue(value: InsertColumnValue): Promise<ColumnValue> {
+    const result = await db.insert(columnValues).values(value).returning();
+    return result[0];
+  }
+
+  async getItemColumnValues(itemId: string): Promise<ColumnValue[]> {
+    return await db.select()
+      .from(columnValues)
+      .where(eq(columnValues.itemId, itemId));
+  }
+
+  async updateColumnValue(id: string, updates: Partial<InsertColumnValue>): Promise<ColumnValue> {
+    const result = await db.update(columnValues)
+      .set(updates)
+      .where(eq(columnValues.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async deleteColumnValue(id: string): Promise<void> {
+    await db.delete(columnValues).where(eq(columnValues.id, id));
+  }
+
+  // ===================
+  // NOTIFICATIONS
+  // ===================
+
+  async createInAppNotification(notification: InsertInAppNotification): Promise<InAppNotification> {
+    const result = await db.insert(inAppNotifications).values(notification).returning();
+    return result[0];
+  }
+
+  async getUserNotifications(userId: string): Promise<InAppNotification[]> {
+    return await db.select()
+      .from(inAppNotifications)
+      .where(eq(inAppNotifications.userId, userId))
+      .orderBy(desc(inAppNotifications.createdAt));
+  }
+
+  async markNotificationAsRead(id: string): Promise<void> {
+    await db.update(inAppNotifications)
+      .set({ isRead: true, readAt: new Date() })
+      .where(eq(inAppNotifications.id, id));
+  }
+
+  // ===================
+  // ADMIN APPROVALS
+  // ===================
+
+  async createAdminApproval(approval: InsertAdminApproval): Promise<AdminApproval> {
+    const result = await db.insert(adminApprovals).values(approval).returning();
+    return result[0];
+  }
+
+  async getAdminApprovals(): Promise<AdminApproval[]> {
+    return await db.select()
+      .from(adminApprovals)
+      .orderBy(desc(adminApprovals.createdAt));
+  }
+
+  async updateAdminApproval(id: string, updates: Partial<InsertAdminApproval>): Promise<AdminApproval> {
+    const result = await db.update(adminApprovals)
+      .set(updates)
+      .where(eq(adminApprovals.id, id))
+      .returning();
+    return result[0];
+  }
+
+  // ===================
+  // USER NOTIFICATION PREFERENCES
+  // ===================
+
+  async createUserNotificationPreferences(prefs: InsertUserNotificationPreferences): Promise<UserNotificationPreferences> {
+    const result = await db.insert(userNotificationPreferences).values(prefs).returning();
+    return result[0];
+  }
+
+  async getUserNotificationPreferences(userId: string): Promise<UserNotificationPreferences | undefined> {
+    const result = await db.select()
+      .from(userNotificationPreferences)
+      .where(eq(userNotificationPreferences.userId, userId))
+      .limit(1);
+    return result[0];
+  }
+
+  async updateUserNotificationPreferences(userId: string, updates: Partial<InsertUserNotificationPreferences>): Promise<UserNotificationPreferences> {
+    const result = await db.update(userNotificationPreferences)
+      .set(updates)
+      .where(eq(userNotificationPreferences.userId, userId))
+      .returning();
+    return result[0];
+  }
 }

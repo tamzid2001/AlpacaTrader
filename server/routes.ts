@@ -58,6 +58,7 @@ import {
 } from "./firebase-admin";
 import { objectStorage } from "./lib/object-storage";
 import { marketDataService } from "./lib/market-data";
+import { comprehensiveYahooFinanceService } from "./lib/comprehensive-yahoo-finance";
 import { 
   requirePermission,
   requireOwnership,
@@ -3706,6 +3707,227 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(symbols);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ===================
+  // COMPREHENSIVE YAHOO FINANCE API ENDPOINTS
+  // ===================
+
+  // Get ALL comprehensive Yahoo Finance data for a ticker
+  app.get('/api/yahoo-finance/:ticker', isAuthenticated, async (req: any, res) => {
+    try {
+      const { ticker } = req.params;
+      const userId = req.user.claims.sub;
+      
+      if (!ticker) {
+        return res.status(400).json({ error: 'Ticker symbol is required' });
+      }
+
+      console.log(`📊 Fetching comprehensive Yahoo Finance data for ${ticker} (user: ${userId})`);
+      
+      const comprehensiveData = await comprehensiveYahooFinanceService.getComprehensiveTickerData(ticker);
+      
+      console.log(`✅ Successfully fetched comprehensive data for ${ticker}`);
+      res.json(comprehensiveData);
+    } catch (error: any) {
+      console.error(`❌ Error fetching comprehensive data for ${req.params.ticker}:`, error.message);
+      res.status(500).json({ 
+        error: error.message,
+        ticker: req.params.ticker 
+      });
+    }
+  });
+
+  // Get detailed earnings information
+  app.get('/api/yahoo-finance/:ticker/earnings', isAuthenticated, async (req: any, res) => {
+    try {
+      const { ticker } = req.params;
+      const userId = req.user.claims.sub;
+      
+      if (!ticker) {
+        return res.status(400).json({ error: 'Ticker symbol is required' });
+      }
+
+      console.log(`📈 Fetching earnings data for ${ticker} (user: ${userId})`);
+      
+      const earningsData = await comprehensiveYahooFinanceService.getEarningsData(ticker.toUpperCase());
+      
+      res.json(earningsData);
+    } catch (error: any) {
+      console.error(`❌ Error fetching earnings data for ${req.params.ticker}:`, error.message);
+      res.status(500).json({ 
+        error: error.message,
+        ticker: req.params.ticker 
+      });
+    }
+  });
+
+  // Get financial statements (income, balance sheet, cash flow)
+  app.get('/api/yahoo-finance/:ticker/financials', isAuthenticated, async (req: any, res) => {
+    try {
+      const { ticker } = req.params;
+      const userId = req.user.claims.sub;
+      
+      if (!ticker) {
+        return res.status(400).json({ error: 'Ticker symbol is required' });
+      }
+
+      console.log(`💰 Fetching financial statements for ${ticker} (user: ${userId})`);
+      
+      const financialData = await comprehensiveYahooFinanceService.getFinancialStatements(ticker.toUpperCase());
+      
+      res.json(financialData);
+    } catch (error: any) {
+      console.error(`❌ Error fetching financial data for ${req.params.ticker}:`, error.message);
+      res.status(500).json({ 
+        error: error.message,
+        ticker: req.params.ticker 
+      });
+    }
+  });
+
+  // Get options data
+  app.get('/api/yahoo-finance/:ticker/options', isAuthenticated, async (req: any, res) => {
+    try {
+      const { ticker } = req.params;
+      const userId = req.user.claims.sub;
+      
+      if (!ticker) {
+        return res.status(400).json({ error: 'Ticker symbol is required' });
+      }
+
+      console.log(`🎯 Fetching options data for ${ticker} (user: ${userId})`);
+      
+      const optionsData = await comprehensiveYahooFinanceService.getOptionsData(ticker.toUpperCase());
+      
+      res.json(optionsData);
+    } catch (error: any) {
+      console.error(`❌ Error fetching options data for ${req.params.ticker}:`, error.message);
+      res.status(500).json({ 
+        error: error.message,
+        ticker: req.params.ticker 
+      });
+    }
+  });
+
+  // Get company profile and business information
+  app.get('/api/yahoo-finance/:ticker/profile', isAuthenticated, async (req: any, res) => {
+    try {
+      const { ticker } = req.params;
+      const userId = req.user.claims.sub;
+      
+      if (!ticker) {
+        return res.status(400).json({ error: 'Ticker symbol is required' });
+      }
+
+      console.log(`🏢 Fetching company profile for ${ticker} (user: ${userId})`);
+      
+      const profileData = await comprehensiveYahooFinanceService.getCompanyProfile(ticker.toUpperCase());
+      
+      res.json(profileData);
+    } catch (error: any) {
+      console.error(`❌ Error fetching profile data for ${req.params.ticker}:`, error.message);
+      res.status(500).json({ 
+        error: error.message,
+        ticker: req.params.ticker 
+      });
+    }
+  });
+
+  // Get key statistics and valuation metrics
+  app.get('/api/yahoo-finance/:ticker/statistics', isAuthenticated, async (req: any, res) => {
+    try {
+      const { ticker } = req.params;
+      const userId = req.user.claims.sub;
+      
+      if (!ticker) {
+        return res.status(400).json({ error: 'Ticker symbol is required' });
+      }
+
+      console.log(`📊 Fetching key statistics for ${ticker} (user: ${userId})`);
+      
+      const statisticsData = await comprehensiveYahooFinanceService.getKeyStatistics(ticker.toUpperCase());
+      
+      res.json(statisticsData);
+    } catch (error: any) {
+      console.error(`❌ Error fetching statistics data for ${req.params.ticker}:`, error.message);
+      res.status(500).json({ 
+        error: error.message,
+        ticker: req.params.ticker 
+      });
+    }
+  });
+
+  // Get news and events
+  app.get('/api/yahoo-finance/:ticker/news', isAuthenticated, async (req: any, res) => {
+    try {
+      const { ticker } = req.params;
+      const userId = req.user.claims.sub;
+      
+      if (!ticker) {
+        return res.status(400).json({ error: 'Ticker symbol is required' });
+      }
+
+      console.log(`📰 Fetching news data for ${ticker} (user: ${userId})`);
+      
+      const newsData = await comprehensiveYahooFinanceService.getNewsData(ticker.toUpperCase());
+      
+      res.json(newsData);
+    } catch (error: any) {
+      console.error(`❌ Error fetching news data for ${req.params.ticker}:`, error.message);
+      res.status(500).json({ 
+        error: error.message,
+        ticker: req.params.ticker 
+      });
+    }
+  });
+
+  // Get technical indicators
+  app.get('/api/yahoo-finance/:ticker/technicals', isAuthenticated, async (req: any, res) => {
+    try {
+      const { ticker } = req.params;
+      const userId = req.user.claims.sub;
+      
+      if (!ticker) {
+        return res.status(400).json({ error: 'Ticker symbol is required' });
+      }
+
+      console.log(`📈 Fetching technical indicators for ${ticker} (user: ${userId})`);
+      
+      const technicalData = await comprehensiveYahooFinanceService.getTechnicalIndicators(ticker.toUpperCase());
+      
+      res.json(technicalData);
+    } catch (error: any) {
+      console.error(`❌ Error fetching technical data for ${req.params.ticker}:`, error.message);
+      res.status(500).json({ 
+        error: error.message,
+        ticker: req.params.ticker 
+      });
+    }
+  });
+
+  // Get calendar events (earnings, dividends, splits)
+  app.get('/api/yahoo-finance/:ticker/calendar', isAuthenticated, async (req: any, res) => {
+    try {
+      const { ticker } = req.params;
+      const userId = req.user.claims.sub;
+      
+      if (!ticker) {
+        return res.status(400).json({ error: 'Ticker symbol is required' });
+      }
+
+      console.log(`📅 Fetching calendar data for ${ticker} (user: ${userId})`);
+      
+      const calendarData = await comprehensiveYahooFinanceService.getCalendarData(ticker.toUpperCase());
+      
+      res.json(calendarData);
+    } catch (error: any) {
+      console.error(`❌ Error fetching calendar data for ${req.params.ticker}:`, error.message);
+      res.status(500).json({ 
+        error: error.message,
+        ticker: req.params.ticker 
+      });
     }
   });
 
