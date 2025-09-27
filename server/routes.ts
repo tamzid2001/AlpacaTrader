@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import express from "express";
 import { createServer, type Server } from "http";
+import path from "path";
 import { storage } from "./storage";
 import { checkDatabaseHealth, getPoolStatus } from "./db";
 import { 
@@ -127,6 +128,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register security routes
   registerSecurityRoutes(app);
+  
+  // Favicon route - serve with correct content type
+  app.get('/favicon.png', express.static('public'));
   
   // Health check endpoints for Cloud Run deployment
   app.get('/health', (req, res) => {

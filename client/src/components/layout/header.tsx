@@ -32,13 +32,11 @@ export default function Header() {
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center space-x-4">
             <Link href="/" className="flex items-center space-x-2" data-testid="link-home">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <TrendingUp 
-                  size={16} 
-                  color="hsl(var(--primary-foreground))" 
-                  aria-hidden="true"
-                />
-              </div>
+              <img 
+                src="/favicon.png" 
+                alt="MarketDifferentials Logo"
+                className="w-8 h-8 rounded-lg"
+              />
               <span className="text-xl font-bold text-foreground">PropFarming Pro</span>
             </Link>
           </div>

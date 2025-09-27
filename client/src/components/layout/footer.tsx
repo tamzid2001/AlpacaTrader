@@ -57,13 +57,11 @@ export default function Footer() {
           {/* Column 1: Company Branding & Contact */}
           <div className="lg:col-span-1">
             <div className="flex items-center space-x-3 mb-6">
-              <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl flex items-center justify-center shadow-lg">
-                <TrendingUp 
-                  size={24} 
-                  className="text-white"
-                  aria-hidden="true"
-                />
-              </div>
+              <img 
+                src="/favicon.png" 
+                alt="MarketDifferentials Logo"
+                className="w-12 h-12 rounded-xl shadow-lg"
+              />
               <div>
                 <span className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent" data-testid="text-footer-brand">
                   MarketDifferentials
