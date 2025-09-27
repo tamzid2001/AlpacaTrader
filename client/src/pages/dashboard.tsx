@@ -91,9 +91,9 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="w-full" data-testid="dashboard-main">
+    <div className="w-full max-w-7xl mx-auto space-y-6 md:space-y-8" data-testid="dashboard-main">
       {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 md:mb-8 gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-foreground" data-testid="text-welcome">
             Welcome back, {user?.firstName || user?.email?.split('@')[0] || 'Student'}!
@@ -125,7 +125,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-6 md:mb-8" role="region" aria-labelledby="stats-heading">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6" role="region" aria-labelledby="stats-heading">
           <h2 id="stats-heading" className="sr-only">Learning Statistics</h2>
           <Card data-testid="card-enrolled" role="article" aria-labelledby="enrolled-heading">
             <CardContent className="p-6">
@@ -176,8 +176,13 @@ export default function Dashboard() {
                     {Math.floor(Math.random() * 200) + 50}
                   </p>
                 </div>
-                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <i className="fas fa-clock text-blue-600"></i>
+                <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
+                  <EnhancedIcon 
+                    name="Clock" 
+                    size={20} 
+                    color="rgb(37 99 235)" 
+                    aria-hidden={true}
+                  />
                 </div>
               </div>
             </CardContent>
@@ -191,8 +196,13 @@ export default function Dashboard() {
                     {enrollments?.filter(e => e.completed).length || 0}
                   </p>
                 </div>
-                <div className="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center">
-                  <i className="fas fa-award text-amber-600"></i>
+                <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-lg flex items-center justify-center">
+                  <EnhancedIcon 
+                    name="Award" 
+                    size={20} 
+                    color="rgb(217 119 6)" 
+                    aria-hidden={true}
+                  />
                 </div>
               </div>
             </CardContent>
@@ -200,19 +210,37 @@ export default function Dashboard() {
       </div>
 
       {/* Current Courses */}
-      <div className="mb-8" role="region" aria-labelledby="current-courses-heading">
-          <h2 className="text-2xl font-bold text-foreground mb-6" data-testid="text-continue-learning">
+      <div role="region" aria-labelledby="current-courses-heading">
+          <h2 id="current-courses-heading" className="text-2xl font-bold text-foreground mb-6" data-testid="text-continue-learning">
             Continue Learning
           </h2>
           <div className="grid md:grid-cols-2 gap-6" role="list">
             {enrollments?.slice(0, 2).map((enrollment) => (
               <Card key={enrollment.id} className="overflow-hidden" data-testid={`card-enrollment-${enrollment.id}`} role="listitem">
-                <img 
-                  src={enrollment.course.imageUrl || ""} 
-                  alt={enrollment.course.title}
-                  className="w-full h-40 object-cover"
-                  data-testid={`img-course-${enrollment.id}`}
-                />
+                {enrollment.course.imageUrl ? (
+                  <img 
+                    src={enrollment.course.imageUrl} 
+                    alt={enrollment.course.title}
+                    className="w-full h-40 object-cover"
+                    data-testid={`img-course-${enrollment.id}`}
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                      target.nextElementSibling?.classList.remove('hidden');
+                    }}
+                  />
+                ) : null}
+                <div 
+                  className={`w-full h-40 bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center ${enrollment.course.imageUrl ? 'hidden' : ''}`}
+                  data-testid={`placeholder-course-${enrollment.id}`}
+                >
+                  <EnhancedIcon 
+                    name="BookOpen" 
+                    size={48} 
+                    className="text-primary/40" 
+                    aria-hidden={true}
+                  />
+                </div>
                 <CardContent className="p-6">
                   <h3 className="text-xl font-semibold mb-2" data-testid={`text-course-title-${enrollment.id}`}>
                     {enrollment.course.title}
@@ -236,7 +264,14 @@ export default function Dashboard() {
             {(!enrollments || enrollments.length === 0) && (
               <Card className="md:col-span-2" data-testid="card-no-enrollments" role="listitem">
                 <CardContent className="p-8 text-center">
-                  <i className="fas fa-graduation-cap text-4xl text-muted-foreground mb-4"></i>
+                  <div className="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
+                    <EnhancedIcon 
+                      name="GraduationCap" 
+                      size={32} 
+                      className="text-muted-foreground" 
+                      aria-hidden={true}
+                    />
+                  </div>
                   <h3 className="text-xl font-semibold mb-2">No courses enrolled yet</h3>
                   <p className="text-muted-foreground mb-4">Start your learning journey by enrolling in a course</p>
                   <Button onClick={() => setLocation("/")} data-testid="button-browse-courses">
@@ -249,8 +284,8 @@ export default function Dashboard() {
       </div>
 
       {/* Video Course Section */}
-      <div className="mb-8" role="region" aria-labelledby="latest-content-heading">
-          <h2 className="text-2xl font-bold text-foreground mb-6" data-testid="text-latest-content">
+      <div role="region" aria-labelledby="latest-content-heading">
+          <h2 id="latest-content-heading" className="text-2xl font-bold text-foreground mb-6" data-testid="text-latest-content">
             Latest Course Content
           </h2>
           <VideoPlayer />

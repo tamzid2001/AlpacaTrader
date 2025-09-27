@@ -1,0 +1,43 @@
+Developer: # Dashboard Improvements and Feature Requests
+
+Begin with a concise checklist (3-7 bullets) of planned sub-tasks before proceeding; keep items conceptual. Set reasoning_effort = medium to match the moderate complexity of these UI/UX tasks and balance concise tool actions with fuller final outputs.
+
+## Issues to Address
+- **Component Alignment**: Fix misaligned or poorly positioned dashboard components.
+- **Error Display**: When scrolling down, a 404 error appears below the dashboard. This should be removed or properly handled.
+
+## Course Content Enhancement
+- Update the 'Create Course Content' feature to:
+  - Allow uploading multiple types of files (not limited to PDFs or PowerPoints) to improve the learning experience.
+  - Make the addition of video content optional, as long as there is at least one content type included.
+
+## Dashboard Experience
+- Enhance the dashboard for a smooth and coherent user experience consistent with the current design.
+- Optimize all components for mobile screens to ensure a good fit.
+
+## Market Data Features
+- Add stock charts to the Market Data Download section:
+  - Use TradingView or another rendering method to show a default ticker.
+  - The chart must update in real time as the user types a ticker symbol in the download input.
+
+## Productivity Table
+- Ensure the productivity table is exportable.
+- Add interactivity to the table:
+  - Allow users to change date windows and other values before export.
+
+## Sharing Functionality
+- Both downloaded market data and uploaded results should be shareable:
+  - Implement a sharing flow where users send invitations, and recipients gain access only after accepting.
+
+## Notifications and Settings
+- Ensure notifications are fully functional.
+- Complete the settings section with required options, e.g., the ability to disable notifications.
+
+## Mobile Header Optimization
+- The header does not currently fit well on mobile screens:
+  - Remove the icons from the 'Start Learning Today' and 'Get Started' buttons to improve their fit on mobile.
+
+## General Mobile Optimization
+- Continue to optimize all components and layouts for a seamless mobile experience.
+
+After each substantive UI or code edit, validate the result in 1-2 lines; proceed if successful or pursue minimal correction if the intended effect is not achieved.

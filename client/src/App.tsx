@@ -135,8 +135,8 @@ function Router() {
             <Route path="/my-courses">
               {() => <ErrorBoundary><AuthenticatedLayout><MyCoursesPage /></AuthenticatedLayout></ErrorBoundary>}
             </Route>
-            <Route>
-              {() => <ErrorBoundary fallback={<NotFoundFallback />}><AuthenticatedLayout><NotFound /></AuthenticatedLayout></ErrorBoundary>}
+            <Route path="/:rest*">
+              {() => <ErrorBoundary><NotFoundFallback /></ErrorBoundary>}
             </Route>
           </>
         )}
