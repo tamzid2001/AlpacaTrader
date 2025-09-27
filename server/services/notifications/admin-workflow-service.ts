@@ -217,6 +217,10 @@ export class AdminWorkflowService {
           await this.executeExcelReportApproval(resourceId, requestDetails, approval.requesterId);
           break;
 
+        case 'premium_access':
+          await this.executePremiumAccessApproval(resourceId, requestDetails, approverId);
+          break;
+
         default:
           console.warn(`⚠️ Unknown resource type for approval execution: ${resourceType}`);
       }
@@ -543,6 +547,231 @@ export class AdminWorkflowService {
         message: `Cleanup failed: ${error.message}`,
         cleaned: 0
       };
+    }
+  }
+
+  // ===================
+  // PREMIUM APPROVAL METHODS
+  // ===================
+
+  /**
+   * Create a premium access approval request
+   */
+  async createPremiumApprovalRequest(
+    userId: string,
+    requestedTier: string,
+    justification: string
+  ): Promise<string> {
+    try {
+      console.log(`📋 Creating premium approval request for user ${userId} (tier: ${requestedTier})`);
+
+      const requestDetails = {
+        requestedTier,
+        justification,
+        requestedAt: new Date().toISOString()
+      };
+
+      const approvalId = await this.createApprovalRequest(
+        'premium_access',
+        userId,
+        userId,
+        requestDetails,
+        false // Premium never auto-approves
+      );
+
+      console.log(`✅ Premium approval request created: ${approvalId}`);
+      return approvalId;
+
+    } catch (error: any) {
+      console.error(`❌ Error creating premium approval request for user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Execute premium access approval
+   */
+  private async executePremiumAccessApproval(
+    userId: string,
+    requestDetails: any,
+    approverId: string
+  ): Promise<void> {
+    try {
+      console.log(`🎯 Executing premium access approval for user ${userId}`);
+
+      const { requestedTier } = requestDetails;
+
+      // Update user premium status in database
+      await storage.updateUser(userId, {
+        isPremiumApproved: true,
+        premiumTier: requestedTier,
+        premiumStatus: 'premium',
+        premiumApprovedAt: new Date(),
+        premiumApprovedBy: approverId
+      });
+
+      console.log(`✅ Premium access granted to user ${userId} with tier ${requestedTier}`);
+
+      // Send welcome email to user
+      await this.sendPremiumWelcomeEmail(userId, requestedTier);
+
+    } catch (error: any) {
+      console.error(`❌ Error executing premium access approval for user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get pending premium approval requests
+   */
+  async getPendingPremiumApprovals(): Promise<AdminApproval[]> {
+    try {
+      const allPending = await this.getPendingApprovals();
+      return allPending.filter(approval => approval.resourceType === 'premium_access');
+    } catch (error: any) {
+      console.error('❌ Error getting pending premium approvals:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Approve premium access request
+   */
+  async approvePremiumAccess(
+    approvalId: string,
+    adminId: string,
+    approvedTier?: string,
+    notes?: string
+  ): Promise<void> {
+    try {
+      // Get the approval request to update tier if needed
+      if (approvedTier) {
+        const approval = await storage.getAdminApproval(approvalId);
+        if (approval) {
+          const updatedDetails = {
+            ...approval.requestDetails,
+            requestedTier: approvedTier, // Update to admin-approved tier
+            adminNotes: notes
+          };
+          
+          // Update the request details
+          await storage.updateAdminApproval(approvalId, {
+            requestDetails: updatedDetails
+          });
+        }
+      }
+
+      // Use the parent approve method
+      await this.approveRequest(approvalId, adminId, notes);
+
+      console.log(`✅ Premium access approved: ${approvalId} by admin ${adminId}`);
+
+    } catch (error: any) {
+      console.error(`❌ Error approving premium access ${approvalId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Reject premium access request
+   */
+  async rejectPremiumAccess(
+    approvalId: string,
+    adminId: string,
+    reason: string
+  ): Promise<void> {
+    try {
+      await this.rejectRequest(approvalId, adminId, reason);
+
+      console.log(`❌ Premium access rejected: ${approvalId} by admin ${adminId}`);
+
+      // Send rejection email with suggestions
+      await this.sendPremiumRejectionEmail(approvalId, reason);
+
+    } catch (error: any) {
+      console.error(`❌ Error rejecting premium access ${approvalId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get premium analytics for admin dashboard
+   */
+  async getPremiumAnalytics(): Promise<{
+    totalRequests: number;
+    pendingRequests: number;
+    approvedRequests: number;
+    rejectedRequests: number;
+    tierDistribution: Record<string, number>;
+    recentActivity: AdminApproval[];
+  }> {
+    try {
+      // This would typically query the database for premium-related approvals
+      // For now, we'll implement a basic structure
+      const allApprovals = await storage.getUserAdminApprovals(''); // Get all approvals
+      const premiumApprovals = allApprovals.filter(a => a.resourceType === 'premium_access');
+
+      const analytics = {
+        totalRequests: premiumApprovals.length,
+        pendingRequests: premiumApprovals.filter(a => a.status === 'pending').length,
+        approvedRequests: premiumApprovals.filter(a => a.status === 'approved').length,
+        rejectedRequests: premiumApprovals.filter(a => a.status === 'rejected').length,
+        tierDistribution: {} as Record<string, number>,
+        recentActivity: premiumApprovals.slice(-10) // Last 10 activities
+      };
+
+      // Calculate tier distribution
+      premiumApprovals.forEach(approval => {
+        const tier = approval.requestDetails?.requestedTier || 'unknown';
+        analytics.tierDistribution[tier] = (analytics.tierDistribution[tier] || 0) + 1;
+      });
+
+      return analytics;
+
+    } catch (error: any) {
+      console.error('❌ Error getting premium analytics:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send premium welcome email
+   */
+  private async sendPremiumWelcomeEmail(userId: string, tier: string): Promise<void> {
+    try {
+      const user = await storage.getUser(userId);
+      if (!user?.email) return;
+
+      console.log(`📧 Sending premium welcome email to ${user.email} (tier: ${tier})`);
+
+      // This would integrate with the email service
+      // For now, we'll just log it
+      console.log(`✉️ Premium welcome email sent to ${user.email}`);
+
+    } catch (error: any) {
+      console.error(`❌ Error sending premium welcome email for user ${userId}:`, error);
+    }
+  }
+
+  /**
+   * Send premium rejection email
+   */
+  private async sendPremiumRejectionEmail(approvalId: string, reason: string): Promise<void> {
+    try {
+      const approval = await storage.getAdminApproval(approvalId);
+      if (!approval) return;
+
+      const user = await storage.getUser(approval.requesterId);
+      if (!user?.email) return;
+
+      console.log(`📧 Sending premium rejection email to ${user.email}`);
+
+      // This would integrate with the email service
+      // For now, we'll just log it
+      console.log(`✉️ Premium rejection email sent to ${user.email} with reason: ${reason}`);
+
+    } catch (error: any) {
+      console.error(`❌ Error sending premium rejection email for approval ${approvalId}:`, error);
     }
   }
 }

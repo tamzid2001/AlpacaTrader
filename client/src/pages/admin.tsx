@@ -11,13 +11,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { Shield, Users, BarChart, BookOpen, Database, Activity, HardDrive, Zap, Menu, X } from "lucide-react";
+import { Shield, Users, BarChart, BookOpen, Database, Activity, HardDrive, Zap, Menu, X, Crown } from "lucide-react";
 
 // Import admin sub-pages
 import AdminUsersPage from "./admin/users";
 import AdminCoursesPage from "./admin/courses";
 import AdminDatabasePage from "./admin/database";
 import AdminSecurityPage from "./admin/security";
+import AdminPremiumApprovalsPage from "./admin/premium-approvals";
 
 // Admin Dashboard Overview Component
 function AdminDashboardOverview() {
@@ -95,15 +96,15 @@ function AdminDashboardOverview() {
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Database Health</p>
                 <p className="text-2xl font-bold" data-testid="text-db-health">
-                  {dbHealth?.database?.healthy ? (
+                  {(dbHealth as any)?.database?.healthy ? (
                     <span className="text-green-600">Healthy</span>
                   ) : (
-                    <span className="text-red-600">Unhealthy</span>
+                    <span className="text-red-600">{(dbHealth as any)?.database?.healthy === false ? 'Unhealthy' : 'Unknown'}</span>
                   )}
                 </p>
-                {dbHealth?.database?.latency && (
+                {(dbHealth as any)?.database?.latency && (
                   <p className="text-xs text-muted-foreground">
-                    {dbHealth.database.latency}ms latency
+                    {(dbHealth as any).database.latency}ms latency
                   </p>
                 )}
               </div>
@@ -120,7 +121,7 @@ function AdminDashboardOverview() {
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Total Users</p>
                 <p className="text-2xl font-bold" data-testid="text-total-users">
-                  {dbStats?.totalUsers || 0}
+                  {(dbStats as any)?.totalUsers || 0}
                 </p>
               </div>
             </div>
@@ -136,7 +137,7 @@ function AdminDashboardOverview() {
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Storage Used</p>
                 <p className="text-2xl font-bold" data-testid="text-storage-used">
-                  {dbStats?.totalStorageUsed ? `${Math.round(dbStats.totalStorageUsed / 1024 / 1024)}MB` : '0MB'}
+                  {(dbStats as any)?.totalStorageUsed ? `${Math.round((dbStats as any).totalStorageUsed / 1024 / 1024)}MB` : '0MB'}
                 </p>
               </div>
             </div>
@@ -152,7 +153,7 @@ function AdminDashboardOverview() {
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Avg Query Time</p>
                 <p className="text-2xl font-bold" data-testid="text-avg-query-time">
-                  {dbStats?.avgQueryTime || 0}ms
+                  {(dbStats as any)?.avgQueryTime || 0}ms
                 </p>
               </div>
             </div>
@@ -246,6 +247,7 @@ function AdminSidebar({ className, onNavigate }: { className?: string; onNavigat
     { href: "/admin", icon: BarChart, label: "Dashboard", exact: true },
     { href: "/admin/users", icon: Users, label: "User Management" },
     { href: "/admin/courses", icon: BookOpen, label: "Course Management" },
+    { href: "/admin/premium-approvals", icon: Crown, label: "Premium Approvals" },
     { href: "/admin/database", icon: Database, label: "Database Management" },
     { href: "/admin/security", icon: Shield, label: "Security & Audit" },
   ];
@@ -389,6 +391,7 @@ export default function AdminDashboard() {
           <Route path="/admin" component={AdminDashboardOverview} />
           <Route path="/admin/users" component={AdminUsersPage} />
           <Route path="/admin/courses" component={AdminCoursesPage} />
+          <Route path="/admin/premium-approvals" component={AdminPremiumApprovalsPage} />
           <Route path="/admin/database" component={AdminDatabasePage} />
           <Route path="/admin/security" component={AdminSecurityPage} />
           {/* Fallback to dashboard */}

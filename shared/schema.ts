@@ -47,6 +47,15 @@ export const users = pgTable("users", {
   // Payment Methods
   defaultPaymentMethodId: varchar("default_payment_method_id"),
   
+  // Premium Status System
+  isPremiumApproved: boolean("is_premium_approved").default(false),
+  premiumApprovedAt: timestamp("premium_approved_at"),
+  premiumApprovedBy: varchar("premium_approved_by"), // Admin who approved
+  premiumTier: varchar("premium_tier"), // "basic" | "advanced" | "professional"
+  premiumStatus: varchar("premium_status"), // "trial" | "premium" | "premium_plus" | "expired"
+  premiumRequestedAt: timestamp("premium_requested_at"), // When user requested premium access
+  premiumRequestJustification: text("premium_request_justification"), // User's justification for premium access
+  
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
@@ -54,6 +63,10 @@ export const users = pgTable("users", {
   index("IDX_users_is_approved").on(table.isApproved),
   index("IDX_users_created_at").on(table.createdAt),
   index("IDX_users_data_retention_until").on(table.dataRetentionUntil),
+  // Premium status indices for optimal queries
+  index("IDX_users_is_premium_approved").on(table.isPremiumApproved),
+  index("IDX_users_premium_tier").on(table.premiumTier),
+  index("IDX_users_premium_status").on(table.premiumStatus),
 ]);
 
 export const courses = pgTable("courses", {
@@ -2196,3 +2209,21 @@ export interface InsertQuizResult {
   answers: any;
   metadata?: any;
 }
+
+// ===================
+// PREMIUM SYSTEM CONSTANTS AND TYPES
+// ===================
+
+export const PREMIUM_STATUSES = ["trial", "premium", "premium_plus", "expired"] as const;
+export const PREMIUM_TIERS = ["basic", "advanced", "professional"] as const;
+
+export type PremiumStatus = typeof PREMIUM_STATUSES[number];
+export type PremiumTier = typeof PREMIUM_TIERS[number];
+
+// Premium Request Schema
+export const insertPremiumRequestSchema = z.object({
+  requestedTier: z.enum(PREMIUM_TIERS),
+  justification: z.string().min(50).max(1000),
+});
+
+export type InsertPremiumRequest = z.infer<typeof insertPremiumRequestSchema>;

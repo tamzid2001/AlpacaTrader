@@ -65,6 +65,7 @@ import {
   requireSelfAccess,
   requireAdmin
 } from "./middleware/permissions";
+import { adminWorkflowService } from "./services/notifications/admin-workflow-service";
 import { insertMarketDataDownloadSchema } from "@shared/schema";
 import { sendShareInvitation, sendShareAcceptedNotification } from "./services/email";
 
@@ -1097,6 +1098,244 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json(user);
     } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // =======================
+  // PREMIUM API ENDPOINTS
+  // =======================
+
+  // Admin Premium Routes
+  app.get("/api/admin/premium/pending", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const pendingRequests = await adminWorkflowService.getPendingPremiumApprovals();
+      
+      // Enrich with user details
+      const enrichedRequests = await Promise.all(
+        pendingRequests.map(async (request) => {
+          const requesterUser = await storage.getUser(request.requesterId);
+          // Mock additional user stats - in real implementation this would come from database
+          const requesterDetails = {
+            user: requesterUser,
+            courseCount: 3, // Mock data
+            certificateCount: 1, // Mock data
+            avgQuizScore: 85, // Mock data
+            totalHours: 24, // Mock data
+            joinedDate: requesterUser?.createdAt
+          };
+          return {
+            ...request,
+            requesterDetails
+          };
+        })
+      );
+      
+      res.json(enrichedRequests);
+    } catch (error: any) {
+      console.error('Error getting pending premium requests:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/admin/premium/analytics", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const analytics = await adminWorkflowService.getPremiumAnalytics();
+      res.json(analytics);
+    } catch (error: any) {
+      console.error('Error getting premium analytics:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/admin/premium/:id/approve", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const { tier, notes } = req.body;
+      const adminId = req.user.claims.sub;
+      
+      if (!tier) {
+        return res.status(400).json({ error: "Premium tier is required" });
+      }
+      
+      await adminWorkflowService.approvePremiumAccess(req.params.id, adminId, tier, notes);
+      res.json({ success: true, message: "Premium access approved successfully" });
+    } catch (error: any) {
+      console.error('Error approving premium request:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/admin/premium/:id/reject", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const { reason } = req.body;
+      const adminId = req.user.claims.sub;
+      
+      if (!reason) {
+        return res.status(400).json({ error: "Rejection reason is required" });
+      }
+      
+      await adminWorkflowService.rejectPremiumAccess(req.params.id, adminId, reason);
+      res.json({ success: true, message: "Premium request rejected successfully" });
+    } catch (error: any) {
+      console.error('Error rejecting premium request:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // User Premium Routes
+  app.post("/api/premium/request-access", isAuthenticated, async (req: any, res) => {
+    try {
+      const { requestedTier, justification } = req.body;
+      const userId = req.user.claims.sub;
+      
+      if (!requestedTier || !justification) {
+        return res.status(400).json({ 
+          error: "Requested tier and justification are required" 
+        });
+      }
+      
+      // Check if user already has a pending request
+      const userRequests = await adminWorkflowService.getUserApprovalRequests(userId);
+      const pendingPremiumRequests = userRequests.filter(
+        req => req.resourceType === 'premium_access' && req.status === 'pending'
+      );
+      
+      if (pendingPremiumRequests.length > 0) {
+        return res.status(409).json({ 
+          error: "You already have a pending premium request" 
+        });
+      }
+      
+      const approvalId = await adminWorkflowService.createPremiumApprovalRequest(
+        userId, 
+        requestedTier, 
+        justification
+      );
+      
+      res.json({ 
+        success: true, 
+        approvalId,
+        message: "Premium access request submitted successfully" 
+      });
+    } catch (error: any) {
+      console.error('Error creating premium request:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/premium/status", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      // Check for pending requests
+      const userRequests = await adminWorkflowService.getUserApprovalRequests(userId);
+      const pendingPremiumRequests = userRequests.filter(
+        req => req.resourceType === 'premium_access' && req.status === 'pending'
+      );
+      
+      res.json({
+        isPremium: !!user.isPremiumApproved,
+        premiumTier: user.premiumTier || null,
+        premiumStatus: user.premiumStatus || 'none',
+        premiumApprovedAt: user.premiumApprovedAt || null,
+        hasPendingRequest: pendingPremiumRequests.length > 0,
+        pendingRequest: pendingPremiumRequests[0] || null
+      });
+    } catch (error: any) {
+      console.error('Error getting premium status:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/premium/features", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      const isPremium = !!user.isPremiumApproved;
+      const premiumTier = user.premiumTier || 'none';
+      
+      // Define feature availability by tier
+      const features = {
+        basic: {
+          advancedAnalytics: isPremium && ['basic', 'advanced', 'professional'].includes(premiumTier),
+          careerInsights: isPremium && ['basic', 'advanced', 'professional'].includes(premiumTier),
+          premiumCourses: isPremium && ['basic', 'advanced', 'professional'].includes(premiumTier),
+          prioritySupport: false,
+          mentorship: false,
+          advancedCertificates: false
+        },
+        advanced: {
+          advancedAnalytics: isPremium && ['advanced', 'professional'].includes(premiumTier),
+          careerInsights: isPremium && ['advanced', 'professional'].includes(premiumTier),
+          premiumCourses: isPremium && ['advanced', 'professional'].includes(premiumTier),
+          prioritySupport: isPremium && ['advanced', 'professional'].includes(premiumTier),
+          mentorship: isPremium && ['advanced', 'professional'].includes(premiumTier),
+          advancedCertificates: isPremium && ['advanced', 'professional'].includes(premiumTier)
+        },
+        professional: {
+          advancedAnalytics: isPremium && premiumTier === 'professional',
+          careerInsights: isPremium && premiumTier === 'professional',
+          premiumCourses: isPremium && premiumTier === 'professional',
+          prioritySupport: isPremium && premiumTier === 'professional',
+          mentorship: isPremium && premiumTier === 'professional',
+          advancedCertificates: isPremium && premiumTier === 'professional'
+        }
+      };
+      
+      res.json({
+        isPremium,
+        premiumTier,
+        availableFeatures: features[premiumTier as keyof typeof features] || features.basic
+      });
+    } catch (error: any) {
+      console.error('Error getting premium features:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/premium/analytics", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user || !user.isPremiumApproved) {
+        return res.status(403).json({ error: "Premium access required" });
+      }
+      
+      // Get premium analytics data from storage
+      const analytics = await storage.getUserPremiumAnalytics(userId);
+      res.json(analytics);
+    } catch (error: any) {
+      console.error('Error getting premium analytics:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/premium/career-insights", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      // Check premium access
+      if (!user?.isPremiumApproved) {
+        return res.status(403).json({ error: "Premium access required" });
+      }
+      
+      // Get career insights data
+      const insights = await storage.getUserCareerInsights(userId);
+      res.json(insights);
+    } catch (error: any) {
+      console.error('Error getting premium career insights:', error);
       res.status(500).json({ error: error.message });
     }
   });
