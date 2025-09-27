@@ -32,7 +32,23 @@ import {
   type LegalBasis,
   type ProcessingAction,
   type DataType,
-  type ProcessingPurpose
+  type ProcessingPurpose,
+  // Permission Management Types
+  type AccessGrant,
+  type InsertAccessGrant,
+  type Team,
+  type InsertTeam,
+  type TeamMember,
+  type InsertTeamMember,
+  type ShareInvite,
+  type InsertShareInvite,
+  type ShareLink,
+  type InsertShareLink,
+  type ResourceType,
+  type PrincipalType,
+  type Permission,
+  type TeamRole,
+  type InviteStatus
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -176,6 +192,43 @@ export interface IStorage {
   revokeAllUserSessions(userId: string, reason: string): Promise<number>;
   cleanupExpiredSessions(): Promise<number>;
   cleanupOldRevokedSessions(): Promise<number>;
+
+  // ===================
+  // PERMISSION MANAGEMENT
+  // ===================
+
+  // Access Control Methods
+  grantAccess(resourceType: ResourceType, resourceId: string, principalType: PrincipalType, principalId: string, permissions: Permission[], grantedBy: string): Promise<AccessGrant>;
+  revokeAccess(grantId: string, revokedBy: string): Promise<boolean>;
+  checkPermission(userId: string, resourceType: ResourceType, resourceId: string, permission: Permission): Promise<boolean>;
+  getUserPermissions(userId: string, resourceType: ResourceType, resourceId: string): Promise<Permission[]>;
+  getResourceCollaborators(resourceType: ResourceType, resourceId: string): Promise<Array<AccessGrant & { user?: User }>>;
+  getAccessibleResources(userId: string, resourceType: ResourceType): Promise<any[]>;
+  
+  // Team Management
+  createTeam(team: InsertTeam): Promise<Team>;
+  getTeam(teamId: string): Promise<Team | undefined>;
+  addTeamMember(member: InsertTeamMember): Promise<TeamMember>;
+  removeTeamMember(teamId: string, userId: string): Promise<boolean>;
+  getUserTeams(userId: string): Promise<Array<Team & { role: TeamRole }>>;
+  getTeamMembers(teamId: string): Promise<Array<TeamMember & { user: User }>>;
+  updateTeamMemberRole(teamId: string, userId: string, role: TeamRole): Promise<boolean>;
+  
+  // Share Invitations
+  createShareInvite(invite: InsertShareInvite): Promise<ShareInvite>;
+  getShareInvite(token: string): Promise<ShareInvite | undefined>;
+  acceptShareInvite(token: string, userId: string): Promise<boolean>;
+  declineShareInvite(token: string): Promise<boolean>;
+  getShareInvites(email: string): Promise<ShareInvite[]>;
+  getUserSentInvites(userId: string): Promise<ShareInvite[]>;
+  
+  // Share Links
+  createShareLink(link: InsertShareLink): Promise<ShareLink>;
+  getShareLink(token: string): Promise<ShareLink | undefined>;
+  getResourceShareLinks(resourceType: ResourceType, resourceId: string): Promise<ShareLink[]>;
+  incrementShareLinkAccess(linkId: string): Promise<void>;
+  updateShareLink(linkId: string, updates: Partial<ShareLink>): Promise<ShareLink | undefined>;
+  deleteShareLink(linkId: string): Promise<boolean>;
 }
 
 export class MemStorage implements IStorage {
@@ -195,6 +248,12 @@ export class MemStorage implements IStorage {
   // Security storage
   private authAuditLogs: Map<string, AuthAuditLog> = new Map();
   private userSessions: Map<string, UserSession> = new Map();
+  // Permission management storage
+  private accessGrants: Map<string, AccessGrant> = new Map();
+  private teams: Map<string, Team> = new Map();
+  private teamMembers: Map<string, TeamMember> = new Map();
+  private shareInvites: Map<string, ShareInvite> = new Map();
+  private shareLinks: Map<string, ShareLink> = new Map();
   // User content storage
   public userNotes: Map<string, any> = new Map();
   public userAchievements: Map<string, any> = new Map();
@@ -1709,6 +1768,389 @@ export class MemStorage implements IStorage {
     deletedData.push('User sessions');
     
     return { deletedFiles, deletedData };
+  }
+
+  // ===================
+  // PERMISSION MANAGEMENT IMPLEMENTATION
+  // ===================
+
+  // Access Control Methods
+  async grantAccess(resourceType: ResourceType, resourceId: string, principalType: PrincipalType, principalId: string, permissions: Permission[], grantedBy: string): Promise<AccessGrant> {
+    const grant: AccessGrant = {
+      id: randomUUID(),
+      resourceType,
+      resourceId,
+      principalType,
+      principalId,
+      permissions,
+      grantedBy,
+      grantedAt: new Date(),
+      expiresAt: null,
+      isActive: true,
+    };
+    this.accessGrants.set(grant.id, grant);
+    return grant;
+  }
+
+  async revokeAccess(grantId: string, revokedBy: string): Promise<boolean> {
+    const grant = this.accessGrants.get(grantId);
+    if (!grant) return false;
+    
+    // Mark as inactive instead of deleting for audit trail
+    grant.isActive = false;
+    this.accessGrants.set(grantId, grant);
+    return true;
+  }
+
+  async checkPermission(userId: string, resourceType: ResourceType, resourceId: string, permission: Permission): Promise<boolean> {
+    // Check if user has direct access grant
+    const userGrants = Array.from(this.accessGrants.values()).filter(grant => 
+      grant.isActive &&
+      grant.resourceType === resourceType &&
+      grant.resourceId === resourceId &&
+      grant.principalType === 'user' &&
+      grant.principalId === userId &&
+      grant.permissions.includes(permission) &&
+      (!grant.expiresAt || grant.expiresAt > new Date())
+    );
+
+    if (userGrants.length > 0) return true;
+
+    // Check if user is in a team that has access
+    const userTeams = await this.getUserTeams(userId);
+    for (const team of userTeams) {
+      const teamGrants = Array.from(this.accessGrants.values()).filter(grant =>
+        grant.isActive &&
+        grant.resourceType === resourceType &&
+        grant.resourceId === resourceId &&
+        grant.principalType === 'group' &&
+        grant.principalId === team.id &&
+        grant.permissions.includes(permission) &&
+        (!grant.expiresAt || grant.expiresAt > new Date())
+      );
+      if (teamGrants.length > 0) return true;
+    }
+
+    return false;
+  }
+
+  async getUserPermissions(userId: string, resourceType: ResourceType, resourceId: string): Promise<Permission[]> {
+    const permissions = new Set<Permission>();
+
+    // Direct user permissions
+    const userGrants = Array.from(this.accessGrants.values()).filter(grant =>
+      grant.isActive &&
+      grant.resourceType === resourceType &&
+      grant.resourceId === resourceId &&
+      grant.principalType === 'user' &&
+      grant.principalId === userId &&
+      (!grant.expiresAt || grant.expiresAt > new Date())
+    );
+
+    userGrants.forEach(grant => {
+      grant.permissions.forEach(permission => permissions.add(permission));
+    });
+
+    // Team-based permissions
+    const userTeams = await this.getUserTeams(userId);
+    for (const team of userTeams) {
+      const teamGrants = Array.from(this.accessGrants.values()).filter(grant =>
+        grant.isActive &&
+        grant.resourceType === resourceType &&
+        grant.resourceId === resourceId &&
+        grant.principalType === 'group' &&
+        grant.principalId === team.id &&
+        (!grant.expiresAt || grant.expiresAt > new Date())
+      );
+      teamGrants.forEach(grant => {
+        grant.permissions.forEach(permission => permissions.add(permission));
+      });
+    }
+
+    return Array.from(permissions);
+  }
+
+  async getResourceCollaborators(resourceType: ResourceType, resourceId: string): Promise<Array<AccessGrant & { user?: User }>> {
+    const grants = Array.from(this.accessGrants.values()).filter(grant =>
+      grant.isActive &&
+      grant.resourceType === resourceType &&
+      grant.resourceId === resourceId &&
+      (!grant.expiresAt || grant.expiresAt > new Date())
+    );
+
+    const collaborators = [];
+    for (const grant of grants) {
+      if (grant.principalType === 'user') {
+        const user = this.users.get(grant.principalId);
+        collaborators.push({ ...grant, user });
+      } else {
+        collaborators.push(grant);
+      }
+    }
+
+    return collaborators;
+  }
+
+  async getAccessibleResources(userId: string, resourceType: ResourceType): Promise<any[]> {
+    const allResources = [];
+    
+    // Get resources based on resource type
+    let resourceMap;
+    switch (resourceType) {
+      case 'csv':
+        resourceMap = this.csvUploads;
+        break;
+      case 'course':
+        resourceMap = this.courses;
+        break;
+      default:
+        return [];
+    }
+
+    // Check each resource for access
+    for (const [resourceId, resource] of resourceMap) {
+      const hasAccess = await this.checkPermission(userId, resourceType, resourceId, 'view');
+      if (hasAccess) {
+        allResources.push(resource);
+      }
+    }
+
+    return allResources;
+  }
+
+  // Team Management
+  async createTeam(team: InsertTeam): Promise<Team> {
+    const newTeam: Team = {
+      id: randomUUID(),
+      name: team.name,
+      description: team.description || null,
+      ownerId: team.ownerId || null,
+      createdAt: new Date(),
+      isActive: true,
+    };
+    this.teams.set(newTeam.id, newTeam);
+
+    // Add creator as owner member
+    if (team.ownerId) {
+      await this.addTeamMember({
+        teamId: newTeam.id,
+        userId: team.ownerId,
+        role: 'owner',
+      });
+    }
+
+    return newTeam;
+  }
+
+  async getTeam(teamId: string): Promise<Team | undefined> {
+    return this.teams.get(teamId);
+  }
+
+  async addTeamMember(member: InsertTeamMember): Promise<TeamMember> {
+    const newMember: TeamMember = {
+      id: randomUUID(),
+      teamId: member.teamId || '',
+      userId: member.userId || '',
+      role: member.role || 'member',
+      joinedAt: new Date(),
+    };
+    this.teamMembers.set(newMember.id, newMember);
+    return newMember;
+  }
+
+  async removeTeamMember(teamId: string, userId: string): Promise<boolean> {
+    const member = Array.from(this.teamMembers.values()).find(m =>
+      m.teamId === teamId && m.userId === userId
+    );
+    if (!member) return false;
+    
+    this.teamMembers.delete(member.id);
+    return true;
+  }
+
+  async getUserTeams(userId: string): Promise<Array<Team & { role: TeamRole }>> {
+    const userMemberships = Array.from(this.teamMembers.values()).filter(m =>
+      m.userId === userId
+    );
+
+    const teams = [];
+    for (const membership of userMemberships) {
+      const team = this.teams.get(membership.teamId);
+      if (team && team.isActive) {
+        teams.push({ ...team, role: membership.role as TeamRole });
+      }
+    }
+
+    return teams;
+  }
+
+  async getTeamMembers(teamId: string): Promise<Array<TeamMember & { user: User }>> {
+    const members = Array.from(this.teamMembers.values()).filter(m =>
+      m.teamId === teamId
+    );
+
+    const membersWithUsers = [];
+    for (const member of members) {
+      const user = this.users.get(member.userId);
+      if (user) {
+        membersWithUsers.push({ ...member, user });
+      }
+    }
+
+    return membersWithUsers;
+  }
+
+  async updateTeamMemberRole(teamId: string, userId: string, role: TeamRole): Promise<boolean> {
+    const member = Array.from(this.teamMembers.values()).find(m =>
+      m.teamId === teamId && m.userId === userId
+    );
+    if (!member) return false;
+
+    member.role = role;
+    this.teamMembers.set(member.id, member);
+    return true;
+  }
+
+  // Share Invitations
+  async createShareInvite(invite: InsertShareInvite): Promise<ShareInvite> {
+    const newInvite: ShareInvite = {
+      id: randomUUID(),
+      resourceType: invite.resourceType,
+      resourceId: invite.resourceId,
+      inviterUserId: invite.inviterUserId || null,
+      inviteeEmail: invite.inviteeEmail,
+      permissions: invite.permissions,
+      token: randomUUID(),
+      status: 'pending',
+      expiresAt: invite.expiresAt,
+      createdAt: new Date(),
+    };
+    this.shareInvites.set(newInvite.id, newInvite);
+    return newInvite;
+  }
+
+  async getShareInvite(token: string): Promise<ShareInvite | undefined> {
+    return Array.from(this.shareInvites.values()).find(invite =>
+      invite.token === token
+    );
+  }
+
+  async acceptShareInvite(token: string, userId: string): Promise<boolean> {
+    const invite = await this.getShareInvite(token);
+    if (!invite || invite.status !== 'pending' || invite.expiresAt < new Date()) {
+      return false;
+    }
+
+    // Create access grant
+    await this.grantAccess(
+      invite.resourceType,
+      invite.resourceId,
+      'user',
+      userId,
+      invite.permissions,
+      invite.inviterUserId || ''
+    );
+
+    // Update invite status
+    invite.status = 'accepted';
+    this.shareInvites.set(invite.id, invite);
+    return true;
+  }
+
+  async declineShareInvite(token: string): Promise<boolean> {
+    const invite = await this.getShareInvite(token);
+    if (!invite || invite.status !== 'pending') {
+      return false;
+    }
+
+    invite.status = 'declined';
+    this.shareInvites.set(invite.id, invite);
+    return true;
+  }
+
+  async getShareInvites(email: string): Promise<ShareInvite[]> {
+    return Array.from(this.shareInvites.values()).filter(invite =>
+      invite.inviteeEmail === email && invite.status === 'pending'
+    );
+  }
+
+  async getUserSentInvites(userId: string): Promise<ShareInvite[]> {
+    return Array.from(this.shareInvites.values()).filter(invite =>
+      invite.inviterUserId === userId
+    );
+  }
+
+  // Share Links
+  async createShareLink(link: InsertShareLink): Promise<ShareLink> {
+    const newLink: ShareLink = {
+      id: randomUUID(),
+      resourceType: link.resourceType,
+      resourceId: link.resourceId,
+      createdBy: link.createdBy || null,
+      token: randomUUID(),
+      permissions: link.permissions,
+      accessCount: 0,
+      maxAccessCount: link.maxAccessCount || null,
+      expiresAt: link.expiresAt || null,
+      isActive: true,
+      createdAt: new Date(),
+    };
+    this.shareLinks.set(newLink.id, newLink);
+    return newLink;
+  }
+
+  async getShareLink(token: string): Promise<ShareLink | undefined> {
+    const link = Array.from(this.shareLinks.values()).find(l =>
+      l.token === token && l.isActive
+    );
+    
+    if (!link) return undefined;
+    
+    // Check expiration
+    if (link.expiresAt && link.expiresAt < new Date()) {
+      return undefined;
+    }
+    
+    // Check access limit
+    if (link.maxAccessCount && link.accessCount >= link.maxAccessCount) {
+      return undefined;
+    }
+    
+    return link;
+  }
+
+  async getResourceShareLinks(resourceType: ResourceType, resourceId: string): Promise<ShareLink[]> {
+    return Array.from(this.shareLinks.values()).filter(link =>
+      link.resourceType === resourceType &&
+      link.resourceId === resourceId &&
+      link.isActive
+    );
+  }
+
+  async incrementShareLinkAccess(linkId: string): Promise<void> {
+    const link = this.shareLinks.get(linkId);
+    if (link) {
+      link.accessCount++;
+      this.shareLinks.set(linkId, link);
+    }
+  }
+
+  async updateShareLink(linkId: string, updates: Partial<ShareLink>): Promise<ShareLink | undefined> {
+    const link = this.shareLinks.get(linkId);
+    if (!link) return undefined;
+    
+    Object.assign(link, updates);
+    this.shareLinks.set(linkId, link);
+    return link;
+  }
+
+  async deleteShareLink(linkId: string): Promise<boolean> {
+    const link = this.shareLinks.get(linkId);
+    if (!link) return false;
+    
+    link.isActive = false;
+    this.shareLinks.set(linkId, link);
+    return true;
   }
 }
 

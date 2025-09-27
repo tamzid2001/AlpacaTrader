@@ -1,7 +1,19 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertSupportMessageSchema, insertQuizResultSchema, insertCsvUploadSchema, insertAnomalySchema, insertSharedResultSchema, insertAnonymousConsentSchema } from "@shared/schema";
+import { 
+  insertSupportMessageSchema, 
+  insertQuizResultSchema, 
+  insertCsvUploadSchema, 
+  insertAnomalySchema, 
+  insertSharedResultSchema, 
+  insertAnonymousConsentSchema,
+  insertAccessGrantSchema,
+  insertTeamSchema,
+  insertTeamMemberSchema,
+  insertShareInviteSchema,
+  insertShareLinkSchema
+} from "@shared/schema";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { registerSecurityRoutes } from "./routes/security";
 import iconRoutes from "./routes/icons";
@@ -18,6 +30,15 @@ import {
   verifyAndRefreshFirebaseToken 
 } from "./firebase-admin";
 import { objectStorage } from "./lib/object-storage";
+import { 
+  requirePermission,
+  requireOwnership,
+  requireAnyPermission,
+  allowShareLinkAccess,
+  requireTeamPermission,
+  requireSelfAccess,
+  requireAdmin
+} from "./middleware/permissions";
 
 // Initialize OpenAI with error handling for missing API key
 let openai: OpenAI | null = null;
@@ -863,7 +884,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete CSV upload (with secure Firebase file deletion)
-  app.delete("/api/csv/uploads/:id", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/csv/uploads/:id", isAuthenticated, requirePermission('csv', 'delete'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const uploadId = req.params.id;
@@ -914,7 +935,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // SECURE CSV file download route with ownership verification
-  app.get("/api/csv/uploads/:id/download", isAuthenticated, async (req: any, res) => {
+  app.get("/api/csv/uploads/:id/download", isAuthenticated, requirePermission('csv', 'view'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const uploadId = req.params.id;
@@ -969,7 +990,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/csv/:id/analyze", isAuthenticated, async (req: any, res) => {
+  app.post("/api/csv/:id/analyze", isAuthenticated, requirePermission('csv', 'view'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const upload = await storage.getCsvUpload(req.params.id);
@@ -1106,7 +1127,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
 
-  app.get("/api/csv/:id/anomalies", isAuthenticated, async (req: any, res) => {
+  app.get("/api/csv/:id/anomalies", isAuthenticated, requirePermission('csv', 'view'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const uploadId = req.params.id;
@@ -2347,7 +2368,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===================
 
   // Course Material Upload
-  app.post('/api/courses/:courseId/materials/upload', isAuthenticated, upload.single('material'), async (req: any, res) => {
+  app.post('/api/courses/:courseId/materials/upload', isAuthenticated, requirePermission('course', 'edit'), upload.single('material'), async (req: any, res) => {
     try {
       const { courseId } = req.params;
       const { materialType, lessonId, version } = req.body;
@@ -2385,7 +2406,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Course Material Download
-  app.get('/api/courses/:courseId/materials/:materialType/download', isAuthenticated, async (req: any, res) => {
+  app.get('/api/courses/:courseId/materials/:materialType/download', isAuthenticated, requirePermission('course', 'view'), async (req: any, res) => {
     try {
       const { courseId, materialType } = req.params;
       const { version, lessonId } = req.query;
@@ -2416,7 +2437,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // List Course Materials
-  app.get('/api/courses/:courseId/materials', isAuthenticated, async (req: any, res) => {
+  app.get('/api/courses/:courseId/materials', isAuthenticated, requirePermission('course', 'view'), async (req: any, res) => {
     try {
       const { courseId } = req.params;
       const { materialType, lessonId } = req.query;
@@ -2442,7 +2463,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete Course Material
-  app.delete('/api/courses/:courseId/materials/:materialPath', isAuthenticated, async (req: any, res) => {
+  app.delete('/api/courses/:courseId/materials/:materialPath', isAuthenticated, requirePermission('course', 'delete'), async (req: any, res) => {
     try {
       const { courseId, materialPath } = req.params;
 
@@ -2565,7 +2586,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Download Course Certificate
-  app.get('/api/courses/:courseId/certificates/:userId/download', isAuthenticated, async (req: any, res) => {
+  app.get('/api/courses/:courseId/certificates/:userId/download', isAuthenticated, requirePermission('course', 'view'), async (req: any, res) => {
     try {
       const { courseId, userId } = req.params;
       const { certificateType } = req.query;
@@ -3012,6 +3033,376 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ===================
+  // PERMISSION MANAGEMENT APIs
+  // ===================
+
+  // Access Control APIs
+  app.post('/api/permissions/grant', isAuthenticated, async (req: any, res) => {
+    try {
+      const { resourceType, resourceId, principalType, principalId, permissions } = req.body;
+      const grantedBy = req.user.claims.sub;
+      
+      // Validate input
+      const grantData = insertAccessGrantSchema.parse({
+        resourceType,
+        resourceId,
+        principalType,
+        principalId,
+        permissions,
+        grantedBy
+      });
+      
+      // Check if user has permission to grant access (must be owner or have share permission)
+      const canGrant = await storage.checkPermission(grantedBy, resourceType, resourceId, 'share');
+      if (!canGrant) {
+        return res.status(403).json({ error: 'Insufficient permissions to grant access' });
+      }
+      
+      const grant = await storage.grantAccess(
+        resourceType,
+        resourceId,
+        principalType,
+        principalId,
+        permissions,
+        grantedBy
+      );
+      
+      res.json(grant);
+    } catch (error: any) {
+      console.error('Grant access error:', error);
+      res.status(400).json({ error: error.message || 'Failed to grant access' });
+    }
+  });
+
+  app.delete('/api/permissions/:grantId', isAuthenticated, async (req: any, res) => {
+    try {
+      const { grantId } = req.params;
+      const revokedBy = req.user.claims.sub;
+      
+      const success = await storage.revokeAccess(grantId, revokedBy);
+      if (!success) {
+        return res.status(404).json({ error: 'Access grant not found' });
+      }
+      
+      res.json({ success: true, message: 'Access revoked' });
+    } catch (error: any) {
+      console.error('Revoke access error:', error);
+      res.status(500).json({ error: 'Failed to revoke access' });
+    }
+  });
+
+  app.get('/api/resources/:resourceType/:resourceId/collaborators', isAuthenticated, requireAnyPermission('csv', ['view', 'share']), async (req: any, res) => {
+    try {
+      const { resourceType, resourceId } = req.params;
+      
+      const collaborators = await storage.getResourceCollaborators(resourceType, resourceId);
+      res.json(collaborators);
+    } catch (error: any) {
+      console.error('Get collaborators error:', error);
+      res.status(500).json({ error: 'Failed to get collaborators' });
+    }
+  });
+
+  app.get('/api/resources/:resourceType/:resourceId/permissions', isAuthenticated, async (req: any, res) => {
+    try {
+      const { resourceType, resourceId } = req.params;
+      const userId = req.user.claims.sub;
+      
+      const permissions = await storage.getUserPermissions(userId, resourceType, resourceId);
+      res.json({ permissions });
+    } catch (error: any) {
+      console.error('Get permissions error:', error);
+      res.status(500).json({ error: 'Failed to get permissions' });
+    }
+  });
+
+  // Team Management APIs
+  app.post('/api/teams', isAuthenticated, async (req: any, res) => {
+    try {
+      const { name, description } = req.body;
+      const ownerId = req.user.claims.sub;
+      
+      const teamData = insertTeamSchema.parse({
+        name,
+        description,
+        ownerId
+      });
+      
+      const team = await storage.createTeam(teamData);
+      res.json(team);
+    } catch (error: any) {
+      console.error('Create team error:', error);
+      res.status(400).json({ error: error.message || 'Failed to create team' });
+    }
+  });
+
+  app.post('/api/teams/:teamId/members', isAuthenticated, async (req: any, res) => {
+    try {
+      const { teamId } = req.params;
+      const { userId, role } = req.body;
+      const requesterId = req.user.claims.sub;
+      
+      // Check if requester has permission to add members (must be owner or admin)
+      const team = await storage.getTeam(teamId);
+      if (!team || team.ownerId !== requesterId) {
+        const userTeams = await storage.getUserTeams(requesterId);
+        const isAdmin = userTeams.some(t => t.id === teamId && ['owner', 'admin'].includes(t.role));
+        if (!isAdmin) {
+          return res.status(403).json({ error: 'Insufficient permissions to add team members' });
+        }
+      }
+      
+      const memberData = insertTeamMemberSchema.parse({
+        teamId,
+        userId,
+        role: role || 'member'
+      });
+      
+      const member = await storage.addTeamMember(memberData);
+      res.json(member);
+    } catch (error: any) {
+      console.error('Add team member error:', error);
+      res.status(400).json({ error: error.message || 'Failed to add team member' });
+    }
+  });
+
+  app.delete('/api/teams/:teamId/members/:userId', isAuthenticated, async (req: any, res) => {
+    try {
+      const { teamId, userId } = req.params;
+      const requesterId = req.user.claims.sub;
+      
+      // Check if requester has permission to remove members
+      const team = await storage.getTeam(teamId);
+      if (!team || team.ownerId !== requesterId) {
+        const userTeams = await storage.getUserTeams(requesterId);
+        const isAdmin = userTeams.some(t => t.id === teamId && ['owner', 'admin'].includes(t.role));
+        if (!isAdmin && requesterId !== userId) { // Users can remove themselves
+          return res.status(403).json({ error: 'Insufficient permissions to remove team members' });
+        }
+      }
+      
+      const success = await storage.removeTeamMember(teamId, userId);
+      if (!success) {
+        return res.status(404).json({ error: 'Team member not found' });
+      }
+      
+      res.json({ success: true, message: 'Team member removed' });
+    } catch (error: any) {
+      console.error('Remove team member error:', error);
+      res.status(500).json({ error: 'Failed to remove team member' });
+    }
+  });
+
+  app.get('/api/teams/my-teams', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      
+      const teams = await storage.getUserTeams(userId);
+      res.json(teams);
+    } catch (error: any) {
+      console.error('Get user teams error:', error);
+      res.status(500).json({ error: 'Failed to get user teams' });
+    }
+  });
+
+  app.get('/api/teams/:teamId/members', isAuthenticated, async (req: any, res) => {
+    try {
+      const { teamId } = req.params;
+      const userId = req.user.claims.sub;
+      
+      // Check if user is member of the team
+      const userTeams = await storage.getUserTeams(userId);
+      const isMember = userTeams.some(t => t.id === teamId);
+      if (!isMember) {
+        return res.status(403).json({ error: 'Access denied - not a team member' });
+      }
+      
+      const members = await storage.getTeamMembers(teamId);
+      res.json(members);
+    } catch (error: any) {
+      console.error('Get team members error:', error);
+      res.status(500).json({ error: 'Failed to get team members' });
+    }
+  });
+
+  // Share Invitation APIs
+  app.post('/api/share/invite', isAuthenticated, async (req: any, res) => {
+    try {
+      const { resourceType, resourceId, inviteeEmail, permissions, expiresIn } = req.body;
+      const inviterUserId = req.user.claims.sub;
+      
+      // Check if user can share the resource
+      const canShare = await storage.checkPermission(inviterUserId, resourceType, resourceId, 'share');
+      if (!canShare) {
+        return res.status(403).json({ error: 'Insufficient permissions to share resource' });
+      }
+      
+      // Calculate expiration date
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + (expiresIn || 7)); // Default 7 days
+      
+      const inviteData = insertShareInviteSchema.parse({
+        resourceType,
+        resourceId,
+        inviterUserId,
+        inviteeEmail,
+        permissions,
+        expiresAt
+      });
+      
+      const invite = await storage.createShareInvite(inviteData);
+      res.json(invite);
+    } catch (error: any) {
+      console.error('Create share invite error:', error);
+      res.status(400).json({ error: error.message || 'Failed to create share invitation' });
+    }
+  });
+
+  app.post('/api/share/accept/:token', isAuthenticated, async (req: any, res) => {
+    try {
+      const { token } = req.params;
+      const userId = req.user.claims.sub;
+      
+      const success = await storage.acceptShareInvite(token, userId);
+      if (!success) {
+        return res.status(400).json({ error: 'Invalid or expired invitation' });
+      }
+      
+      res.json({ success: true, message: 'Invitation accepted' });
+    } catch (error: any) {
+      console.error('Accept share invite error:', error);
+      res.status(500).json({ error: 'Failed to accept invitation' });
+    }
+  });
+
+  app.post('/api/share/decline/:token', async (req, res) => {
+    try {
+      const { token } = req.params;
+      
+      const success = await storage.declineShareInvite(token);
+      if (!success) {
+        return res.status(400).json({ error: 'Invalid invitation' });
+      }
+      
+      res.json({ success: true, message: 'Invitation declined' });
+    } catch (error: any) {
+      console.error('Decline share invite error:', error);
+      res.status(500).json({ error: 'Failed to decline invitation' });
+    }
+  });
+
+  app.get('/api/share/invites', isAuthenticated, async (req: any, res) => {
+    try {
+      const userEmail = req.user.claims.email;
+      
+      const invites = await storage.getShareInvites(userEmail);
+      res.json(invites);
+    } catch (error: any) {
+      console.error('Get share invites error:', error);
+      res.status(500).json({ error: 'Failed to get share invites' });
+    }
+  });
+
+  app.get('/api/share/sent-invites', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      
+      const invites = await storage.getUserSentInvites(userId);
+      res.json(invites);
+    } catch (error: any) {
+      console.error('Get sent invites error:', error);
+      res.status(500).json({ error: 'Failed to get sent invites' });
+    }
+  });
+
+  // Share Link APIs
+  app.post('/api/share/link', isAuthenticated, async (req: any, res) => {
+    try {
+      const { resourceType, resourceId, permissions, expiresIn, maxAccessCount } = req.body;
+      const createdBy = req.user.claims.sub;
+      
+      // Check if user can share the resource
+      const canShare = await storage.checkPermission(createdBy, resourceType, resourceId, 'share');
+      if (!canShare) {
+        return res.status(403).json({ error: 'Insufficient permissions to create share link' });
+      }
+      
+      // Calculate expiration date if provided
+      let expiresAt = null;
+      if (expiresIn) {
+        expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + expiresIn);
+      }
+      
+      const linkData = insertShareLinkSchema.parse({
+        resourceType,
+        resourceId,
+        createdBy,
+        permissions,
+        expiresAt,
+        maxAccessCount
+      });
+      
+      const shareLink = await storage.createShareLink(linkData);
+      res.json(shareLink);
+    } catch (error: any) {
+      console.error('Create share link error:', error);
+      res.status(400).json({ error: error.message || 'Failed to create share link' });
+    }
+  });
+
+  app.get('/api/share/link/:token', async (req, res) => {
+    try {
+      const { token } = req.params;
+      
+      const shareLink = await storage.getShareLink(token);
+      if (!shareLink) {
+        return res.status(404).json({ error: 'Invalid or expired share link' });
+      }
+      
+      res.json(shareLink);
+    } catch (error: any) {
+      console.error('Get share link error:', error);
+      res.status(500).json({ error: 'Failed to get share link' });
+    }
+  });
+
+  app.get('/api/share/links/:resourceType/:resourceId', isAuthenticated, requireAnyPermission('csv', ['share', 'view']), async (req: any, res) => {
+    try {
+      const { resourceType, resourceId } = req.params;
+      
+      const shareLinks = await storage.getResourceShareLinks(resourceType, resourceId);
+      res.json(shareLinks);
+    } catch (error: any) {
+      console.error('Get resource share links error:', error);
+      res.status(500).json({ error: 'Failed to get share links' });
+    }
+  });
+
+  app.delete('/api/share/links/:linkId', isAuthenticated, async (req: any, res) => {
+    try {
+      const { linkId } = req.params;
+      const userId = req.user.claims.sub;
+      
+      // Get the share link to check ownership
+      const shareLink = await storage.getShareLink(linkId);
+      if (!shareLink || shareLink.createdBy !== userId) {
+        return res.status(403).json({ error: 'Access denied - not the creator of this share link' });
+      }
+      
+      const success = await storage.deleteShareLink(linkId);
+      if (!success) {
+        return res.status(404).json({ error: 'Share link not found' });
+      }
+      
+      res.json({ success: true, message: 'Share link deleted' });
+    } catch (error: any) {
+      console.error('Delete share link error:', error);
+      res.status(500).json({ error: 'Failed to delete share link' });
     }
   });
 

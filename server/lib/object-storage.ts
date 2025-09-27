@@ -1,4 +1,5 @@
 import { Client } from '@replit/object-storage';
+import { storage } from '../storage';
 
 /**
  * Comprehensive Object Storage Service for MarketDifferentials
@@ -1271,6 +1272,262 @@ export class ObjectStorageService {
       return { 
         ok: false, 
         error: `Failed to generate shareable link: ${error.message}` 
+      };
+    }
+  }
+
+  // ===================
+  // PERMISSION-AWARE STORAGE METHODS
+  // ===================
+
+  /**
+   * Upload file with automatic permission setup
+   * Sets initial owner permissions for the uploaded resource
+   */
+  async uploadWithPermissions(
+    userId: string, 
+    resourceType: string, 
+    fileName: string, 
+    content: Buffer, 
+    permissions: string[] = ['view', 'edit', 'share', 'delete']
+  ): Promise<{ok: boolean, resourceId?: string, path?: string, size?: number, error?: string}> {
+    try {
+      // Determine upload method based on resource type
+      let uploadResult;
+      
+      switch (resourceType) {
+        case 'csv':
+          uploadResult = await this.uploadCSV(userId, fileName, content);
+          break;
+        case 'course':
+          uploadResult = await this.uploadCourseContent(userId, fileName, 'material', content);
+          break;
+        case 'report':
+          uploadResult = await this.uploadAsset('reports', fileName, content, {
+            userId,
+            uploadedAt: new Date().toISOString()
+          });
+          break;
+        default:
+          uploadResult = await this.uploadAsset('static', fileName, content, {
+            userId,
+            uploadedAt: new Date().toISOString()
+          });
+      }
+      
+      if (uploadResult.ok && uploadResult.path) {
+        // Generate resource ID from path for permission tracking
+        const resourceId = uploadResult.path.replace(/[^a-zA-Z0-9]/g, '_');
+        
+        try {
+          // Set initial owner permissions
+          await storage.grantAccess(
+            resourceType,
+            resourceId,
+            'user',
+            userId,
+            permissions,
+            userId
+          );
+          
+          console.log(`Permissions granted for ${resourceType} resource ${resourceId} to user ${userId}`);
+        } catch (permissionError) {
+          console.warn('Failed to set initial permissions, but file uploaded successfully:', permissionError);
+        }
+        
+        return {
+          ...uploadResult,
+          resourceId
+        };
+      }
+      
+      return uploadResult;
+    } catch (error: any) {
+      console.error('Upload with permissions error:', error);
+      return {
+        ok: false,
+        error: `Failed to upload with permissions: ${error.message}`
+      };
+    }
+  }
+
+  /**
+   * Download file with permission check
+   * Verifies user has 'view' permission before allowing download
+   */
+  async downloadWithPermissionCheck(
+    userId: string, 
+    resourceType: string, 
+    resourceId: string, 
+    fileName?: string
+  ): Promise<{ok: boolean, data?: Buffer, error?: string}> {
+    try {
+      // Check if user has view permission
+      const hasPermission = await storage.checkPermission(userId, resourceType, resourceId, 'view');
+      
+      if (!hasPermission) {
+        // Check if user is the owner
+        let isOwner = false;
+        try {
+          switch (resourceType) {
+            case 'csv':
+              const csvUpload = await storage.getCsvUpload(resourceId);
+              isOwner = csvUpload?.userId === userId;
+              break;
+            case 'course':
+              const course = await storage.getCourse(resourceId);
+              isOwner = course?.ownerId === userId;
+              break;
+            default:
+              isOwner = false;
+          }
+        } catch (error) {
+          console.warn('Error checking ownership:', error);
+        }
+        
+        if (!isOwner) {
+          console.log(`Access denied: User ${userId} lacks view permission for ${resourceType} ${resourceId}`);
+          return {
+            ok: false,
+            error: 'Access denied: insufficient permissions to download this resource'
+          };
+        }
+      }
+      
+      // Proceed with download based on resource type
+      let downloadResult;
+      
+      switch (resourceType) {
+        case 'csv':
+          if (fileName) {
+            downloadResult = await this.downloadCSV(userId, fileName);
+          } else {
+            // Try to get CSV upload info and download by path
+            try {
+              const csvUpload = await storage.getCsvUpload(resourceId);
+              if (csvUpload?.filePath) {
+                downloadResult = await this.downloadCSVByPath(csvUpload.filePath);
+              } else {
+                downloadResult = { ok: false, error: 'CSV file path not found' };
+              }
+            } catch (error: any) {
+              downloadResult = { ok: false, error: `Failed to get CSV info: ${error.message}` };
+            }
+          }
+          break;
+        case 'course':
+          if (fileName) {
+            downloadResult = await this.downloadCourseContent(resourceId, 'material', fileName);
+          } else {
+            downloadResult = { ok: false, error: 'Course material filename required' };
+          }
+          break;
+        case 'report':
+          if (fileName) {
+            downloadResult = await this.downloadAsset('reports', fileName);
+          } else {
+            downloadResult = { ok: false, error: 'Report filename required' };
+          }
+          break;
+        default:
+          if (fileName) {
+            downloadResult = await this.downloadAsset('static', fileName);
+          } else {
+            downloadResult = { ok: false, error: 'Filename required for download' };
+          }
+      }
+      
+      if (downloadResult.ok) {
+        console.log(`Download successful: User ${userId} downloaded ${resourceType} ${resourceId}`);
+      }
+      
+      return downloadResult;
+    } catch (error: any) {
+      console.error('Download with permission check error:', error);
+      return {
+        ok: false,
+        error: `Failed to download with permission check: ${error.message}`
+      };
+    }
+  }
+
+  /**
+   * Check if user can access a resource
+   */
+  async canAccessResource(
+    userId: string, 
+    resourceType: string, 
+    resourceId: string, 
+    permission: string = 'view'
+  ): Promise<boolean> {
+    try {
+      const hasPermission = await storage.checkPermission(userId, resourceType, resourceId, permission);
+      if (hasPermission) {
+        return true;
+      }
+      
+      // Check ownership as fallback
+      switch (resourceType) {
+        case 'csv':
+          const csvUpload = await storage.getCsvUpload(resourceId);
+          return csvUpload?.userId === userId;
+        case 'course':
+          const course = await storage.getCourse(resourceId);
+          return course?.ownerId === userId;
+        default:
+          return false;
+      }
+    } catch (error) {
+      console.error('Error checking resource access:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get accessible resources for a user
+   */
+  async getAccessibleResources(
+    userId: string, 
+    resourceType: string
+  ): Promise<{ok: boolean, resources?: any[], error?: string}> {
+    try {
+      // Get all user's owned resources
+      let ownedResources: any[] = [];
+      
+      switch (resourceType) {
+        case 'csv':
+          ownedResources = await storage.getCsvUploadsByUserId(userId);
+          break;
+        case 'course':
+          ownedResources = await storage.getCoursesByOwnerId(userId);
+          break;
+        default:
+          ownedResources = [];
+      }
+      
+      // Get shared resources where user has permissions
+      const sharedResources = await storage.getResourcesWithUserAccess(userId, resourceType);
+      
+      // Combine and deduplicate
+      const allResources = [...ownedResources];
+      for (const shared of sharedResources) {
+        if (!allResources.find(r => r.id === shared.resourceId)) {
+          allResources.push({
+            ...shared,
+            isShared: true
+          });
+        }
+      }
+      
+      return {
+        ok: true,
+        resources: allResources
+      };
+    } catch (error: any) {
+      console.error('Error getting accessible resources:', error);
+      return {
+        ok: false,
+        error: `Failed to get accessible resources: ${error.message}`
       };
     }
   }

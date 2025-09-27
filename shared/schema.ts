@@ -45,6 +45,7 @@ export const courses = pgTable("courses", {
   slidesUrl: text("slides_url"),
   documentsUrl: text("documents_url"),
   codeUrl: text("code_url"),
+  ownerId: varchar("owner_id").references(() => users.id), // Track course ownership for permissions
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -132,7 +133,75 @@ export const sharedResults = pgTable("shared_results", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// ===================
+// PERMISSION MANAGEMENT TABLES
+// ===================
+
+// Access Grants - Core permission tracking
+export const accessGrants = pgTable("access_grants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  resourceType: varchar("resource_type").notNull(), // 'csv', 'course', 'report', 'user_content'
+  resourceId: varchar("resource_id").notNull(),
+  principalType: varchar("principal_type").notNull(), // 'user', 'group', 'link'
+  principalId: varchar("principal_id").notNull(),
+  permissions: varchar("permissions").array().notNull(), // ['view', 'edit', 'share', 'delete']
+  grantedBy: varchar("granted_by").references(() => users.id),
+  grantedAt: timestamp("granted_at").defaultNow(),
+  expiresAt: timestamp("expires_at"), // For temporary access
+  isActive: boolean("is_active").default(true),
+});
+
+// Teams/Groups for bulk sharing
+export const teams = pgTable("teams", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name").notNull(),
+  description: text("description"),
+  ownerId: varchar("owner_id").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  isActive: boolean("is_active").default(true),
+});
+
+// Team Members
+export const teamMembers = pgTable("team_members", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  teamId: varchar("team_id").references(() => teams.id, { onDelete: 'cascade' }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: 'cascade' }),
+  role: varchar("role").default('member'), // 'owner', 'admin', 'member'
+  joinedAt: timestamp("joined_at").defaultNow(),
+});
+
+// Share Invitations
+export const shareInvites = pgTable("share_invites", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  resourceType: varchar("resource_type").notNull(),
+  resourceId: varchar("resource_id").notNull(),
+  inviterUserId: varchar("inviter_user_id").references(() => users.id),
+  inviteeEmail: varchar("invitee_email").notNull(),
+  permissions: varchar("permissions").array().notNull(),
+  token: varchar("token").notNull().unique(),
+  status: varchar("status").default('pending'), // 'pending', 'accepted', 'declined', 'expired'
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Share Links for public/link-based sharing
+export const shareLinks = pgTable("share_links", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  resourceType: varchar("resource_type").notNull(),
+  resourceId: varchar("resource_id").notNull(),
+  createdBy: varchar("created_by").references(() => users.id),
+  token: varchar("token").notNull().unique(),
+  permissions: varchar("permissions").array().notNull(),
+  accessCount: integer("access_count").default(0),
+  maxAccessCount: integer("max_access_count"), // Optional limit
+  expiresAt: timestamp("expires_at"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ===================
 // GDPR Compliance Tables
+// ===================
 export const userConsent = pgTable("user_consent", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
@@ -339,6 +408,48 @@ export const fileProcessingQueue = pgTable("file_processing_queue", {
   completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Permission Management Insert Schemas
+export const insertAccessGrantSchema = createInsertSchema(accessGrants).omit({
+  id: true,
+  grantedAt: true,
+}).extend({
+  resourceType: z.enum(["csv", "course", "report", "user_content"]),
+  principalType: z.enum(["user", "group", "link"]),
+  permissions: z.array(z.enum(["view", "edit", "share", "delete"])),
+});
+
+export const insertTeamSchema = createInsertSchema(teams).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertTeamMemberSchema = createInsertSchema(teamMembers).omit({
+  id: true,
+  joinedAt: true,
+}).extend({
+  role: z.enum(["owner", "admin", "member"]).default("member"),
+});
+
+export const insertShareInviteSchema = createInsertSchema(shareInvites).omit({
+  id: true,
+  createdAt: true,
+  token: true, // Generated automatically
+}).extend({
+  resourceType: z.enum(["csv", "course", "report", "user_content"]),
+  permissions: z.array(z.enum(["view", "edit", "share", "delete"])),
+  status: z.enum(["pending", "accepted", "declined", "expired"]).default("pending"),
+});
+
+export const insertShareLinkSchema = createInsertSchema(shareLinks).omit({
+  id: true,
+  createdAt: true,
+  token: true, // Generated automatically
+  accessCount: true,
+}).extend({
+  resourceType: z.enum(["csv", "course", "report", "user_content"]),
+  permissions: z.array(z.enum(["view", "edit", "share", "delete"])),
 });
 
 // Insert schemas
@@ -578,6 +689,13 @@ export type SystemAsset = typeof systemAssets.$inferSelect;
 export type InsertFileProcessingQueue = z.infer<typeof insertFileProcessingQueueSchema>;
 export type FileProcessingQueue = typeof fileProcessingQueue.$inferSelect;
 
+// Permission Management Enums for type safety
+export const RESOURCE_TYPES = ["csv", "course", "report", "user_content"] as const;
+export const PRINCIPAL_TYPES = ["user", "group", "link"] as const;
+export const PERMISSIONS = ["view", "edit", "share", "delete"] as const;
+export const TEAM_ROLES = ["owner", "admin", "member"] as const;
+export const INVITE_STATUSES = ["pending", "accepted", "declined", "expired"] as const;
+
 // GDPR Enums for type safety
 export const CONSENT_TYPES = ["marketing", "analytics", "essential", "cookies", "data_processing"] as const;
 export const LEGAL_BASIS = ["contract", "consent", "legitimate_interest", "vital_interests", "public_task", "legal_obligation"] as const;
@@ -596,6 +714,24 @@ export const ACCESS_LEVELS = ["public", "enrolled", "premium"] as const;
 export const ASSET_TYPES = ["icon", "chart", "export", "backup", "config", "template", "cache"] as const;
 export const PROCESS_TYPES = ["csv_analysis", "image_optimization", "video_transcoding", "pdf_processing", "backup_creation"] as const;
 export const PROCESS_STATUSES = ["pending", "processing", "completed", "error", "cancelled"] as const;
+
+// Permission Management Type Exports
+export type InsertAccessGrant = z.infer<typeof insertAccessGrantSchema>;
+export type AccessGrant = typeof accessGrants.$inferSelect;
+export type InsertTeam = z.infer<typeof insertTeamSchema>;
+export type Team = typeof teams.$inferSelect;
+export type InsertTeamMember = z.infer<typeof insertTeamMemberSchema>;
+export type TeamMember = typeof teamMembers.$inferSelect;
+export type InsertShareInvite = z.infer<typeof insertShareInviteSchema>;
+export type ShareInvite = typeof shareInvites.$inferSelect;
+export type InsertShareLink = z.infer<typeof insertShareLinkSchema>;
+export type ShareLink = typeof shareLinks.$inferSelect;
+
+export type ResourceType = typeof RESOURCE_TYPES[number];
+export type PrincipalType = typeof PRINCIPAL_TYPES[number];
+export type Permission = typeof PERMISSIONS[number];
+export type TeamRole = typeof TEAM_ROLES[number];
+export type InviteStatus = typeof INVITE_STATUSES[number];
 
 export type ConsentType = typeof CONSENT_TYPES[number];
 export type LegalBasis = typeof LEGAL_BASIS[number];
