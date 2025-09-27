@@ -61,17 +61,19 @@ export interface CustomFirebaseToken {
 export async function generateCustomFirebaseToken(
   userId: string,
   email: string,
-  role: string = 'user'
+  role: string = 'user',
+  approved: boolean = false
 ): Promise<CustomFirebaseToken> {
   if (!adminAuth) {
     throw new Error("Firebase Admin Auth not initialized. Please check Firebase configuration.");
   }
 
   try {
-    // Create custom claims for role-based access control
+    // Create custom claims for role-based access control including approval status
     const customClaims = {
       email: email,
       role: role,
+      approved: approved, // Include approval status for Firestore rules
       email_verified: true, // Replit Auth handles email verification
       replit_auth: true, // Flag to identify Replit Auth origin
       created_at: Date.now()
@@ -83,7 +85,7 @@ export async function generateCustomFirebaseToken(
     // Calculate expiration (1 hour from now)
     const expires = Date.now() + (60 * 60 * 1000);
 
-    console.log(`Generated custom Firebase token for user ${userId} (${email}) with role: ${role}`);
+    console.log(`Generated custom Firebase token for user ${userId} (${email}) with role: ${role}, approved: ${approved}`);
     
     return {
       token: customToken,
@@ -110,7 +112,8 @@ export async function createOrUpdateFirebaseUser(
   email: string,
   firstName?: string,
   lastName?: string,
-  role: string = 'user'
+  role: string = 'user',
+  approved: boolean = false
 ): Promise<void> {
   if (!adminAuth) {
     throw new Error("Firebase Admin Auth not initialized.");
@@ -136,17 +139,18 @@ export async function createOrUpdateFirebaseUser(
       }
     }
 
-    // Set custom claims for role-based access control
+    // Set custom claims for role-based access control including approval status
     const customClaims = {
       email: email,
       role: role,
+      approved: approved, // Include approval status for Firestore rules
       email_verified: true,
       replit_auth: true,
       updated_at: Date.now()
     };
 
     await adminAuth.setCustomUserClaims(userId, customClaims);
-    console.log(`Updated custom claims for user ${userId} with role: ${role}`);
+    console.log(`Updated custom claims for user ${userId} with role: ${role}, approved: ${approved}`);
     
   } catch (error: any) {
     console.error('Firebase user creation/update error:', error);
@@ -183,7 +187,8 @@ export async function verifyAndRefreshFirebaseToken(
         const newTokenData = await generateCustomFirebaseToken(
           userId,
           userRecord.customClaims.email as string,
-          userRecord.customClaims.role as string
+          userRecord.customClaims.role as string,
+          userRecord.customClaims.approved as boolean
         );
         
         return {

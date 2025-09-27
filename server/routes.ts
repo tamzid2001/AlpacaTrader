@@ -175,14 +175,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userEmail, 
         req.user.claims.first_name, 
         req.user.claims.last_name,
-        user.role
+        user.role,
+        user.isApproved
       );
 
       // Generate custom Firebase token
       const tokenData = await generateCustomFirebaseToken(
         userId,
         userEmail,
-        user.role
+        user.role,
+        user.isApproved
       );
 
       res.json({

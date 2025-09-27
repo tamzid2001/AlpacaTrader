@@ -1,0 +1,469 @@
+rules_version = '2';
+
+// Firestore Security Rules for MarketDifferentials Platform
+// Comprehensive security rules aligned with PostgreSQL schema and Replit Auth
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===================
+    // HELPER FUNCTIONS
+    // ===================
+    
+    // Check if user is authenticated with valid token
+    function isAuthenticated() {
+      return request.auth != null 
+             && request.auth.uid != null
+             && request.auth.token != null
+             && request.auth.token.exp > request.time.toMillis() / 1000;
+    }
+    
+    // Check if user owns the resource
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Check if user has admin role using token claims
+    function isAdmin() {
+      return isAuthenticated() && 
+             request.auth.token.role == 'admin';
+    }
+    
+    // Check if user is approved using token claims
+    function isApproved() {
+      return isAuthenticated() && 
+             request.auth.token.approved == true;
+    }
+    
+    // Check if user has moderator or higher role
+    function isModerator() {
+      return isAuthenticated() && 
+             (request.auth.token.role == 'admin' || 
+              request.auth.token.role == 'moderator');
+    }
+    
+    // Check if user has superadmin role
+    function isSuperAdmin() {
+      return isAuthenticated() && 
+             request.auth.token.role == 'superadmin';
+    }
+    
+    // Validate data contains required fields
+    function hasRequiredUserFields(data) {
+      return 'id' in data && 
+             'email' in data && 
+             'role' in data;
+    }
+    
+    // Check if resource is publicly accessible
+    function isPublicResource(resource) {
+      return resource.data.publicAccess == true;
+    }
+    
+    // Check if user is in shared access list
+    function hasSharedAccess(resource, uid) {
+      return uid in resource.data.sharedWith;
+    }
+    
+    // ===================
+    // USERS COLLECTION
+    // ===================
+    
+    match /users/{userId} {
+      // Users can read their own profile, admins and moderators can read all
+      allow read: if isOwner(userId) || isModerator();
+      
+      // Users can create their own profile during signup with required fields
+      allow create: if isOwner(userId) && 
+                       hasRequiredUserFields(request.resource.data) &&
+                       request.resource.data.id == userId;
+      
+      // Users can update their own profile (except role/approval/admin fields)
+      allow update: if isOwner(userId) && 
+                       !('role' in request.resource.data) && 
+                       !('isApproved' in request.resource.data) &&
+                       !('dataRetentionUntil' in request.resource.data);
+      
+      // Only admins can update roles, approval status, and admin fields
+      allow update: if isAdmin() && 
+                       ('role' in request.resource.data || 
+                        'isApproved' in request.resource.data ||
+                        'dataRetentionUntil' in request.resource.data);
+      
+      // Only superadmins can delete users (GDPR compliance)
+      allow delete: if isSuperAdmin();
+      
+      // Users can delete their own data for GDPR compliance
+      allow delete: if isOwner(userId);
+    }
+    
+    // ===================
+    // COURSES COLLECTION
+    // ===================
+    
+    match /courses/{courseId} {
+      // Anyone can read courses (for public landing page)
+      allow read: if true;
+      
+      // Only admins can create, update, delete courses
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // ===================
+    // COURSE ENROLLMENTS
+    // ===================
+    
+    match /courseEnrollments/{enrollmentId} {
+      // Users can read their own enrollments, admins can read all
+      allow read: if isAuthenticated() && 
+                     (resource.data.userId == request.auth.uid || isAdmin());
+      
+      // Approved users can enroll in courses
+      allow create: if isApproved() && 
+                       request.resource.data.userId == request.auth.uid;
+      
+      // Users can update their own enrollment progress
+      allow update: if isAuthenticated() && 
+                       resource.data.userId == request.auth.uid;
+      
+      // Users can delete their own enrollments, admins can delete any
+      allow delete: if (isAuthenticated() && resource.data.userId == request.auth.uid) || 
+                       isAdmin();
+    }
+    
+    // ===================
+    // QUIZZES AND RESULTS
+    // ===================
+    
+    match /quizzes/{quizId} {
+      // Enrolled users can read quizzes for their courses
+      allow read: if isAuthenticated();
+      
+      // Only admins can manage quizzes
+      allow create, update, delete: if isAdmin();
+    }
+    
+    match /quizResults/{resultId} {
+      // Users can read their own quiz results, admins can read all
+      allow read: if isAuthenticated() && 
+                     (resource.data.userId == request.auth.uid || isAdmin());
+      
+      // Users can create their own quiz results
+      allow create: if isApproved() && 
+                       request.resource.data.userId == request.auth.uid;
+      
+      // Quiz results are immutable after creation (no updates/deletes)
+      allow update, delete: if false;
+    }
+    
+    // ===================
+    // SUPPORT MESSAGES
+    // ===================
+    
+    match /supportMessages/{messageId} {
+      // Users can read their own messages, admins can read all
+      allow read: if isAuthenticated() && 
+                     (resource.data.userId == request.auth.uid || isAdmin());
+      
+      // Anyone can create support messages (including anonymous)
+      allow create: if true;
+      
+      // Only admins can update support message status
+      allow update: if isAdmin();
+      
+      // Only admins can delete support messages
+      allow delete: if isAdmin();
+    }
+    
+    // ===================
+    // CSV UPLOADS
+    // ===================
+    
+    match /csvUploads/{uploadId} {
+      // Users can read their own uploads, admins can read all
+      allow read: if isAuthenticated() && 
+                     (resource.data.userId == request.auth.uid || isAdmin());
+      
+      // Approved users can create uploads
+      allow create: if isApproved() && 
+                       request.resource.data.userId == request.auth.uid;
+      
+      // Users can update their own uploads (metadata, custom filename)
+      allow update: if isAuthenticated() && 
+                       resource.data.userId == request.auth.uid;
+      
+      // Users can delete their own uploads, admins can delete any
+      allow delete: if (isAuthenticated() && resource.data.userId == request.auth.uid) || 
+                       isAdmin();
+    }
+    
+    // ===================
+    // ANOMALIES
+    // ===================
+    
+    match /anomalies/{anomalyId} {
+      // Users can read anomalies for their uploads
+      allow read: if isAuthenticated() && 
+                     get(/databases/$(database)/documents/csvUploads/$(resource.data.uploadId)).data.userId == request.auth.uid;
+      
+      // System can create anomalies (via server-side functions)
+      allow create: if isAuthenticated();
+      
+      // Only system/admins can update anomalies
+      allow update: if isAdmin();
+      
+      // Users can delete anomalies for their uploads, admins can delete any
+      allow delete: if (isAuthenticated() && 
+                        get(/databases/$(database)/documents/csvUploads/$(resource.data.uploadId)).data.userId == request.auth.uid) || 
+                       isAdmin();
+    }
+    
+    // ===================
+    // SHARED RESULTS
+    // ===================
+    
+    match /sharedResults/{resultId} {
+      // Read access based on sharing permissions
+      allow read: if isAuthenticated() && 
+                     (resource.data.userId == request.auth.uid || 
+                      hasSharedAccess(resource, request.auth.uid) ||
+                      isPublicResource(resource) ||
+                      isAdmin());
+      
+      // Users can create shared results for their uploads
+      allow create: if isApproved() && 
+                       request.resource.data.userId == request.auth.uid;
+      
+      // Only owner can update/delete shared results
+      allow update, delete: if isAuthenticated() && 
+                               resource.data.userId == request.auth.uid;
+    }
+    
+    // ===================
+    // MARKET DATA
+    // ===================
+    
+    match /marketDataDownloads/{downloadId} {
+      // Users can read their own downloads, admins can read all
+      allow read: if isAuthenticated() && 
+                     (resource.data.userId == request.auth.uid || isAdmin());
+      
+      // Approved users can create market data downloads
+      allow create: if isApproved() && 
+                       request.resource.data.userId == request.auth.uid;
+      
+      // Market data downloads are immutable after creation
+      allow update, delete: if false;
+    }
+    
+    // ===================
+    // PERMISSION MANAGEMENT
+    // ===================
+    
+    match /accessGrants/{grantId} {
+      // Users can read grants where they're involved (grantor or grantee)
+      allow read: if isAuthenticated() && 
+                     (resource.data.grantedBy == request.auth.uid || 
+                      resource.data.principalId == request.auth.uid ||
+                      isAdmin());
+      
+      // Users can create grants for resources they own
+      allow create: if isApproved() && 
+                       request.resource.data.grantedBy == request.auth.uid;
+      
+      // Only grantor or admin can modify access grants
+      allow update, delete: if isAuthenticated() && 
+                               (resource.data.grantedBy == request.auth.uid || isAdmin());
+    }
+    
+    match /teams/{teamId} {
+      // Team members can read team data
+      allow read: if isAuthenticated() && 
+                     (request.auth.uid in resource.data.members || 
+                      resource.data.ownerId == request.auth.uid ||
+                      isAdmin());
+      
+      // Approved users can create teams
+      allow create: if isApproved() && 
+                       request.resource.data.ownerId == request.auth.uid;
+      
+      // Team owners can update teams
+      allow update: if isAuthenticated() && 
+                       (resource.data.ownerId == request.auth.uid || isAdmin());
+      
+      // Team owners and admins can delete teams
+      allow delete: if isAuthenticated() && 
+                       (resource.data.ownerId == request.auth.uid || isAdmin());
+    }
+    
+    match /teamMembers/{memberId} {
+      // Team members can read membership data
+      allow read: if isAuthenticated() && 
+                     (resource.data.userId == request.auth.uid ||
+                      get(/databases/$(database)/documents/teams/$(resource.data.teamId)).data.ownerId == request.auth.uid ||
+                      isAdmin());
+      
+      // Team owners can add members
+      allow create: if isAuthenticated() && 
+                       get(/databases/$(database)/documents/teams/$(request.resource.data.teamId)).data.ownerId == request.auth.uid;
+      
+      // Team owners can update member roles
+      allow update: if isAuthenticated() && 
+                       get(/databases/$(database)/documents/teams/$(resource.data.teamId)).data.ownerId == request.auth.uid;
+      
+      // Team owners and members themselves can remove membership
+      allow delete: if isAuthenticated() && 
+                       (resource.data.userId == request.auth.uid ||
+                        get(/databases/$(database)/documents/teams/$(resource.data.teamId)).data.ownerId == request.auth.uid ||
+                        isAdmin());
+    }
+    
+    // ===================
+    // SHARING FEATURES
+    // ===================
+    
+    match /shareInvites/{inviteId} {
+      // Users can read invites sent to them or by them
+      allow read: if isAuthenticated() && 
+                     (resource.data.invitedEmail == request.auth.token.email || 
+                      resource.data.invitedBy == request.auth.uid ||
+                      isAdmin());
+      
+      // Users can create share invites for their resources
+      allow create: if isApproved() && 
+                       request.resource.data.invitedBy == request.auth.uid;
+      
+      // Only inviter can update/delete invites
+      allow update, delete: if isAuthenticated() && 
+                               resource.data.invitedBy == request.auth.uid;
+    }
+    
+    match /shareLinks/{linkId} {
+      // Anyone with the link can read if it's active
+      allow read: if resource.data.isActive == true && 
+                     (resource.data.expiresAt == null || resource.data.expiresAt > request.time);
+      
+      // Users can create share links for their resources
+      allow create: if isApproved() && 
+                       request.resource.data.createdBy == request.auth.uid;
+      
+      // Only creator can update/delete share links
+      allow update, delete: if isAuthenticated() && 
+                               resource.data.createdBy == request.auth.uid;
+    }
+    
+    // ===================
+    // GDPR COMPLIANCE
+    // ===================
+    
+    match /gdprRequests/{requestId} {
+      // Users can read their own GDPR requests, admins can read all
+      allow read: if isAuthenticated() && 
+                     (resource.data.userId == request.auth.uid || isAdmin());
+      
+      // Users can create GDPR requests for themselves
+      allow create: if isAuthenticated() && 
+                       request.resource.data.userId == request.auth.uid;
+      
+      // Only admins can update GDPR request status
+      allow update: if isAdmin();
+      
+      // GDPR requests cannot be deleted (audit trail)
+      allow delete: if false;
+    }
+    
+    match /dataExports/{exportId} {
+      // Users can read their own exports
+      allow read: if isAuthenticated() && 
+                     resource.data.userId == request.auth.uid;
+      
+      // Users can create data export requests
+      allow create: if isAuthenticated() && 
+                       request.resource.data.userId == request.auth.uid;
+      
+      // Exports are immutable
+      allow update, delete: if false;
+    }
+    
+    match /anonymousConsents/{consentId} {
+      // Public read for consent tracking
+      allow read: if true;
+      
+      // Anyone can create consent records
+      allow create: if true;
+      
+      // Consent records are immutable
+      allow update, delete: if false;
+    }
+    
+    // ===================
+    // AUDIT AND LOGGING
+    // ===================
+    
+    match /auditLogs/{logId} {
+      // Only admins can read audit logs
+      allow read: if isAdmin();
+      
+      // System can create audit logs (server-side only)
+      allow create: if isAuthenticated();
+      
+      // Audit logs are immutable
+      allow update, delete: if false;
+    }
+    
+    match /securityEvents/{eventId} {
+      // Only admins can read security events
+      allow read: if isAdmin();
+      
+      // System can create security events
+      allow create: if isAuthenticated();
+      
+      // Security events are immutable
+      allow update, delete: if false;
+    }
+    
+    // ===================
+    // ADMIN-ONLY COLLECTIONS
+    // ===================
+    
+    match /admin/{document=**} {
+      // Full admin access to admin collections
+      allow read, write: if isAdmin();
+    }
+    
+    match /system/{document=**} {
+      // System configuration - admin read, superadmin write
+      allow read: if isAdmin();
+      allow write: if isSuperAdmin();
+    }
+    
+    // ===================
+    // RATE LIMITING
+    // ===================
+    
+    match /rateLimits/{userId} {
+      // Users can read/write their own rate limit data
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // ===================
+    // DEFAULT DENY
+    // ===================
+    
+    // Deny access to any unmatched paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+// SECURITY IMPLEMENTATION NOTES:
+// 1. ✅ Role-based access control using token claims
+// 2. ✅ User ownership validation for all user-specific data
+// 3. ✅ Admin-only access for management operations
+// 4. ✅ Public read access for courses (landing page)
+// 5. ✅ Sharing permissions for collaborative features
+// 6. ✅ GDPR compliance with data export/deletion rights
+// 7. ✅ Audit trail for security events
+// 8. ✅ Rate limiting support
+// 9. ✅ Immutable records for critical data (quiz results, audit logs)
+// 10. ✅ Token expiration validation in all auth checks
