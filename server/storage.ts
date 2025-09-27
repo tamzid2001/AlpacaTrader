@@ -801,6 +801,54 @@ export interface IStorage {
     itemsUpdated: number;
     errors: string[];
   }>;
+
+  // ===========================================
+  // USER NOTIFICATION SYSTEM
+  // ===========================================
+
+  // User Notification Preferences Management
+  getUserNotificationPreferences(userId: string): Promise<UserNotificationPreferences | undefined>;
+  createUserNotificationPreferences(preferences: InsertUserNotificationPreferences): Promise<UserNotificationPreferences>;
+  updateUserNotificationPreferences(userId: string, updates: Partial<UserNotificationPreferences>): Promise<UserNotificationPreferences | undefined>;
+  getOrCreateUserNotificationPreferences(userId: string): Promise<UserNotificationPreferences>;
+
+  // In-App Notifications Management
+  getInAppNotifications(userId: string, options?: { 
+    limit?: number; 
+    offset?: number; 
+    unreadOnly?: boolean;
+    type?: InAppNotificationType;
+    category?: NotificationCategory;
+    priority?: NotificationPriority;
+  }): Promise<{ notifications: InAppNotification[]; totalCount: number; unreadCount: number }>;
+  
+  createInAppNotification(notification: InsertInAppNotification): Promise<InAppNotification>;
+  getInAppNotification(id: string): Promise<InAppNotification | undefined>;
+  markInAppNotificationRead(id: string, userId: string): Promise<InAppNotification | undefined>;
+  markAllInAppNotificationsRead(userId: string): Promise<number>;
+  deleteInAppNotification(id: string, userId: string): Promise<boolean>;
+  bulkDeleteInAppNotifications(notificationIds: string[], userId: string): Promise<number>;
+  
+  // Notification counts and analytics
+  getUnreadNotificationCount(userId: string): Promise<number>;
+  getNotificationCountsByType(userId: string): Promise<Record<InAppNotificationType, number>>;
+  
+  // Notification cleanup and maintenance
+  deleteExpiredInAppNotifications(): Promise<number>;
+  getRecentInAppNotifications(userId: string, limit?: number): Promise<InAppNotification[]>;
+  
+  // Notification creation helpers
+  createMarketDataAlertNotification(userId: string, alertData: { title: string; message: string; ticker?: string; price?: number; actionUrl?: string }): Promise<InAppNotification>;
+  createCourseUpdateNotification(userId: string, courseData: { title: string; message: string; courseId: string; actionUrl?: string }): Promise<InAppNotification>;
+  createProductivityReminderNotification(userId: string, reminderData: { title: string; message: string; itemId?: string; boardId?: string; actionUrl?: string }): Promise<InAppNotification>;
+  createShareInvitationNotification(userId: string, inviteData: { title: string; message: string; inviterId: string; resourceType: string; resourceId: string; actionUrl?: string }): Promise<InAppNotification>;
+  createAdminNotification(userId: string, adminData: { title: string; message: string; priority?: NotificationPriority; actionUrl?: string }): Promise<InAppNotification>;
+  createSystemUpdateNotification(userId: string, systemData: { title: string; message: string; version?: string; actionUrl?: string }): Promise<InAppNotification>;
+
+  // Notification preference validation
+  shouldSendEmailNotification(userId: string, notificationType: InAppNotificationType): Promise<boolean>;
+  shouldSendInAppNotification(userId: string, notificationType: InAppNotificationType): Promise<boolean>;
+  shouldSendPushNotification(userId: string, notificationType: InAppNotificationType): Promise<boolean>;
 }
 
 export class MemStorage implements IStorage {
@@ -843,6 +891,10 @@ export class MemStorage implements IStorage {
   private adminApprovals: Map<string, AdminApproval> = new Map();
   private crashReports: Map<string, CrashReport> = new Map();
   private marketDataCache: Map<string, MarketDataCache> = new Map();
+  
+  // User Notification System Storage
+  private userNotificationPreferences: Map<string, UserNotificationPreferences> = new Map();
+  private inAppNotifications: Map<string, InAppNotification> = new Map();
 
   constructor() {
     this.initializeData();
@@ -3098,6 +3150,477 @@ export class MemStorage implements IStorage {
       };
       this.marketDataPopularSymbols.set(symbol, newSymbol);
     }
+  }
+
+  // ===========================================
+  // USER NOTIFICATION SYSTEM IMPLEMENTATION
+  // ===========================================
+
+  // User Notification Preferences Implementation
+  async getUserNotificationPreferences(userId: string): Promise<UserNotificationPreferences | undefined> {
+    return Array.from(this.userNotificationPreferences.values()).find(prefs => prefs.userId === userId);
+  }
+
+  async createUserNotificationPreferences(preferences: InsertUserNotificationPreferences): Promise<UserNotificationPreferences> {
+    const id = randomUUID();
+    const newPreferences: UserNotificationPreferences = {
+      id,
+      ...preferences,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.userNotificationPreferences.set(id, newPreferences);
+    return newPreferences;
+  }
+
+  async updateUserNotificationPreferences(userId: string, updates: Partial<UserNotificationPreferences>): Promise<UserNotificationPreferences | undefined> {
+    const existing = Array.from(this.userNotificationPreferences.values()).find(prefs => prefs.userId === userId);
+    if (!existing) return undefined;
+
+    const updated: UserNotificationPreferences = {
+      ...existing,
+      ...updates,
+      updatedAt: new Date(),
+    };
+    this.userNotificationPreferences.set(existing.id, updated);
+    return updated;
+  }
+
+  async getOrCreateUserNotificationPreferences(userId: string): Promise<UserNotificationPreferences> {
+    const existing = await this.getUserNotificationPreferences(userId);
+    if (existing) return existing;
+
+    // Create default preferences for new user
+    return this.createUserNotificationPreferences({
+      userId,
+      emailNotifications: true,
+      emailMarketDataAlerts: true,
+      emailProductivityReminders: true,
+      emailCourseUpdates: true,
+      emailShareInvitations: true,
+      emailAdminNotifications: true,
+      pushNotifications: false,
+      pushMarketDataAlerts: false,
+      pushProductivityReminders: false,
+      pushCourseUpdates: false,
+      inAppNotifications: true,
+      inAppMarketDataAlerts: true,
+      inAppProductivityReminders: true,
+      inAppCourseUpdates: true,
+      inAppShareInvitations: true,
+      inAppAdminNotifications: true,
+      emailFrequency: "instant",
+      digestEmailTime: "09:00",
+      weeklyDigestDay: "monday",
+      soundEnabled: false,
+      desktopNotifications: false,
+      allowNotificationAnalytics: true,
+    });
+  }
+
+  // In-App Notifications Implementation
+  async getInAppNotifications(userId: string, options?: { 
+    limit?: number; 
+    offset?: number; 
+    unreadOnly?: boolean;
+    type?: InAppNotificationType;
+    category?: NotificationCategory;
+    priority?: NotificationPriority;
+  }): Promise<{ notifications: InAppNotification[]; totalCount: number; unreadCount: number }> {
+    let notifications = Array.from(this.inAppNotifications.values()).filter(n => n.userId === userId);
+
+    // Apply filters
+    if (options?.unreadOnly) {
+      notifications = notifications.filter(n => !n.read);
+    }
+    if (options?.type) {
+      notifications = notifications.filter(n => n.type === options.type);
+    }
+    if (options?.category) {
+      notifications = notifications.filter(n => n.category === options.category);
+    }
+    if (options?.priority) {
+      notifications = notifications.filter(n => n.priority === options.priority);
+    }
+
+    // Filter out expired notifications
+    const now = new Date();
+    notifications = notifications.filter(n => !n.expiresAt || n.expiresAt > now);
+
+    // Sort by priority and creation date
+    const priorityOrder: Record<NotificationPriority, number> = { urgent: 4, high: 3, normal: 2, low: 1 };
+    notifications.sort((a, b) => {
+      const priorityDiff = (priorityOrder[b.priority as NotificationPriority] || 2) - (priorityOrder[a.priority as NotificationPriority] || 2);
+      if (priorityDiff !== 0) return priorityDiff;
+      return b.createdAt.getTime() - a.createdAt.getTime();
+    });
+
+    const totalCount = notifications.length;
+    const unreadCount = notifications.filter(n => !n.read).length;
+
+    // Apply pagination
+    const offset = options?.offset || 0;
+    const limit = options?.limit || 20;
+    const paginatedNotifications = notifications.slice(offset, offset + limit);
+
+    return {
+      notifications: paginatedNotifications,
+      totalCount,
+      unreadCount
+    };
+  }
+
+  async createInAppNotification(notification: InsertInAppNotification): Promise<InAppNotification> {
+    const id = randomUUID();
+    const newNotification: InAppNotification = {
+      id,
+      ...notification,
+      read: false,
+      clickCount: 0,
+      createdAt: new Date(),
+    };
+    this.inAppNotifications.set(id, newNotification);
+    return newNotification;
+  }
+
+  async getInAppNotification(id: string): Promise<InAppNotification | undefined> {
+    return this.inAppNotifications.get(id);
+  }
+
+  async markInAppNotificationRead(id: string, userId: string): Promise<InAppNotification | undefined> {
+    const notification = this.inAppNotifications.get(id);
+    if (!notification || notification.userId !== userId) return undefined;
+
+    const updated: InAppNotification = {
+      ...notification,
+      read: true,
+      readAt: new Date(),
+    };
+    this.inAppNotifications.set(id, updated);
+    return updated;
+  }
+
+  async markAllInAppNotificationsRead(userId: string): Promise<number> {
+    let count = 0;
+    for (const [id, notification] of this.inAppNotifications.entries()) {
+      if (notification.userId === userId && !notification.read) {
+        const updated: InAppNotification = {
+          ...notification,
+          read: true,
+          readAt: new Date(),
+        };
+        this.inAppNotifications.set(id, updated);
+        count++;
+      }
+    }
+    return count;
+  }
+
+  async deleteInAppNotification(id: string, userId: string): Promise<boolean> {
+    const notification = this.inAppNotifications.get(id);
+    if (!notification || notification.userId !== userId) return false;
+    return this.inAppNotifications.delete(id);
+  }
+
+  async bulkDeleteInAppNotifications(notificationIds: string[], userId: string): Promise<number> {
+    let count = 0;
+    for (const id of notificationIds) {
+      const notification = this.inAppNotifications.get(id);
+      if (notification && notification.userId === userId) {
+        this.inAppNotifications.delete(id);
+        count++;
+      }
+    }
+    return count;
+  }
+
+  async getUnreadNotificationCount(userId: string): Promise<number> {
+    return Array.from(this.inAppNotifications.values())
+      .filter(n => n.userId === userId && !n.read && (!n.expiresAt || n.expiresAt > new Date())).length;
+  }
+
+  async getNotificationCountsByType(userId: string): Promise<Record<InAppNotificationType, number>> {
+    const notifications = Array.from(this.inAppNotifications.values())
+      .filter(n => n.userId === userId && (!n.expiresAt || n.expiresAt > new Date()));
+
+    const counts: Record<InAppNotificationType, number> = {
+      market_alert: 0,
+      course_update: 0,
+      productivity_reminder: 0,
+      share_invitation: 0,
+      admin_notification: 0,
+      system_update: 0
+    };
+
+    for (const notification of notifications) {
+      if (notification.type in counts) {
+        counts[notification.type as InAppNotificationType]++;
+      }
+    }
+
+    return counts;
+  }
+
+  async deleteExpiredInAppNotifications(): Promise<number> {
+    const now = new Date();
+    let count = 0;
+    for (const [id, notification] of this.inAppNotifications.entries()) {
+      if (notification.expiresAt && notification.expiresAt <= now) {
+        this.inAppNotifications.delete(id);
+        count++;
+      }
+    }
+    return count;
+  }
+
+  async getRecentInAppNotifications(userId: string, limit: number = 5): Promise<InAppNotification[]> {
+    return Array.from(this.inAppNotifications.values())
+      .filter(n => n.userId === userId && (!n.expiresAt || n.expiresAt > new Date()))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limit);
+  }
+
+  // Notification creation helpers
+  async createMarketDataAlertNotification(userId: string, alertData: { 
+    title: string; 
+    message: string; 
+    ticker?: string; 
+    price?: number; 
+    actionUrl?: string 
+  }): Promise<InAppNotification> {
+    return this.createInAppNotification({
+      userId,
+      title: alertData.title,
+      message: alertData.message,
+      type: "market_alert",
+      category: "info",
+      priority: "high",
+      actionUrl: alertData.actionUrl,
+      actionText: "View Details",
+      actionType: "navigate",
+      sourceSystem: "market_data",
+      sourceId: alertData.ticker,
+      metadata: {
+        ticker: alertData.ticker,
+        price: alertData.price,
+        alertType: "price_alert"
+      }
+    });
+  }
+
+  async createCourseUpdateNotification(userId: string, courseData: { 
+    title: string; 
+    message: string; 
+    courseId: string; 
+    actionUrl?: string 
+  }): Promise<InAppNotification> {
+    return this.createInAppNotification({
+      userId,
+      title: courseData.title,
+      message: courseData.message,
+      type: "course_update",
+      category: "info",
+      priority: "normal",
+      actionUrl: courseData.actionUrl || `/courses/${courseData.courseId}`,
+      actionText: "View Course",
+      actionType: "navigate",
+      sourceSystem: "courses",
+      sourceId: courseData.courseId,
+      metadata: {
+        courseId: courseData.courseId,
+        updateType: "general"
+      }
+    });
+  }
+
+  async createProductivityReminderNotification(userId: string, reminderData: { 
+    title: string; 
+    message: string; 
+    itemId?: string; 
+    boardId?: string; 
+    actionUrl?: string 
+  }): Promise<InAppNotification> {
+    return this.createInAppNotification({
+      userId,
+      title: reminderData.title,
+      message: reminderData.message,
+      type: "productivity_reminder",
+      category: "warning",
+      priority: "normal",
+      actionUrl: reminderData.actionUrl || (reminderData.boardId ? `/productivity-board-page?boardId=${reminderData.boardId}` : undefined),
+      actionText: "View Item",
+      actionType: "navigate",
+      sourceSystem: "productivity",
+      sourceId: reminderData.itemId || reminderData.boardId,
+      metadata: {
+        itemId: reminderData.itemId,
+        boardId: reminderData.boardId,
+        reminderType: "due_date"
+      }
+    });
+  }
+
+  async createShareInvitationNotification(userId: string, inviteData: { 
+    title: string; 
+    message: string; 
+    inviterId: string; 
+    resourceType: string; 
+    resourceId: string; 
+    actionUrl?: string 
+  }): Promise<InAppNotification> {
+    return this.createInAppNotification({
+      userId,
+      title: inviteData.title,
+      message: inviteData.message,
+      type: "share_invitation",
+      category: "info",
+      priority: "high",
+      actionUrl: inviteData.actionUrl || "/invitations",
+      actionText: "View Invitation",
+      actionType: "navigate",
+      sourceSystem: "sharing",
+      sourceId: inviteData.resourceId,
+      metadata: {
+        inviterId: inviteData.inviterId,
+        resourceType: inviteData.resourceType,
+        resourceId: inviteData.resourceId
+      }
+    });
+  }
+
+  async createAdminNotification(userId: string, adminData: { 
+    title: string; 
+    message: string; 
+    priority?: NotificationPriority; 
+    actionUrl?: string 
+  }): Promise<InAppNotification> {
+    return this.createInAppNotification({
+      userId,
+      title: adminData.title,
+      message: adminData.message,
+      type: "admin_notification",
+      category: "info",
+      priority: adminData.priority || "normal",
+      actionUrl: adminData.actionUrl,
+      actionText: "View Details",
+      actionType: "navigate",
+      sourceSystem: "admin",
+      metadata: {
+        adminNotification: true
+      }
+    });
+  }
+
+  async createSystemUpdateNotification(userId: string, systemData: { 
+    title: string; 
+    message: string; 
+    version?: string; 
+    actionUrl?: string 
+  }): Promise<InAppNotification> {
+    return this.createInAppNotification({
+      userId,
+      title: systemData.title,
+      message: systemData.message,
+      type: "system_update",
+      category: "success",
+      priority: "low",
+      actionUrl: systemData.actionUrl,
+      actionText: "Learn More",
+      actionType: "navigate",
+      sourceSystem: "system",
+      metadata: {
+        version: systemData.version,
+        systemUpdate: true
+      },
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // Expire in 7 days
+    });
+  }
+
+  // Notification preference validation
+  async shouldSendEmailNotification(userId: string, notificationType: InAppNotificationType): Promise<boolean> {
+    const preferences = await this.getOrCreateUserNotificationPreferences(userId);
+    
+    if (!preferences.emailNotifications || preferences.emailFrequency === "off") {
+      return false;
+    }
+
+    switch (notificationType) {
+      case "market_alert":
+        return preferences.emailMarketDataAlerts;
+      case "course_update":
+        return preferences.emailCourseUpdates;
+      case "productivity_reminder":
+        return preferences.emailProductivityReminders;
+      case "share_invitation":
+        return preferences.emailShareInvitations;
+      case "admin_notification":
+        return preferences.emailAdminNotifications;
+      case "system_update":
+        return true; // Always send important system updates via email
+      default:
+        return preferences.emailNotifications;
+    }
+  }
+
+  async shouldSendInAppNotification(userId: string, notificationType: InAppNotificationType): Promise<boolean> {
+    const preferences = await this.getOrCreateUserNotificationPreferences(userId);
+    
+    if (!preferences.inAppNotifications) {
+      return false;
+    }
+
+    switch (notificationType) {
+      case "market_alert":
+        return preferences.inAppMarketDataAlerts;
+      case "course_update":
+        return preferences.inAppCourseUpdates;
+      case "productivity_reminder":
+        return preferences.inAppProductivityReminders;
+      case "share_invitation":
+        return preferences.inAppShareInvitations;
+      case "admin_notification":
+        return preferences.inAppAdminNotifications;
+      case "system_update":
+        return true; // Always show system updates in-app
+      default:
+        return preferences.inAppNotifications;
+    }
+  }
+
+  async shouldSendPushNotification(userId: string, notificationType: InAppNotificationType): Promise<boolean> {
+    const preferences = await this.getOrCreateUserNotificationPreferences(userId);
+    
+    if (!preferences.pushNotifications) {
+      return false;
+    }
+
+    switch (notificationType) {
+      case "market_alert":
+        return preferences.pushMarketDataAlerts;
+      case "course_update":
+        return preferences.pushCourseUpdates;
+      case "productivity_reminder":
+        return preferences.pushProductivityReminders;
+      case "share_invitation":
+        return true; // Always send push for urgent invitations
+      case "admin_notification":
+        return true; // Always send push for admin notifications
+      case "system_update":
+        return false; // Never push for system updates
+      default:
+        return preferences.pushNotifications;
+    }
+  }
+
+  // Additional notification queue method for digest functionality
+  async getBatchedNotificationsForUser(userId: string, sinceDate: Date): Promise<NotificationQueue[]> {
+    return Array.from(this.notificationQueue.values())
+      .filter(notification => 
+        notification.userId === userId && 
+        notification.status === 'batched' &&
+        new Date(notification.updatedAt || notification.createdAt) >= sinceDate
+      )
+      .sort((a, b) => (a.priority || 0) - (b.priority || 0)); // Sort by priority desc
   }
 }
 

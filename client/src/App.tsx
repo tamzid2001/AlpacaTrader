@@ -20,6 +20,7 @@ import { ProductivityDashboard } from "@/pages/productivity-dashboard";
 import { ProductivityBoardPage } from "@/pages/productivity-board-page";
 import PrivacyPage from "@/pages/privacy";
 import PrivacySettings from "@/pages/privacy-settings";
+import NotificationSettings from "@/pages/notification-settings";
 import TermsPage from "@/pages/terms";
 import CoursesPage from "@/pages/courses";
 import MyCoursesPage from "@/pages/my-courses";
@@ -124,6 +125,9 @@ function Router() {
             </Route>
             <Route path="/privacy-settings">
               {() => <ErrorBoundary><AuthenticatedLayout><PrivacySettings /></AuthenticatedLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/settings/notifications">
+              {() => <ErrorBoundary><AuthenticatedLayout><NotificationSettings /></AuthenticatedLayout></ErrorBoundary>}
             </Route>
             <Route path="/terms">
               {() => <ErrorBoundary><AuthenticatedLayout><TermsPage /></AuthenticatedLayout></ErrorBoundary>}

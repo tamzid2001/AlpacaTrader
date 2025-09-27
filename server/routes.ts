@@ -33,7 +33,10 @@ import {
   insertProductivityReminderSchema,
   insertBoardTemplateSchema,
   insertBoardAutomationSchema,
-  insertActivityLogSchema
+  insertActivityLogSchema,
+  // User Notification System Schemas
+  insertUserNotificationPreferencesSchema,
+  insertInAppNotificationSchema
 } from "@shared/schema";
 import { z } from "zod";
 import { setupAuth, isAuthenticated } from "./replitAuth";
@@ -6256,6 +6259,239 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('Create items from patterns error:', error);
       res.status(500).json({ error: 'Failed to create items from patterns' });
+    }
+  });
+
+  // ===========================================
+  // USER NOTIFICATION SYSTEM ROUTES
+  // ===========================================
+
+  // Notification Preferences Routes
+  app.get('/api/notifications/preferences', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const preferences = await storage.getOrCreateUserNotificationPreferences(userId);
+      res.json({ preferences });
+    } catch (error: any) {
+      console.error('Get notification preferences error:', error);
+      res.status(500).json({ error: 'Failed to get notification preferences' });
+    }
+  });
+
+  app.put('/api/notifications/preferences', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      
+      // Validate the request body
+      const validatedUpdates = insertUserNotificationPreferencesSchema.omit({ 
+        userId: true 
+      }).partial().parse(req.body);
+
+      const updatedPreferences = await storage.updateUserNotificationPreferences(userId, validatedUpdates);
+      
+      if (!updatedPreferences) {
+        return res.status(404).json({ error: 'Notification preferences not found' });
+      }
+
+      res.json({ preferences: updatedPreferences });
+    } catch (error: any) {
+      console.error('Update notification preferences error:', error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: 'Invalid request data', details: error.errors });
+      }
+      res.status(500).json({ error: 'Failed to update notification preferences' });
+    }
+  });
+
+  // In-App Notifications Routes
+  app.get('/api/notifications', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { 
+        limit = 20, 
+        offset = 0, 
+        unreadOnly = false,
+        type,
+        category,
+        priority 
+      } = req.query;
+
+      const options = {
+        limit: parseInt(limit as string),
+        offset: parseInt(offset as string),
+        unreadOnly: unreadOnly === 'true',
+        ...(type && { type }),
+        ...(category && { category }),
+        ...(priority && { priority })
+      };
+
+      const result = await storage.getInAppNotifications(userId, options);
+      res.json(result);
+    } catch (error: any) {
+      console.error('Get in-app notifications error:', error);
+      res.status(500).json({ error: 'Failed to get notifications' });
+    }
+  });
+
+  app.get('/api/notifications/count', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const unreadCount = await storage.getUnreadNotificationCount(userId);
+      const countsByType = await storage.getNotificationCountsByType(userId);
+      
+      res.json({ 
+        unreadCount,
+        countsByType 
+      });
+    } catch (error: any) {
+      console.error('Get notification count error:', error);
+      res.status(500).json({ error: 'Failed to get notification count' });
+    }
+  });
+
+  app.get('/api/notifications/recent', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { limit = 5 } = req.query;
+      
+      const notifications = await storage.getRecentInAppNotifications(userId, parseInt(limit as string));
+      res.json({ notifications });
+    } catch (error: any) {
+      console.error('Get recent notifications error:', error);
+      res.status(500).json({ error: 'Failed to get recent notifications' });
+    }
+  });
+
+  app.put('/api/notifications/:id/read', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { id } = req.params;
+      
+      const updatedNotification = await storage.markInAppNotificationRead(id, userId);
+      
+      if (!updatedNotification) {
+        return res.status(404).json({ error: 'Notification not found or access denied' });
+      }
+
+      res.json({ notification: updatedNotification });
+    } catch (error: any) {
+      console.error('Mark notification read error:', error);
+      res.status(500).json({ error: 'Failed to mark notification as read' });
+    }
+  });
+
+  app.put('/api/notifications/mark-all-read', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const count = await storage.markAllInAppNotificationsRead(userId);
+      
+      res.json({ 
+        message: `${count} notifications marked as read`,
+        count 
+      });
+    } catch (error: any) {
+      console.error('Mark all notifications read error:', error);
+      res.status(500).json({ error: 'Failed to mark all notifications as read' });
+    }
+  });
+
+  app.delete('/api/notifications/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { id } = req.params;
+      
+      const deleted = await storage.deleteInAppNotification(id, userId);
+      
+      if (!deleted) {
+        return res.status(404).json({ error: 'Notification not found or access denied' });
+      }
+
+      res.json({ message: 'Notification deleted successfully' });
+    } catch (error: any) {
+      console.error('Delete notification error:', error);
+      res.status(500).json({ error: 'Failed to delete notification' });
+    }
+  });
+
+  app.delete('/api/notifications', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { notificationIds } = req.body;
+      
+      if (!Array.isArray(notificationIds) || notificationIds.length === 0) {
+        return res.status(400).json({ error: 'Invalid notification IDs provided' });
+      }
+
+      const deletedCount = await storage.bulkDeleteInAppNotifications(notificationIds, userId);
+      
+      res.json({ 
+        message: `${deletedCount} notifications deleted successfully`,
+        deletedCount 
+      });
+    } catch (error: any) {
+      console.error('Bulk delete notifications error:', error);
+      res.status(500).json({ error: 'Failed to delete notifications' });
+    }
+  });
+
+  // Notification creation endpoints (for testing and admin purposes)
+  app.post('/api/notifications/create-test', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { type = 'system_update', title, message } = req.body;
+      
+      let notification;
+      
+      switch (type) {
+        case 'market_alert':
+          notification = await storage.createMarketDataAlertNotification(userId, {
+            title: title || 'Market Alert Test',
+            message: message || 'This is a test market alert notification.',
+            ticker: 'AAPL',
+            price: 150.00
+          });
+          break;
+        case 'course_update':
+          notification = await storage.createCourseUpdateNotification(userId, {
+            title: title || 'Course Update Test',
+            message: message || 'This is a test course update notification.',
+            courseId: 'test-course-id'
+          });
+          break;
+        case 'productivity_reminder':
+          notification = await storage.createProductivityReminderNotification(userId, {
+            title: title || 'Productivity Reminder Test',
+            message: message || 'This is a test productivity reminder notification.',
+            itemId: 'test-item-id'
+          });
+          break;
+        case 'share_invitation':
+          notification = await storage.createShareInvitationNotification(userId, {
+            title: title || 'Share Invitation Test',
+            message: message || 'This is a test share invitation notification.',
+            inviterId: userId,
+            resourceType: 'board',
+            resourceId: 'test-resource-id'
+          });
+          break;
+        case 'admin_notification':
+          notification = await storage.createAdminNotification(userId, {
+            title: title || 'Admin Notification Test',
+            message: message || 'This is a test admin notification.'
+          });
+          break;
+        default:
+          notification = await storage.createSystemUpdateNotification(userId, {
+            title: title || 'System Update Test',
+            message: message || 'This is a test system update notification.',
+            version: '1.0.0'
+          });
+      }
+      
+      res.json({ notification });
+    } catch (error: any) {
+      console.error('Create test notification error:', error);
+      res.status(500).json({ error: 'Failed to create test notification' });
     }
   });
 

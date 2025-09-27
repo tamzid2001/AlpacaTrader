@@ -1451,6 +1451,88 @@ export const marketDataCache = pgTable("market_data_cache", {
   index("IDX_market_data_cache_fetch_error_count").on(table.fetchErrorCount),
 ]);
 
+// User Notification Preferences - Granular notification controls per user
+export const userNotificationPreferences = pgTable("user_notification_preferences", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }).unique(),
+  // Email notification settings
+  emailNotifications: boolean("email_notifications").default(true),
+  emailMarketDataAlerts: boolean("email_market_data_alerts").default(true),
+  emailProductivityReminders: boolean("email_productivity_reminders").default(true),
+  emailCourseUpdates: boolean("email_course_updates").default(true),
+  emailShareInvitations: boolean("email_share_invitations").default(true),
+  emailAdminNotifications: boolean("email_admin_notifications").default(true),
+  // Push notification settings (for future mobile app support)
+  pushNotifications: boolean("push_notifications").default(false),
+  pushMarketDataAlerts: boolean("push_market_data_alerts").default(false),
+  pushProductivityReminders: boolean("push_productivity_reminders").default(false),
+  pushCourseUpdates: boolean("push_course_updates").default(false),
+  // In-app notification settings
+  inAppNotifications: boolean("in_app_notifications").default(true),
+  inAppMarketDataAlerts: boolean("in_app_market_data_alerts").default(true),
+  inAppProductivityReminders: boolean("in_app_productivity_reminders").default(true),
+  inAppCourseUpdates: boolean("in_app_course_updates").default(true),
+  inAppShareInvitations: boolean("in_app_share_invitations").default(true),
+  inAppAdminNotifications: boolean("in_app_admin_notifications").default(true),
+  // Notification frequency settings
+  emailFrequency: varchar("email_frequency").default("instant"), // instant, daily, weekly, off
+  digestEmailTime: varchar("digest_email_time").default("09:00"), // Time for daily/weekly digests (HH:mm format)
+  weeklyDigestDay: varchar("weekly_digest_day").default("monday"), // Day for weekly digests
+  // Sound and UI preferences
+  soundEnabled: boolean("sound_enabled").default(false),
+  desktopNotifications: boolean("desktop_notifications").default(false),
+  // Privacy and data preferences
+  allowNotificationAnalytics: boolean("allow_notification_analytics").default(true),
+  timezone: varchar("timezone"), // User's timezone for proper notification scheduling
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_user_notification_preferences_user_id").on(table.userId),
+  index("IDX_user_notification_preferences_email_frequency").on(table.emailFrequency),
+  index("IDX_user_notification_preferences_created_at").on(table.createdAt),
+]);
+
+// In-App Notifications - User notification inbox for real-time notifications
+export const inAppNotifications = pgTable("in_app_notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  type: varchar("type").notNull(), // market_alert, course_update, productivity_reminder, share_invitation, admin_notification, system_update
+  category: varchar("category"), // info, success, warning, error for styling
+  priority: varchar("priority").default("normal"), // low, normal, high, urgent
+  read: boolean("read").default(false),
+  readAt: timestamp("read_at"),
+  // Action and navigation
+  actionUrl: varchar("action_url"), // URL to navigate to when notification is clicked
+  actionText: varchar("action_text"), // Text for action button (e.g., "View Course", "Open Board")
+  actionType: varchar("action_type"), // navigate, external_link, modal, none
+  // Rich content and metadata
+  imageUrl: varchar("image_url"), // Optional image/icon for rich notifications
+  metadata: json("metadata"), // Additional data like course ID, alert rule ID, etc.
+  // Organization and lifecycle
+  groupKey: varchar("group_key"), // Group related notifications together
+  expiresAt: timestamp("expires_at"), // Auto-expire notifications after certain time
+  // Tracking and analytics
+  clickedAt: timestamp("clicked_at"),
+  clickCount: integer("click_count").default(0),
+  sourceSystem: varchar("source_system"), // Which system created this notification
+  sourceId: varchar("source_id"), // ID from source system (alert rule ID, course ID, etc.)
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_in_app_notifications_user_id").on(table.userId),
+  index("IDX_in_app_notifications_type").on(table.type),
+  index("IDX_in_app_notifications_category").on(table.category),
+  index("IDX_in_app_notifications_priority").on(table.priority),
+  index("IDX_in_app_notifications_read").on(table.read),
+  index("IDX_in_app_notifications_group_key").on(table.groupKey),
+  index("IDX_in_app_notifications_expires_at").on(table.expiresAt),
+  index("IDX_in_app_notifications_created_at").on(table.createdAt),
+  // Composite index for efficient user notification queries
+  index("IDX_in_app_notifications_user_unread").on(table.userId, table.read),
+  index("IDX_in_app_notifications_user_type").on(table.userId, table.type),
+]);
+
 // ===========================================
 // COMPREHENSIVE AI CHAT SYSTEM TABLES
 // ===========================================
@@ -1602,6 +1684,19 @@ export const insertMarketDataCacheSchema = createInsertSchema(marketDataCache).o
   lastUpdated: true,
 });
 
+// User Notification Preferences Schema
+export const insertUserNotificationPreferencesSchema = createInsertSchema(userNotificationPreferences).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// In-App Notifications Schema
+export const insertInAppNotificationSchema = createInsertSchema(inAppNotifications).omit({
+  id: true,
+  createdAt: true,
+});
+
 // ===========================================
 // COMPREHENSIVE AI CHAT SYSTEM SCHEMAS & TYPES
 // ===========================================
@@ -1666,6 +1761,12 @@ export type InsertCrashReport = z.infer<typeof insertCrashReportSchema>;
 export type CrashReport = typeof crashReports.$inferSelect;
 export type InsertMarketDataCache = z.infer<typeof insertMarketDataCacheSchema>;
 export type MarketDataCache = typeof marketDataCache.$inferSelect;
+
+// User Notification System Type Exports
+export type InsertUserNotificationPreferences = z.infer<typeof insertUserNotificationPreferencesSchema>;
+export type UserNotificationPreferences = typeof userNotificationPreferences.$inferSelect;
+export type InsertInAppNotification = z.infer<typeof insertInAppNotificationSchema>;
+export type InAppNotification = typeof inAppNotifications.$inferSelect;
 
 // ===========================================
 // COMPREHENSIVE QUIZ SYSTEM SCHEMAS & TYPES
@@ -1735,6 +1836,21 @@ export type NotificationQueueStatus = typeof NOTIFICATION_QUEUE_STATUSES[number]
 export type NotificationEventType = typeof NOTIFICATION_EVENTS[number];
 export type AdminApprovalStatus = typeof ADMIN_APPROVAL_STATUSES[number];
 export type AdminApprovalResourceType = typeof ADMIN_APPROVAL_RESOURCE_TYPES[number];
+
+// User Notification System Constants
+export const EMAIL_FREQUENCIES = ["instant", "daily", "weekly", "off"] as const;
+export const WEEKLY_DIGEST_DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
+export const IN_APP_NOTIFICATION_TYPES = ["market_alert", "course_update", "productivity_reminder", "share_invitation", "admin_notification", "system_update"] as const;
+export const NOTIFICATION_CATEGORIES = ["info", "success", "warning", "error"] as const;
+export const NOTIFICATION_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
+export const NOTIFICATION_ACTION_TYPES = ["navigate", "external_link", "modal", "none"] as const;
+
+export type EmailFrequency = typeof EMAIL_FREQUENCIES[number];
+export type WeeklyDigestDay = typeof WEEKLY_DIGEST_DAYS[number];
+export type InAppNotificationType = typeof IN_APP_NOTIFICATION_TYPES[number];
+export type NotificationCategory = typeof NOTIFICATION_CATEGORIES[number];
+export type NotificationPriority = typeof NOTIFICATION_PRIORITIES[number];
+export type NotificationActionType = typeof NOTIFICATION_ACTION_TYPES[number];
 
 // ===================
 // PRODUCTIVITY TABLE SYSTEM - MONDAY.COM INSPIRED
