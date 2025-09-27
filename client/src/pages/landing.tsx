@@ -121,10 +121,10 @@ export default function LandingPage() {
                 
                 {/* Enhanced Watch Demo Button */}
                 <Button 
-                  variant="secondary"
+                  variant="outline"
                   size="lg"
                   onClick={() => setShowDemoModal(true)}
-                  className="bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-white border-0 px-8 py-4 text-lg font-semibold shadow-xl hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-200 flex items-center gap-3"
+                  className="bg-white/10 backdrop-blur-sm border-2 border-white/30 text-white hover:bg-white/20 hover:border-white/50 px-8 py-4 text-lg font-semibold shadow-xl hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-200 flex items-center gap-3"
                   data-testid="button-watch-demo"
                 >
                   <Play className="w-5 h-5" />
