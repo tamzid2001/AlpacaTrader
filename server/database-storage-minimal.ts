@@ -1,5 +1,8 @@
 import { DatabaseStorage } from "./database-storage";
 import type { IStorage } from "./storage";
+import { db } from "./db";
+import { eq, desc, asc } from "drizzle-orm";
+import { backgroundJobs } from "@shared/schema";
 
 /**
  * DatabaseStorageMinimal - Extends DatabaseStorage with placeholder implementations
@@ -260,6 +263,253 @@ export class DatabaseStorageMinimal extends DatabaseStorage implements IStorage 
       mostCommonIntents: [],
       userSatisfactionRating: 0
     };
+  }
+
+  // ===========================================
+  // BACKGROUND JOBS SYSTEM METHODS
+  // ===========================================
+
+  async createBackgroundJob(job: any): Promise<string> {
+    try {
+      // Use parent class implementation if available
+      if (super.createBackgroundJob) {
+        const result = await super.createBackgroundJob(job);
+        return result.id || result;
+      }
+      
+      // Direct database implementation as fallback
+      const result = await db.insert(backgroundJobs).values(job).returning();
+      return result[0].id;
+    } catch (error) {
+      console.log("⚠️ createBackgroundJob error:", error);
+      throw new Error("createBackgroundJob failed");
+    }
+  }
+
+  async getBackgroundJob(jobId: string): Promise<any> {
+    if (super.getBackgroundJob) {
+      return super.getBackgroundJob(jobId);
+    }
+    return undefined;
+  }
+
+  async getUserBackgroundJobs(userId: string): Promise<any[]> {
+    if (super.getUserBackgroundJobs) {
+      return super.getUserBackgroundJobs(userId);
+    }
+    return [];
+  }
+
+  async getNextQueuedJob(): Promise<any> {
+    if (super.getNextQueuedJob) {
+      return super.getNextQueuedJob();
+    }
+    return undefined;
+  }
+
+  async getAllQueuedJobs(): Promise<any[]> {
+    // CRITICAL: This is the method that was missing and causing job processor failures
+    try {
+      // Use parent implementation if available
+      if (super.getAllBackgroundJobs) {
+        const allJobs = await super.getAllBackgroundJobs();
+        return allJobs.filter(job => job.status === 'queued');
+      }
+      
+      // Direct database implementation as fallback
+      const result = await db.select()
+        .from(backgroundJobs)
+        .where(eq(backgroundJobs.status, 'queued'))
+        .orderBy(desc(backgroundJobs.priority), asc(backgroundJobs.createdAt));
+      
+      return result;
+    } catch (error) {
+      console.log("⚠️ getAllQueuedJobs error:", error);
+      return [];
+    }
+  }
+
+  async updateJobStatus(jobId: string, status: any, updates?: any): Promise<void> {
+    try {
+      // Use parent class implementation if available
+      if (super.updateJobStatus) {
+        return super.updateJobStatus(jobId, status, updates);
+      }
+      
+      // Direct database implementation as fallback
+      const updateData = { status, updatedAt: new Date(), ...updates };
+      await db.update(backgroundJobs)
+        .set(updateData)
+        .where(eq(backgroundJobs.id, jobId));
+        
+      console.log(`✅ Updated job ${jobId} status to ${status}`);
+    } catch (error) {
+      console.log(`⚠️ updateJobStatus error for jobId: ${jobId}, status: ${status}`, error);
+    }
+  }
+
+  async updateJobResults(jobId: string, results: any): Promise<void> {
+    if (super.updateJobResults) {
+      return super.updateJobResults(jobId, results);
+    }
+    console.log(`⚠️ updateJobResults not implemented - jobId: ${jobId}`);
+  }
+
+  async updateJobProgress(jobId: string, progressPercentage: number): Promise<void> {
+    if (super.updateJobProgress) {
+      return super.updateJobProgress(jobId, progressPercentage);
+    }
+    console.log(`⚠️ updateJobProgress not implemented - jobId: ${jobId}, progress: ${progressPercentage}%`);
+  }
+
+  async updateJob(jobId: string, updates: any): Promise<void> {
+    if (super.updateJob) {
+      return super.updateJob(jobId, updates);
+    }
+    console.log(`⚠️ updateJob not implemented - jobId: ${jobId}`);
+  }
+
+  async cancelBackgroundJob(jobId: string, userId: string): Promise<boolean> {
+    if (super.cancelBackgroundJob) {
+      return super.cancelBackgroundJob(jobId, userId);
+    }
+    console.log(`⚠️ cancelBackgroundJob not implemented - jobId: ${jobId}, userId: ${userId}`);
+    return false;
+  }
+
+  async getAllBackgroundJobs(): Promise<any[]> {
+    if (super.getAllBackgroundJobs) {
+      return super.getAllBackgroundJobs();
+    }
+    return [];
+  }
+
+  async getJobsByStatus(status: any): Promise<any[]> {
+    if (super.getJobsByStatus) {
+      return super.getJobsByStatus(status);
+    }
+    return [];
+  }
+
+  async getJobsByType(jobType: any): Promise<any[]> {
+    if (super.getJobsByType) {
+      return super.getJobsByType(jobType);
+    }
+    return [];
+  }
+
+  async deleteBackgroundJob(jobId: string): Promise<boolean> {
+    if (super.deleteBackgroundJob) {
+      return super.deleteBackgroundJob(jobId);
+    }
+    console.log(`⚠️ deleteBackgroundJob not implemented - jobId: ${jobId}`);
+    return false;
+  }
+
+  async getJobStatistics(): Promise<any> {
+    if (super.getJobStatistics) {
+      return super.getJobStatistics();
+    }
+    return {
+      totalJobs: 0,
+      queuedJobs: 0,
+      runningJobs: 0,
+      completedJobs: 0,
+      failedJobs: 0,
+      averageCompletionTime: 0
+    };
+  }
+
+  // ===========================================
+  // ADDITIONAL MISSING NOTIFICATION METHODS
+  // ===========================================
+
+  async getUserNotificationPreferences(userId: string): Promise<any> {
+    return {
+      emailNotifications: true,
+      pushNotifications: true,
+      inAppNotifications: true,
+      marketAlerts: true,
+      courseUpdates: true,
+      systemNotifications: true
+    };
+  }
+
+  async updateUserNotificationPreferences(userId: string, preferences: any): Promise<any> {
+    console.log(`⚠️ updateUserNotificationPreferences not implemented - userId: ${userId}`);
+    return preferences;
+  }
+
+  async createInAppNotification(notification: any): Promise<any> {
+    throw new Error("createInAppNotification not implemented");
+  }
+
+  async getUserInAppNotifications(userId: string, limit?: number): Promise<any[]> {
+    return [];
+  }
+
+  async markInAppNotificationAsRead(notificationId: string): Promise<any> {
+    return undefined;
+  }
+
+  async markAllInAppNotificationsAsRead(userId: string): Promise<number> {
+    return 0;
+  }
+
+  async deleteInAppNotification(notificationId: string): Promise<boolean> {
+    return false;
+  }
+
+  async getUnreadNotificationCount(userId: string): Promise<number> {
+    return 0;
+  }
+
+  async getNotificationCountsByType(userId: string): Promise<any> {
+    return {};
+  }
+
+  async deleteExpiredInAppNotifications(): Promise<number> {
+    return 0;
+  }
+
+  async getRecentInAppNotifications(userId: string, limit?: number): Promise<any[]> {
+    return [];
+  }
+
+  async createMarketDataAlertNotification(userId: string, alertData: any): Promise<any> {
+    throw new Error("createMarketDataAlertNotification not implemented");
+  }
+
+  async createCourseUpdateNotification(userId: string, courseData: any): Promise<any> {
+    throw new Error("createCourseUpdateNotification not implemented");
+  }
+
+  async createProductivityReminderNotification(userId: string, reminderData: any): Promise<any> {
+    throw new Error("createProductivityReminderNotification not implemented");
+  }
+
+  async createShareInvitationNotification(userId: string, inviteData: any): Promise<any> {
+    throw new Error("createShareInvitationNotification not implemented");
+  }
+
+  async createAdminNotification(userId: string, adminData: any): Promise<any> {
+    throw new Error("createAdminNotification not implemented");
+  }
+
+  async createSystemUpdateNotification(userId: string, systemData: any): Promise<any> {
+    throw new Error("createSystemUpdateNotification not implemented");
+  }
+
+  async shouldSendEmailNotification(userId: string, notificationType: any): Promise<boolean> {
+    return true;
+  }
+
+  async shouldSendInAppNotification(userId: string, notificationType: any): Promise<boolean> {
+    return true;
+  }
+
+  async shouldSendPushNotification(userId: string, notificationType: any): Promise<boolean> {
+    return true;
   }
 
   // Add any other missing methods as placeholders...

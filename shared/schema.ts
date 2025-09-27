@@ -2131,6 +2131,9 @@ export const backgroundJobs = pgTable("background_jobs", {
   awsJobId: varchar("aws_job_id"), // AWS service job identifier
   awsJobType: varchar("aws_job_type"), // sagemaker, batch, lambda
   awsRegion: varchar("aws_region").default("us-east-1"), // AWS region
+  awsBatchJobId: varchar("aws_batch_job_id"), // AWS Batch specific job ID
+  awsLambdaRequestId: varchar("aws_lambda_request_id"), // AWS Lambda request ID
+  sagemakerJobArn: varchar("sagemaker_job_arn"), // SageMaker job ARN
   
   // Metadata
   createdAt: timestamp("created_at").defaultNow().notNull(),
