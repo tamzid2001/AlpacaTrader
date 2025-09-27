@@ -114,29 +114,167 @@ export const courseEnrollments = pgTable("course_enrollments", {
   index("IDX_course_enrollments_last_accessed").on(table.lastAccessedAt),
 ]);
 
+// ===================
+// COMPREHENSIVE QUIZ SYSTEM TABLES
+// ===================
+
+// Enhanced Quizzes - Comprehensive quiz configuration
 export const quizzes = pgTable("quizzes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  courseId: varchar("course_id").notNull().references(() => courses.id),
+  courseId: varchar("course_id").notNull().references(() => courses.id, { onDelete: 'cascade' }),
+  lessonId: varchar("lesson_id").references(() => lessons.id, { onDelete: 'cascade' }), // Optional: quiz linked to specific lesson
   title: text("title").notNull(),
-  questions: json("questions").notNull(), // Array of question objects
+  description: text("description"),
+  instructions: text("instructions"), // Detailed instructions for students
+  timeLimit: integer("time_limit"), // Time limit in minutes (null = no limit)
+  passingScore: integer("passing_score").notNull().default(70), // Percentage required to pass
+  maxAttempts: integer("max_attempts").default(3), // Maximum attempts allowed (null = unlimited)
+  shuffleQuestions: boolean("shuffle_questions").default(false), // Randomize question order
+  shuffleAnswers: boolean("shuffle_answers").default(false), // Randomize answer order
+  showResults: boolean("show_results").default(true), // Show results after completion
+  showCorrectAnswers: boolean("show_correct_answers").default(true), // Show correct answers in results
+  allowBackNavigation: boolean("allow_back_navigation").default(true), // Allow going back to previous questions
+  requireAllQuestions: boolean("require_all_questions").default(true), // Must answer all questions
+  isActive: boolean("is_active").default(true),
+  availableFrom: timestamp("available_from"), // When quiz becomes available
+  availableUntil: timestamp("available_until"), // When quiz expires
+  createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
   index("IDX_quizzes_course_id").on(table.courseId),
+  index("IDX_quizzes_lesson_id").on(table.lessonId),
+  index("IDX_quizzes_is_active").on(table.isActive),
+  index("IDX_quizzes_available_from").on(table.availableFrom),
+  index("IDX_quizzes_available_until").on(table.availableUntil),
+  index("IDX_quizzes_created_by").on(table.createdBy),
   index("IDX_quizzes_created_at").on(table.createdAt),
 ]);
 
-export const quizResults = pgTable("quiz_results", {
+// Questions - Individual quiz questions
+export const questions = pgTable("questions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
-  quizId: varchar("quiz_id").notNull().references(() => quizzes.id),
-  score: integer("score").notNull(),
-  totalQuestions: integer("total_questions").notNull(),
-  answers: json("answers").notNull(),
-  completedAt: timestamp("completed_at").defaultNow().notNull(),
+  quizId: varchar("quiz_id").notNull().references(() => quizzes.id, { onDelete: 'cascade' }),
+  type: varchar("type").notNull(), // 'multiple_choice', 'true_false', 'short_answer', 'essay'
+  question: text("question").notNull(),
+  explanation: text("explanation"), // Explanation shown after answering
+  order: integer("order").notNull(), // Question order within quiz
+  points: integer("points").default(1), // Points awarded for correct answer
+  required: boolean("required").default(true), // Must be answered
+  metadata: json("metadata"), // Additional question-specific data
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
-  index("IDX_quiz_results_user_id").on(table.userId),
-  index("IDX_quiz_results_quiz_id").on(table.quizId),
-  index("IDX_quiz_results_completed_at").on(table.completedAt),
+  index("IDX_questions_quiz_id").on(table.quizId),
+  index("IDX_questions_type").on(table.type),
+  index("IDX_questions_order").on(table.order),
+  index("IDX_questions_created_at").on(table.createdAt),
+]);
+
+// Question Options - Answer choices for multiple choice questions
+export const questionOptions = pgTable("question_options", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  questionId: varchar("question_id").notNull().references(() => questions.id, { onDelete: 'cascade' }),
+  optionText: text("option_text").notNull(),
+  isCorrect: boolean("is_correct").default(false),
+  order: integer("order").notNull(), // Option order within question
+  explanation: text("explanation"), // Explanation for why this option is correct/incorrect
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_question_options_question_id").on(table.questionId),
+  index("IDX_question_options_is_correct").on(table.isCorrect),
+  index("IDX_question_options_order").on(table.order),
+  index("IDX_question_options_created_at").on(table.createdAt),
+]);
+
+// Quiz Attempts - Track individual quiz attempts
+export const quizAttempts = pgTable("quiz_attempts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  quizId: varchar("quiz_id").notNull().references(() => quizzes.id, { onDelete: 'cascade' }),
+  attemptNumber: integer("attempt_number").notNull(), // 1st attempt, 2nd attempt, etc.
+  startTime: timestamp("start_time").defaultNow().notNull(),
+  endTime: timestamp("end_time"), // When quiz was completed/submitted
+  timeSpent: integer("time_spent"), // Total time in seconds
+  score: real("score"), // Final score (percentage)
+  pointsEarned: integer("points_earned").default(0), // Total points earned
+  totalPoints: integer("total_points").default(0), // Total possible points
+  passed: boolean("passed").default(false), // Whether attempt passed
+  status: varchar("status").default("in_progress"), // 'in_progress', 'completed', 'abandoned'
+  submittedAt: timestamp("submitted_at"), // When final submission occurred
+  metadata: json("metadata"), // Additional attempt data (browser info, etc.)
+  ipAddress: varchar("ip_address"), // IP address for security
+  userAgent: text("user_agent"), // Browser info for security
+}, (table) => [
+  index("IDX_quiz_attempts_user_id").on(table.userId),
+  index("IDX_quiz_attempts_quiz_id").on(table.quizId),
+  index("IDX_quiz_attempts_status").on(table.status),
+  index("IDX_quiz_attempts_passed").on(table.passed),
+  index("IDX_quiz_attempts_start_time").on(table.startTime),
+  index("IDX_quiz_attempts_submitted_at").on(table.submittedAt),
+  // Composite index for user quiz attempts
+  index("IDX_quiz_attempts_user_quiz").on(table.userId, table.quizId),
+]);
+
+// Question Responses - Individual responses to questions
+export const questionResponses = pgTable("question_responses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  attemptId: varchar("attempt_id").notNull().references(() => quizAttempts.id, { onDelete: 'cascade' }),
+  questionId: varchar("question_id").notNull().references(() => questions.id, { onDelete: 'cascade' }),
+  response: text("response"), // User's response (text for short answer, option ID for multiple choice)
+  selectedOptionId: varchar("selected_option_id").references(() => questionOptions.id), // For multiple choice
+  isCorrect: boolean("is_correct"), // Whether response is correct (null for manual grading)
+  pointsEarned: integer("points_earned").default(0), // Points earned for this response
+  timeSpent: integer("time_spent"), // Time spent on this question in seconds
+  responseOrder: integer("response_order"), // Order in which question was answered
+  flaggedForReview: boolean("flagged_for_review").default(false), // Student flagged for review
+  manualGrade: integer("manual_grade"), // Manual grade for essay/short answer questions
+  manualFeedback: text("manual_feedback"), // Manual feedback from instructor
+  gradedBy: varchar("graded_by").references(() => users.id), // Who graded manually
+  gradedAt: timestamp("graded_at"), // When manual grading occurred
+  answeredAt: timestamp("answered_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_question_responses_attempt_id").on(table.attemptId),
+  index("IDX_question_responses_question_id").on(table.questionId),
+  index("IDX_question_responses_is_correct").on(table.isCorrect),
+  index("IDX_question_responses_flagged_for_review").on(table.flaggedForReview),
+  index("IDX_question_responses_graded_by").on(table.gradedBy),
+  index("IDX_question_responses_answered_at").on(table.answeredAt),
+]);
+
+// Certificates - Generated certificates for passed quizzes
+export const certificates = pgTable("certificates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  quizId: varchar("quiz_id").notNull().references(() => quizzes.id, { onDelete: 'cascade' }),
+  courseId: varchar("course_id").notNull().references(() => courses.id, { onDelete: 'cascade' }),
+  attemptId: varchar("attempt_id").notNull().references(() => quizAttempts.id, { onDelete: 'cascade' }),
+  certificateNumber: varchar("certificate_number").notNull().unique(), // Unique certificate identifier
+  studentName: text("student_name").notNull(), // Student name at time of certification
+  courseName: text("course_name").notNull(), // Course name at time of certification
+  quizName: text("quiz_name").notNull(), // Quiz name at time of certification
+  score: real("score").notNull(), // Final score achieved
+  completionDate: timestamp("completion_date").notNull(), // Date quiz was completed
+  pdfUrl: text("pdf_url"), // URL to generated PDF certificate
+  pdfPath: text("pdf_path"), // Object storage path to PDF
+  digitalSignature: text("digital_signature"), // Digital signature for verification
+  verificationCode: varchar("verification_code").notNull().unique(), // Code for certificate verification
+  isValid: boolean("is_valid").default(true), // Certificate validity status
+  downloadCount: integer("download_count").default(0), // Number of times downloaded
+  sharedCount: integer("shared_count").default(0), // Number of times shared
+  metadata: json("metadata"), // Additional certificate data
+  generatedAt: timestamp("generated_at").defaultNow().notNull(),
+  lastAccessedAt: timestamp("last_accessed_at"), // Last time certificate was viewed
+}, (table) => [
+  index("IDX_certificates_user_id").on(table.userId),
+  index("IDX_certificates_quiz_id").on(table.quizId),
+  index("IDX_certificates_course_id").on(table.courseId),
+  index("IDX_certificates_attempt_id").on(table.attemptId),
+  index("IDX_certificates_is_valid").on(table.isValid),
+  index("IDX_certificates_completion_date").on(table.completionDate),
+  index("IDX_certificates_generated_at").on(table.generatedAt),
+  // Composite index for user certificates
+  index("IDX_certificates_user_course").on(table.userId, table.courseId),
 ]);
 
 // ===================
@@ -791,10 +929,6 @@ export const insertQuizSchema = createInsertSchema(quizzes).omit({
   createdAt: true,
 });
 
-export const insertQuizResultSchema = createInsertSchema(quizResults).omit({
-  id: true,
-  completedAt: true,
-});
 
 export const insertSupportMessageSchema = createInsertSchema(supportMessages).omit({
   id: true,
@@ -1000,10 +1134,7 @@ export type InsertCourseMaterial = z.infer<typeof insertCourseMaterialSchema>;
 export type CourseMaterial = typeof courseMaterials.$inferSelect;
 export type InsertUserProgress = z.infer<typeof insertUserProgressSchema>;
 export type UserProgress = typeof userProgress.$inferSelect;
-export type InsertQuiz = z.infer<typeof insertQuizSchema>;
-export type Quiz = typeof quizzes.$inferSelect;
-export type InsertQuizResult = z.infer<typeof insertQuizResultSchema>;
-export type QuizResult = typeof quizResults.$inferSelect;
+// Note: New comprehensive quiz types are defined in the quiz system section above
 export type InsertSupportMessage = z.infer<typeof insertSupportMessageSchema>;
 export type SupportMessage = typeof supportMessages.$inferSelect;
 export type InsertCsvUpload = z.infer<typeof insertCsvUploadSchema>;
@@ -1348,6 +1479,58 @@ export type InsertCrashReport = z.infer<typeof insertCrashReportSchema>;
 export type CrashReport = typeof crashReports.$inferSelect;
 export type InsertMarketDataCache = z.infer<typeof insertMarketDataCacheSchema>;
 export type MarketDataCache = typeof marketDataCache.$inferSelect;
+
+// ===========================================
+// COMPREHENSIVE QUIZ SYSTEM SCHEMAS & TYPES
+// ===========================================
+
+// Quiz System Insert Schemas
+export const insertQuestionSchema = createInsertSchema(questions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertQuestionOptionSchema = createInsertSchema(questionOptions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertQuizAttemptSchema = createInsertSchema(quizAttempts).omit({
+  id: true,
+  startTime: true,
+});
+
+export const insertQuestionResponseSchema = createInsertSchema(questionResponses).omit({
+  id: true,
+  answeredAt: true,
+});
+
+export const insertCertificateSchema = createInsertSchema(certificates).omit({
+  id: true,
+  generatedAt: true,
+});
+
+// Quiz System Type Exports
+export type InsertQuiz = z.infer<typeof insertQuizSchema>;
+export type Quiz = typeof quizzes.$inferSelect;
+export type InsertQuestion = z.infer<typeof insertQuestionSchema>;
+export type Question = typeof questions.$inferSelect;
+export type InsertQuestionOption = z.infer<typeof insertQuestionOptionSchema>;
+export type QuestionOption = typeof questionOptions.$inferSelect;
+export type InsertQuizAttempt = z.infer<typeof insertQuizAttemptSchema>;
+export type QuizAttempt = typeof quizAttempts.$inferSelect;
+export type InsertQuestionResponse = z.infer<typeof insertQuestionResponseSchema>;
+export type QuestionResponse = typeof questionResponses.$inferSelect;
+export type InsertCertificate = z.infer<typeof insertCertificateSchema>;
+export type Certificate = typeof certificates.$inferSelect;
+
+// Quiz System Constants
+export const QUESTION_TYPES = ["multiple_choice", "true_false", "short_answer", "essay"] as const;
+export const QUIZ_ATTEMPT_STATUSES = ["in_progress", "completed", "abandoned"] as const;
+
+export type QuestionType = typeof QUESTION_TYPES[number];
+export type QuizAttemptStatus = typeof QUIZ_ATTEMPT_STATUSES[number];
 
 // Comprehensive Notification Constants
 export const NOTIFICATION_TEMPLATE_TYPES = ["price_alert", "scheduled", "excel_report", "crash_report"] as const;

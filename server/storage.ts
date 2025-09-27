@@ -13,10 +13,21 @@ import {
   type InsertCourseMaterial,
   type UserProgress,
   type InsertUserProgress,
+  // Comprehensive Quiz System Types
   type Quiz,
   type InsertQuiz,
-  type QuizResult,
-  type InsertQuizResult,
+  type Question,
+  type InsertQuestion,
+  type QuestionOption,
+  type InsertQuestionOption,
+  type QuizAttempt,
+  type InsertQuizAttempt,
+  type QuestionResponse,
+  type InsertQuestionResponse,
+  type Certificate,
+  type InsertCertificate,
+  type QuestionType,
+  type QuizAttemptStatus,
   type SupportMessage,
   type InsertSupportMessage,
   type CsvUpload,
@@ -163,12 +174,124 @@ export interface IStorage {
   updateEnrollmentAccess(userId: string, courseId: string): Promise<void>;
   completeCourse(userId: string, courseId: string): Promise<void>;
 
-  // Quizzes
-  getCourseQuizzes(courseId: string): Promise<Quiz[]>;
+  // ===================
+  // COMPREHENSIVE QUIZ SYSTEM
+  // ===================
+
+  // Quiz Management
+  getAllQuizzes(): Promise<Quiz[]>;
+  getCourseQuizzes(courseId: string): Promise<(Quiz & { questionsCount: number })[]>;
+  getLessonQuizzes(lessonId: string): Promise<Quiz[]>;
   getQuiz(id: string): Promise<Quiz | undefined>;
+  getQuizWithQuestions(id: string): Promise<(Quiz & { questions: (Question & { options: QuestionOption[] })[] }) | undefined>;
   createQuiz(quiz: InsertQuiz): Promise<Quiz>;
-  submitQuizResult(result: InsertQuizResult): Promise<QuizResult>;
-  getUserQuizResults(userId: string): Promise<QuizResult[]>;
+  updateQuiz(id: string, updates: Partial<Quiz>): Promise<Quiz | undefined>;
+  deleteQuiz(id: string): Promise<boolean>;
+  publishQuiz(id: string): Promise<Quiz | undefined>;
+  unpublishQuiz(id: string): Promise<Quiz | undefined>;
+  duplicateQuiz(id: string, title: string): Promise<Quiz>;
+
+  // Question Management
+  getQuizQuestions(quizId: string): Promise<(Question & { options: QuestionOption[] })[]>;
+  getQuestion(id: string): Promise<(Question & { options: QuestionOption[] }) | undefined>;
+  createQuestion(question: InsertQuestion): Promise<Question>;
+  updateQuestion(id: string, updates: Partial<Question>): Promise<Question | undefined>;
+  deleteQuestion(id: string): Promise<boolean>;
+  reorderQuestions(quizId: string, questionOrders: { id: string; order: number }[]): Promise<void>;
+
+  // Question Options Management
+  getQuestionOptions(questionId: string): Promise<QuestionOption[]>;
+  createQuestionOption(option: InsertQuestionOption): Promise<QuestionOption>;
+  updateQuestionOption(id: string, updates: Partial<QuestionOption>): Promise<QuestionOption | undefined>;
+  deleteQuestionOption(id: string): Promise<boolean>;
+  reorderQuestionOptions(questionId: string, optionOrders: { id: string; order: number }[]): Promise<void>;
+
+  // Quiz Attempt Management
+  startQuizAttempt(attempt: InsertQuizAttempt): Promise<QuizAttempt>;
+  getQuizAttempt(id: string): Promise<(QuizAttempt & { quiz: Quiz; responses: QuestionResponse[] }) | undefined>;
+  getUserQuizAttempts(userId: string, quizId?: string): Promise<(QuizAttempt & { quiz: Quiz })[]>;
+  updateQuizAttempt(id: string, updates: Partial<QuizAttempt>): Promise<QuizAttempt | undefined>;
+  completeQuizAttempt(id: string, endTime: Date, score: number, pointsEarned: number, passed: boolean): Promise<QuizAttempt | undefined>;
+  abandonQuizAttempt(id: string): Promise<QuizAttempt | undefined>;
+  getActiveQuizAttempt(userId: string, quizId: string): Promise<QuizAttempt | undefined>;
+  canUserAttemptQuiz(userId: string, quizId: string): Promise<{ canAttempt: boolean; reason?: string; attemptsUsed: number; maxAttempts?: number }>;
+
+  // Question Response Management
+  saveQuestionResponse(response: InsertQuestionResponse): Promise<QuestionResponse>;
+  updateQuestionResponse(id: string, updates: Partial<QuestionResponse>): Promise<QuestionResponse | undefined>;
+  getAttemptResponses(attemptId: string): Promise<(QuestionResponse & { question: Question; selectedOption?: QuestionOption })[]>;
+  getQuestionResponse(attemptId: string, questionId: string): Promise<QuestionResponse | undefined>;
+  autoSaveQuizProgress(attemptId: string, responses: InsertQuestionResponse[]): Promise<void>;
+  flagQuestionForReview(responseId: string, flagged: boolean): Promise<QuestionResponse | undefined>;
+
+  // Manual Grading (for essay and short answer questions)
+  getResponsesNeedingGrading(quizId?: string): Promise<(QuestionResponse & { attempt: QuizAttempt & { user: User }; question: Question })[]>;
+  gradeResponse(responseId: string, grade: number, feedback: string, gradedBy: string): Promise<QuestionResponse | undefined>;
+  bulkGradeResponses(grades: { responseId: string; grade: number; feedback: string }[], gradedBy: string): Promise<number>;
+  updateAttemptScoreAfterGrading(attemptId: string): Promise<QuizAttempt | undefined>;
+
+  // Certificate Management
+  generateCertificate(certificate: InsertCertificate): Promise<Certificate>;
+  getCertificate(id: string): Promise<Certificate | undefined>;
+  getUserCertificates(userId: string): Promise<(Certificate & { course: Course; quiz: Quiz })[]>;
+  verifyCertificate(verificationCode: string): Promise<(Certificate & { user: User; course: Course; quiz: Quiz }) | undefined>;
+  downloadCertificate(id: string, userId: string): Promise<{ url: string; filename: string } | undefined>;
+  invalidateCertificate(id: string, reason: string): Promise<Certificate | undefined>;
+  getCourseCertificates(courseId: string): Promise<(Certificate & { user: User })[]>;
+  incrementCertificateDownload(id: string): Promise<void>;
+  incrementCertificateShare(id: string): Promise<void>;
+
+  // Quiz Analytics and Reporting
+  getQuizAnalytics(quizId: string): Promise<{
+    totalAttempts: number;
+    averageScore: number;
+    passRate: number;
+    averageCompletionTime: number;
+    questionAnalytics: Array<{
+      questionId: string;
+      correctRate: number;
+      averageTime: number;
+      skipRate: number;
+    }>;
+    difficultyDistribution: Record<string, number>;
+  }>;
+  getCourseQuizAnalytics(courseId: string): Promise<{
+    totalQuizzes: number;
+    totalAttempts: number;
+    averagePassRate: number;
+    studentProgress: Array<{
+      userId: string;
+      userName: string;
+      completedQuizzes: number;
+      averageScore: number;
+    }>;
+  }>;
+  getUserQuizPerformance(userId: string): Promise<{
+    totalAttempts: number;
+    completedQuizzes: number;
+    averageScore: number;
+    certificatesEarned: number;
+    recentAttempts: (QuizAttempt & { quiz: Quiz; course: Course })[];
+  }>;
+  getSystemQuizMetrics(): Promise<{
+    totalQuizzes: number;
+    totalAttempts: number;
+    totalCertificates: number;
+    averagePassRate: number;
+    popularQuizzes: (Quiz & { attemptCount: number; averageScore: number })[];
+  }>;
+
+  // Quiz Integration with Course Progress
+  updateCourseProgressFromQuiz(userId: string, courseId: string, quizPassed: boolean): Promise<void>;
+  getRequiredQuizzesForCourse(courseId: string): Promise<Quiz[]>;
+  getUserCourseQuizProgress(userId: string, courseId: string): Promise<{
+    totalQuizzes: number;
+    completedQuizzes: number;
+    passedQuizzes: number;
+    averageScore: number;
+    blockedByQuiz?: Quiz;
+  }>;
+  checkQuizCompletionRequirements(userId: string, lessonId: string): Promise<{ canProceed: boolean; blockedBy?: Quiz; }>;
 
   // Support
   createSupportMessage(message: InsertSupportMessage): Promise<SupportMessage>;

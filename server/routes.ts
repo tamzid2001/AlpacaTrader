@@ -6,7 +6,6 @@ import { storage } from "./storage";
 import { checkDatabaseHealth, getPoolStatus } from "./db";
 import { 
   insertSupportMessageSchema, 
-  insertQuizResultSchema, 
   insertCsvUploadSchema, 
   insertAnomalySchema, 
   insertSharedResultSchema, 
@@ -15,7 +14,14 @@ import {
   insertTeamSchema,
   insertTeamMemberSchema,
   insertShareInviteSchema,
-  insertShareLinkSchema
+  insertShareLinkSchema,
+  // Comprehensive Quiz System Schemas
+  insertQuizSchema,
+  insertQuestionSchema,
+  insertQuestionOptionSchema,
+  insertQuizAttemptSchema,
+  insertQuestionResponseSchema,
+  insertCertificateSchema
 } from "@shared/schema";
 import { z } from "zod";
 import { setupAuth, isAuthenticated } from "./replitAuth";
@@ -707,7 +713,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Quiz routes
+  // ===================
+  // COMPREHENSIVE QUIZ SYSTEM API ENDPOINTS
+  // ===================
+
+  // Quiz Management CRUD Operations
+  app.get("/api/quizzes", isAuthenticated, async (req: any, res) => {
+    try {
+      const quizzes = await storage.getAllQuizzes();
+      res.json(quizzes);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.get("/api/courses/:courseId/quizzes", async (req, res) => {
     try {
       const quizzes = await storage.getCourseQuizzes(req.params.courseId);
@@ -717,20 +736,654 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/quiz-results", async (req, res) => {
+  app.get("/api/lessons/:lessonId/quizzes", async (req, res) => {
     try {
-      const result = insertQuizResultSchema.parse(req.body);
-      const quizResult = await storage.submitQuizResult(result);
-      res.json(quizResult);
+      const quizzes = await storage.getLessonQuizzes(req.params.lessonId);
+      res.json(quizzes);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/quizzes/:id", async (req, res) => {
+    try {
+      const quiz = await storage.getQuiz(req.params.id);
+      if (!quiz) {
+        return res.status(404).json({ error: "Quiz not found" });
+      }
+      res.json(quiz);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/quizzes/:id/questions", async (req, res) => {
+    try {
+      const quiz = await storage.getQuizWithQuestions(req.params.id);
+      if (!quiz) {
+        return res.status(404).json({ error: "Quiz not found" });
+      }
+      res.json(quiz);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/quizzes", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const quizData = insertQuizSchema.parse(req.body);
+      const quiz = await storage.createQuiz({
+        ...quizData,
+        createdBy: req.user.claims.sub
+      });
+      res.status(201).json(quiz);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
   });
 
-  app.get("/api/users/:userId/quiz-results", async (req, res) => {
+  app.put("/api/quizzes/:id", isAuthenticated, requireAdmin, async (req: any, res) => {
     try {
-      const results = await storage.getUserQuizResults(req.params.userId);
-      res.json(results);
+      const updates = insertQuizSchema.partial().parse(req.body);
+      const quiz = await storage.updateQuiz(req.params.id, updates);
+      if (!quiz) {
+        return res.status(404).json({ error: "Quiz not found" });
+      }
+      res.json(quiz);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/quizzes/:id", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const deleted = await storage.deleteQuiz(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Quiz not found" });
+      }
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/quizzes/:id/publish", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const quiz = await storage.publishQuiz(req.params.id);
+      if (!quiz) {
+        return res.status(404).json({ error: "Quiz not found" });
+      }
+      res.json(quiz);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/quizzes/:id/unpublish", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const quiz = await storage.unpublishQuiz(req.params.id);
+      if (!quiz) {
+        return res.status(404).json({ error: "Quiz not found" });
+      }
+      res.json(quiz);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/quizzes/:id/duplicate", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const { title } = req.body;
+      if (!title) {
+        return res.status(400).json({ error: "Title is required for duplication" });
+      }
+      const quiz = await storage.duplicateQuiz(req.params.id, title);
+      res.status(201).json(quiz);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Question Management
+  app.get("/api/quizzes/:quizId/questions", async (req, res) => {
+    try {
+      const questions = await storage.getQuizQuestions(req.params.quizId);
+      res.json(questions);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/questions/:id", async (req, res) => {
+    try {
+      const question = await storage.getQuestion(req.params.id);
+      if (!question) {
+        return res.status(404).json({ error: "Question not found" });
+      }
+      res.json(question);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/questions", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const questionData = insertQuestionSchema.parse(req.body);
+      const question = await storage.createQuestion(questionData);
+      res.status(201).json(question);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.put("/api/questions/:id", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const updates = insertQuestionSchema.partial().parse(req.body);
+      const question = await storage.updateQuestion(req.params.id, updates);
+      if (!question) {
+        return res.status(404).json({ error: "Question not found" });
+      }
+      res.json(question);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/questions/:id", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const deleted = await storage.deleteQuestion(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Question not found" });
+      }
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.put("/api/quizzes/:quizId/questions/reorder", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const { questionOrders } = req.body;
+      if (!Array.isArray(questionOrders)) {
+        return res.status(400).json({ error: "questionOrders must be an array" });
+      }
+      await storage.reorderQuestions(req.params.quizId, questionOrders);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Question Options Management
+  app.get("/api/questions/:questionId/options", async (req, res) => {
+    try {
+      const options = await storage.getQuestionOptions(req.params.questionId);
+      res.json(options);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/question-options", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const optionData = insertQuestionOptionSchema.parse(req.body);
+      const option = await storage.createQuestionOption(optionData);
+      res.status(201).json(option);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.put("/api/question-options/:id", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const updates = insertQuestionOptionSchema.partial().parse(req.body);
+      const option = await storage.updateQuestionOption(req.params.id, updates);
+      if (!option) {
+        return res.status(404).json({ error: "Question option not found" });
+      }
+      res.json(option);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/question-options/:id", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const deleted = await storage.deleteQuestionOption(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Question option not found" });
+      }
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Quiz Attempt Management
+  app.post("/api/quizzes/:id/start", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const quizId = req.params.id;
+
+      // Check if user can attempt quiz
+      const canAttempt = await storage.canUserAttemptQuiz(userId, quizId);
+      if (!canAttempt.canAttempt) {
+        return res.status(403).json({ 
+          error: "Cannot start quiz attempt", 
+          reason: canAttempt.reason,
+          attemptsUsed: canAttempt.attemptsUsed,
+          maxAttempts: canAttempt.maxAttempts
+        });
+      }
+
+      // Check for existing active attempt
+      const existingAttempt = await storage.getActiveQuizAttempt(userId, quizId);
+      if (existingAttempt) {
+        return res.json(existingAttempt);
+      }
+
+      // Create new attempt
+      const attemptData = insertQuizAttemptSchema.parse({
+        userId,
+        quizId,
+        attemptNumber: canAttempt.attemptsUsed + 1,
+        status: "in_progress",
+        ipAddress: req.ip,
+        userAgent: req.get('User-Agent'),
+        metadata: { startedFrom: req.get('Origin') }
+      });
+
+      const attempt = await storage.startQuizAttempt(attemptData);
+      res.status(201).json(attempt);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/quiz-attempts/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const attempt = await storage.getQuizAttempt(req.params.id);
+      if (!attempt) {
+        return res.status(404).json({ error: "Quiz attempt not found" });
+      }
+
+      // Check if user owns this attempt or is admin
+      const userId = req.user.claims.sub;
+      const userRole = req.user.claims.role;
+      if (attempt.userId !== userId && !['admin', 'superadmin'].includes(userRole)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      res.json(attempt);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/users/:userId/quiz-attempts", isAuthenticated, async (req: any, res) => {
+    try {
+      const requestedUserId = req.params.userId;
+      const currentUserId = req.user.claims.sub;
+      const userRole = req.user.claims.role;
+
+      // Check if user can access these attempts
+      if (requestedUserId !== currentUserId && !['admin', 'superadmin'].includes(userRole)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const quizId = req.query.quizId as string;
+      const attempts = await storage.getUserQuizAttempts(requestedUserId, quizId);
+      res.json(attempts);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/quiz-attempts/:id/submit", isAuthenticated, async (req: any, res) => {
+    try {
+      const attemptId = req.params.id;
+      const userId = req.user.claims.sub;
+      const { responses, timeSpent } = req.body;
+
+      // Get attempt and verify ownership
+      const attempt = await storage.getQuizAttempt(attemptId);
+      if (!attempt) {
+        return res.status(404).json({ error: "Quiz attempt not found" });
+      }
+      if (attempt.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      if (attempt.status !== 'in_progress') {
+        return res.status(400).json({ error: "Quiz attempt is not in progress" });
+      }
+
+      // Process and calculate score
+      let totalPoints = 0;
+      let earnedPoints = 0;
+
+      // Save all responses and calculate scores
+      for (const response of responses) {
+        const responseData = insertQuestionResponseSchema.parse({
+          ...response,
+          attemptId
+        });
+        await storage.saveQuestionResponse(responseData);
+        
+        if (response.isCorrect !== null) {
+          totalPoints += response.pointsPossible || 1;
+          earnedPoints += response.pointsEarned || 0;
+        }
+      }
+
+      const score = totalPoints > 0 ? (earnedPoints / totalPoints) * 100 : 0;
+      const passed = score >= (attempt.quiz.passingScore || 70);
+
+      // Complete the attempt
+      const completedAttempt = await storage.completeQuizAttempt(
+        attemptId,
+        new Date(),
+        score,
+        earnedPoints,
+        passed
+      );
+
+      // Update course progress if quiz passed
+      if (passed && attempt.quiz.courseId) {
+        await storage.updateCourseProgressFromQuiz(userId, attempt.quiz.courseId, true);
+      }
+
+      // Generate certificate if passed
+      if (passed) {
+        const certificateData = insertCertificateSchema.parse({
+          userId,
+          quizId: attempt.quizId,
+          courseId: attempt.quiz.courseId,
+          attemptId,
+          certificateNumber: `CERT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          studentName: `${req.user.claims.first_name} ${req.user.claims.last_name}`,
+          courseName: attempt.quiz.course?.title || 'Course',
+          quizName: attempt.quiz.title,
+          score,
+          completionDate: new Date(),
+          verificationCode: Math.random().toString(36).substr(2, 16).toUpperCase(),
+          digitalSignature: `${userId}-${attemptId}-${Date.now()}`,
+          metadata: { generatedBy: 'system', version: '1.0' }
+        });
+
+        await storage.generateCertificate(certificateData);
+      }
+
+      res.json({
+        attempt: completedAttempt,
+        score,
+        passed,
+        earnedPoints,
+        totalPoints,
+        certificateGenerated: passed
+      });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/quiz-attempts/:id/abandon", isAuthenticated, async (req: any, res) => {
+    try {
+      const attemptId = req.params.id;
+      const userId = req.user.claims.sub;
+
+      // Verify ownership
+      const attempt = await storage.getQuizAttempt(attemptId);
+      if (!attempt) {
+        return res.status(404).json({ error: "Quiz attempt not found" });
+      }
+      if (attempt.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const abandonedAttempt = await storage.abandonQuizAttempt(attemptId);
+      res.json(abandonedAttempt);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Question Response Management and Auto-save
+  app.post("/api/question-responses", isAuthenticated, async (req: any, res) => {
+    try {
+      const responseData = insertQuestionResponseSchema.parse(req.body);
+      const response = await storage.saveQuestionResponse(responseData);
+      res.status(201).json(response);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/quiz-attempts/:id/auto-save", isAuthenticated, async (req: any, res) => {
+    try {
+      const attemptId = req.params.id;
+      const userId = req.user.claims.sub;
+      const { responses } = req.body;
+
+      // Verify ownership
+      const attempt = await storage.getQuizAttempt(attemptId);
+      if (!attempt || attempt.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      await storage.autoSaveQuizProgress(attemptId, responses);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/quiz-attempts/:id/responses", isAuthenticated, async (req: any, res) => {
+    try {
+      const attemptId = req.params.id;
+      const userId = req.user.claims.sub;
+
+      // Verify ownership or admin access
+      const attempt = await storage.getQuizAttempt(attemptId);
+      if (!attempt) {
+        return res.status(404).json({ error: "Quiz attempt not found" });
+      }
+      
+      const userRole = req.user.claims.role;
+      if (attempt.userId !== userId && !['admin', 'superadmin'].includes(userRole)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const responses = await storage.getAttemptResponses(attemptId);
+      res.json(responses);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Manual Grading for Essay and Short Answer Questions
+  app.get("/api/responses/grading", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const quizId = req.query.quizId as string;
+      const responses = await storage.getResponsesNeedingGrading(quizId);
+      res.json(responses);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/responses/:id/grade", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const { grade, feedback } = req.body;
+      const gradedBy = req.user.claims.sub;
+      
+      const response = await storage.gradeResponse(req.params.id, grade, feedback, gradedBy);
+      if (!response) {
+        return res.status(404).json({ error: "Response not found" });
+      }
+
+      // Update attempt score after grading
+      await storage.updateAttemptScoreAfterGrading(response.attemptId);
+
+      res.json(response);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/responses/bulk-grade", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const { grades } = req.body;
+      const gradedBy = req.user.claims.sub;
+
+      if (!Array.isArray(grades)) {
+        return res.status(400).json({ error: "grades must be an array" });
+      }
+
+      const gradedCount = await storage.bulkGradeResponses(grades, gradedBy);
+      res.json({ gradedCount });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Certificate Management
+  app.get("/api/certificates/:id", async (req, res) => {
+    try {
+      const certificate = await storage.getCertificate(req.params.id);
+      if (!certificate) {
+        return res.status(404).json({ error: "Certificate not found" });
+      }
+      res.json(certificate);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/users/:userId/certificates", isAuthenticated, async (req: any, res) => {
+    try {
+      const requestedUserId = req.params.userId;
+      const currentUserId = req.user.claims.sub;
+      const userRole = req.user.claims.role;
+
+      // Check access permissions
+      if (requestedUserId !== currentUserId && !['admin', 'superadmin'].includes(userRole)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const certificates = await storage.getUserCertificates(requestedUserId);
+      res.json(certificates);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/certificates/verify/:code", async (req, res) => {
+    try {
+      const certificate = await storage.verifyCertificate(req.params.code);
+      if (!certificate) {
+        return res.status(404).json({ error: "Certificate not found or invalid" });
+      }
+      res.json(certificate);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/certificates/:id/download", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const download = await storage.downloadCertificate(req.params.id, userId);
+      
+      if (!download) {
+        return res.status(404).json({ error: "Certificate not found or access denied" });
+      }
+
+      await storage.incrementCertificateDownload(req.params.id);
+      res.json(download);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Quiz Analytics and Reporting
+  app.get("/api/quizzes/:id/analytics", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const analytics = await storage.getQuizAnalytics(req.params.id);
+      res.json(analytics);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/courses/:id/quiz-analytics", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const analytics = await storage.getCourseQuizAnalytics(req.params.id);
+      res.json(analytics);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/users/:userId/quiz-performance", isAuthenticated, async (req: any, res) => {
+    try {
+      const requestedUserId = req.params.userId;
+      const currentUserId = req.user.claims.sub;
+      const userRole = req.user.claims.role;
+
+      // Check access permissions
+      if (requestedUserId !== currentUserId && !['admin', 'superadmin'].includes(userRole)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const performance = await storage.getUserQuizPerformance(requestedUserId);
+      res.json(performance);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/admin/quiz-metrics", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const metrics = await storage.getSystemQuizMetrics();
+      res.json(metrics);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Quiz Integration with Course Progress
+  app.get("/api/courses/:courseId/required-quizzes", async (req, res) => {
+    try {
+      const quizzes = await storage.getRequiredQuizzesForCourse(req.params.courseId);
+      res.json(quizzes);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/users/:userId/courses/:courseId/quiz-progress", isAuthenticated, async (req: any, res) => {
+    try {
+      const { userId, courseId } = req.params;
+      const currentUserId = req.user.claims.sub;
+      const userRole = req.user.claims.role;
+
+      // Check access permissions
+      if (userId !== currentUserId && !['admin', 'superadmin'].includes(userRole)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const progress = await storage.getUserCourseQuizProgress(userId, courseId);
+      res.json(progress);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/lessons/:lessonId/quiz-requirements", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const requirements = await storage.checkQuizCompletionRequirements(userId, req.params.lessonId);
+      res.json(requirements);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
