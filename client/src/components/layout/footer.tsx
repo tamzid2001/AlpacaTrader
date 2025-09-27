@@ -104,7 +104,7 @@ export default function Footer() {
                 data-testid="link-social-twitter"
                 aria-label="Follow us on Twitter"
               >
-                <SiX size={18} />
+                <SiX size={18} aria-hidden="true" />
               </a>
               <a 
                 href="https://linkedin.com/company/marketdifferentials" 
@@ -114,7 +114,7 @@ export default function Footer() {
                 data-testid="link-social-linkedin"
                 aria-label="Connect with us on LinkedIn"
               >
-                <SiLinkedin size={18} />
+                <SiLinkedin size={18} aria-hidden="true" />
               </a>
               <a 
                 href="https://github.com/marketdifferentials" 
@@ -124,7 +124,7 @@ export default function Footer() {
                 data-testid="link-social-github"
                 aria-label="View our GitHub repository"
               >
-                <SiGithub size={18} />
+                <SiGithub size={18} aria-hidden="true" />
               </a>
               <a 
                 href="https://youtube.com/marketdifferentials" 
@@ -134,7 +134,7 @@ export default function Footer() {
                 data-testid="link-social-youtube"
                 aria-label="Subscribe to our YouTube channel"
               >
-                <SiYoutube size={18} />
+                <SiYoutube size={18} aria-hidden="true" />
               </a>
               <a 
                 href="https://discord.gg/marketdifferentials" 
@@ -144,7 +144,7 @@ export default function Footer() {
                 data-testid="link-social-discord"
                 aria-label="Join our Discord community"
               >
-                <SiDiscord size={18} />
+                <SiDiscord size={18} aria-hidden="true" />
               </a>
             </div>
           </div>
@@ -152,43 +152,43 @@ export default function Footer() {
           {/* Column 2: Platform & Products */}
           <div>
             <h4 className="text-lg font-bold mb-6 flex items-center gap-2" data-testid="text-platform-title">
-              <BarChart className="w-5 h-5 text-blue-400" />
+              <BarChart className="w-5 h-5 text-blue-400" aria-hidden="true" />
               Platform & Products
             </h4>
             <ul className="space-y-3">
               <li>
                 <Link href="/dashboard" className="flex items-center gap-2 text-blue-200 hover:text-white transition-colors group" data-testid="link-footer-dashboard">
-                  <TrendingUp className="w-4 h-4 text-blue-400 group-hover:text-blue-300" />
+                  <TrendingUp className="w-4 h-4 text-blue-400 group-hover:text-blue-300" aria-hidden="true" />
                   Dashboard
                 </Link>
               </li>
               <li>
                 <Link href="/market-data" className="flex items-center gap-2 text-blue-200 hover:text-white transition-colors group" data-testid="link-footer-market-data">
-                  <Database className="w-4 h-4 text-blue-400 group-hover:text-blue-300" />
+                  <Database className="w-4 h-4 text-blue-400 group-hover:text-blue-300" aria-hidden="true" />
                   Market Data
                 </Link>
               </li>
               <li>
                 <Link href="/anomaly-detection" className="flex items-center gap-2 text-blue-200 hover:text-white transition-colors group" data-testid="link-footer-anomaly-detection">
-                  <Target className="w-4 h-4 text-blue-400 group-hover:text-blue-300" />
+                  <Target className="w-4 h-4 text-blue-400 group-hover:text-blue-300" aria-hidden="true" />
                   Anomaly Detection
                 </Link>
               </li>
               <li>
                 <Link href="/courses" className="flex items-center gap-2 text-blue-200 hover:text-white transition-colors group" data-testid="link-footer-courses">
-                  <BookOpen className="w-4 h-4 text-blue-400 group-hover:text-blue-300" />
+                  <BookOpen className="w-4 h-4 text-blue-400 group-hover:text-blue-300" aria-hidden="true" />
                   Learning Hub
                 </Link>
               </li>
               <li>
                 <Link href="/sagemaker-eula" className="flex items-center gap-2 text-blue-200 hover:text-white transition-colors group" data-testid="link-footer-automl">
-                  <Bot className="w-4 h-4 text-blue-400 group-hover:text-blue-300" />
+                  <Bot className="w-4 h-4 text-blue-400 group-hover:text-blue-300" aria-hidden="true" />
                   AutoML Canvas
                 </Link>
               </li>
               <li>
                 <Link href="/my-shared-results" className="flex items-center gap-2 text-blue-200 hover:text-white transition-colors group" data-testid="link-footer-shared-results">
-                  <Users className="w-4 h-4 text-blue-400 group-hover:text-blue-300" />
+                  <Users className="w-4 h-4 text-blue-400 group-hover:text-blue-300" aria-hidden="true" />
                   Shared Results
                 </Link>
               </li>
@@ -198,43 +198,43 @@ export default function Footer() {
           {/* Column 3: Resources & Support */}
           <div>
             <h4 className="text-lg font-bold mb-6 flex items-center gap-2" data-testid="text-resources-title">
-              <HelpCircle className="w-5 h-5 text-purple-400" />
+              <HelpCircle className="w-5 h-5 text-purple-400" aria-hidden="true" />
               Resources & Support
             </h4>
             <ul className="space-y-3">
               <li>
                 <a href="/help" className="flex items-center gap-2 text-blue-200 hover:text-white transition-colors group" data-testid="link-footer-help">
-                  <HelpCircle className="w-4 h-4 text-purple-400 group-hover:text-purple-300" />
+                  <HelpCircle className="w-4 h-4 text-purple-400 group-hover:text-purple-300" aria-hidden="true" />
                   Help Center
                 </a>
               </li>
               <li>
                 <a href="/tutorials" className="flex items-center gap-2 text-blue-200 hover:text-white transition-colors group" data-testid="link-footer-tutorials">
-                  <BookOpen className="w-4 h-4 text-purple-400 group-hover:text-purple-300" />
+                  <BookOpen className="w-4 h-4 text-purple-400 group-hover:text-purple-300" aria-hidden="true" />
                   Tutorials
                 </a>
               </li>
               <li>
                 <a href="/community" className="flex items-center gap-2 text-blue-200 hover:text-white transition-colors group" data-testid="link-footer-community">
-                  <Users className="w-4 h-4 text-purple-400 group-hover:text-purple-300" />
+                  <Users className="w-4 h-4 text-purple-400 group-hover:text-purple-300" aria-hidden="true" />
                   Community
                 </a>
               </li>
               <li>
                 <a href="/blog" className="flex items-center gap-2 text-blue-200 hover:text-white transition-colors group" data-testid="link-footer-blog">
-                  <FileText className="w-4 h-4 text-purple-400 group-hover:text-purple-300" />
+                  <FileText className="w-4 h-4 text-purple-400 group-hover:text-purple-300" aria-hidden="true" />
                   Blog & Insights
                 </a>
               </li>
               <li>
                 <a href="/status" className="flex items-center gap-2 text-blue-200 hover:text-white transition-colors group" data-testid="link-footer-status">
-                  <Zap className="w-4 h-4 text-green-400 group-hover:text-green-300" />
+                  <Zap className="w-4 h-4 text-green-400 group-hover:text-green-300" aria-hidden="true" />
                   System Status
                 </a>
               </li>
               <li>
                 <a href="/contact" className="flex items-center gap-2 text-blue-200 hover:text-white transition-colors group" data-testid="link-footer-contact">
-                  <Mail className="w-4 h-4 text-purple-400 group-hover:text-purple-300" />
+                  <Mail className="w-4 h-4 text-purple-400 group-hover:text-purple-300" aria-hidden="true" />
                   Contact Support
                 </a>
               </li>
@@ -244,49 +244,49 @@ export default function Footer() {
           {/* Column 4: Legal & Compliance */}
           <div>
             <h4 className="text-lg font-bold mb-6 flex items-center gap-2" data-testid="text-legal-title">
-              <Shield className="w-5 h-5 text-green-400" />
+              <Shield className="w-5 h-5 text-green-400" aria-hidden="true" />
               Legal & Security
             </h4>
             <ul className="space-y-3">
               <li>
                 <Link href="/privacy" className="flex items-center gap-2 text-blue-200 hover:text-white transition-colors group" data-testid="link-footer-privacy">
-                  <Lock className="w-4 h-4 text-green-400 group-hover:text-green-300" />
+                  <Lock className="w-4 h-4 text-green-400 group-hover:text-green-300" aria-hidden="true" />
                   Privacy Policy
                 </Link>
               </li>
               <li>
                 <Link href="/terms" className="flex items-center gap-2 text-blue-200 hover:text-white transition-colors group" data-testid="link-footer-terms">
-                  <FileText className="w-4 h-4 text-green-400 group-hover:text-green-300" />
+                  <FileText className="w-4 h-4 text-green-400 group-hover:text-green-300" aria-hidden="true" />
                   Terms of Service
                 </Link>
               </li>
               <li>
                 <Link href="/privacy-settings" className="flex items-center gap-2 text-blue-200 hover:text-white transition-colors group" data-testid="link-footer-gdpr">
-                  <Settings className="w-4 h-4 text-green-400 group-hover:text-green-300" />
+                  <Settings className="w-4 h-4 text-green-400 group-hover:text-green-300" aria-hidden="true" />
                   GDPR & Privacy Settings
                 </Link>
               </li>
               <li>
                 <a href="/cookies" className="flex items-center gap-2 text-blue-200 hover:text-white transition-colors group" data-testid="link-footer-cookies">
-                  <CheckCircle className="w-4 h-4 text-green-400 group-hover:text-green-300" />
+                  <CheckCircle className="w-4 h-4 text-green-400 group-hover:text-green-300" aria-hidden="true" />
                   Cookie Policy
                 </a>
               </li>
               <li>
                 <a href="/security" className="flex items-center gap-2 text-blue-200 hover:text-white transition-colors group" data-testid="link-footer-security">
-                  <Shield className="w-4 h-4 text-green-400 group-hover:text-green-300" />
+                  <Shield className="w-4 h-4 text-green-400 group-hover:text-green-300" aria-hidden="true" />
                   Security
                 </a>
               </li>
               <li>
                 <a href="/accessibility" className="flex items-center gap-2 text-blue-200 hover:text-white transition-colors group" data-testid="link-footer-accessibility">
-                  <Globe className="w-4 h-4 text-green-400 group-hover:text-green-300" />
+                  <Globe className="w-4 h-4 text-green-400 group-hover:text-green-300" aria-hidden="true" />
                   Accessibility
                 </a>
               </li>
               <li>
                 <a href="/compliance" className="flex items-center gap-2 text-blue-200 hover:text-white transition-colors group" data-testid="link-footer-compliance">
-                  <Award className="w-4 h-4 text-green-400 group-hover:text-green-300" />
+                  <Award className="w-4 h-4 text-green-400 group-hover:text-green-300" aria-hidden="true" />
                   Compliance
                 </a>
               </li>
@@ -302,11 +302,11 @@ export default function Footer() {
               <h5 className="text-sm font-semibold mb-4 text-blue-300">Trusted & Secure</h5>
               <div className="flex flex-wrap gap-4">
                 <div className="flex items-center gap-2 bg-white/5 px-3 py-2 rounded-lg border border-white/10">
-                  <SiAmazon className="w-4 h-4 text-orange-400" />
+                  <SiAmazon className="w-4 h-4 text-orange-400" aria-hidden="true" />
                   <span className="text-xs text-blue-200">AWS Certified</span>
                 </div>
                 <div className="flex items-center gap-2 bg-white/5 px-3 py-2 rounded-lg border border-white/10">
-                  <Shield className="w-4 h-4 text-green-400" />
+                  <Shield className="w-4 h-4 text-green-400" aria-hidden="true" />
                   <span className="text-xs text-blue-200">SOC 2 Compliant</span>
                 </div>
                 <div className="flex items-center gap-2 bg-white/5 px-3 py-2 rounded-lg border border-white/10">

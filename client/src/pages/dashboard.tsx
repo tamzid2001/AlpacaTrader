@@ -107,12 +107,17 @@ export default function Dashboard() {
             </p>
           </div>
           <div className="flex items-center space-x-4">
-            <Button variant="outline" size="icon" data-testid="button-notifications">
+            <Button 
+              variant="outline" 
+              size="icon" 
+              data-testid="button-notifications"
+              aria-label="View notifications"
+            >
               <EnhancedIcon 
                 name="Bell" 
                 size={16} 
                 className="text-muted-foreground" 
-                aria-hidden="true"
+                aria-hidden={true}
               />
             </Button>
             <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center" data-testid="avatar-user">
@@ -140,7 +145,7 @@ export default function Dashboard() {
                     name="BookOpen" 
                     size={20} 
                     color="hsl(var(--primary))" 
-                    aria-hidden="true"
+                    aria-hidden={true}
                   />
                 </div>
               </div>
@@ -160,7 +165,7 @@ export default function Dashboard() {
                     name="Check" 
                     size={20} 
                     color="rgb(5 150 105)" 
-                    aria-hidden="true"
+                    aria-hidden={true}
                   />
                 </div>
               </div>
