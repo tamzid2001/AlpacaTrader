@@ -63,6 +63,7 @@ import {
   requireAdmin
 } from "./middleware/permissions";
 import { insertMarketDataDownloadSchema } from "@shared/schema";
+import { sendShareInvitation, sendShareAcceptedNotification } from "./services/email";
 
 // Missing webhook handler functions
 async function handlePaymentSuccess(paymentIntent: any) {
@@ -5220,6 +5221,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       const invite = await storage.createShareInvite(inviteData);
+      
+      // Get inviter's information
+      const inviter = await storage.getUser(inviterUserId);
+      const inviterName = inviter ? `${inviter.firstName} ${inviter.lastName}` : 'A colleague';
+      
+      // Get resource name based on type
+      let resourceName = `${resourceType} item`;
+      try {
+        if (resourceType === 'market_data') {
+          const marketData = await storage.getMarketDataDownload(resourceId);
+          resourceName = marketData ? `${marketData.symbol} Market Data (${marketData.interval})` : 'Market Data';
+        } else if (resourceType === 'csv') {
+          const csvUpload = await storage.getCsvUpload(resourceId);
+          resourceName = csvUpload ? csvUpload.fileName : 'CSV Analysis Results';
+        } else if (resourceType === 'course') {
+          const course = await storage.getCourse(resourceId);
+          resourceName = course ? course.title : 'Course';
+        }
+      } catch (error) {
+        console.warn('Could not fetch resource name:', error);
+      }
+      
+      // Generate invitation URLs
+      const acceptUrl = `${process.env.FRONTEND_URL || 'http://localhost:5000'}/share/accept/${invite.token}`;
+      const declineUrl = `${process.env.FRONTEND_URL || 'http://localhost:5000'}/share/decline/${invite.token}`;
+      
+      // Send invitation email
+      try {
+        const emailSent = await sendShareInvitation(
+          inviteeEmail,
+          inviterName,
+          resourceType,
+          resourceName,
+          acceptUrl,
+          declineUrl,
+          permissions,
+          req.body.message // Optional personal message
+        );
+        
+        if (emailSent) {
+          console.log(`✅ Share invitation email sent to ${inviteeEmail}`);
+        } else {
+          console.warn(`⚠️ Share invitation email failed for ${inviteeEmail}`);
+        }
+      } catch (emailError) {
+        console.error('Failed to send invitation email:', emailError);
+        // Continue even if email fails
+      }
+      
       res.json(invite);
     } catch (error: any) {
       console.error('Create share invite error:', error);
@@ -5232,9 +5282,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { token } = req.params;
       const userId = req.user.claims.sub;
       
+      // Get invitation details before accepting
+      const invitation = await storage.getShareInvite(token);
+      if (!invitation) {
+        return res.status(400).json({ error: 'Invalid or expired invitation' });
+      }
+      
       const success = await storage.acceptShareInvite(token, userId);
       if (!success) {
-        return res.status(400).json({ error: 'Invalid or expired invitation' });
+        return res.status(400).json({ error: 'Failed to accept invitation' });
+      }
+      
+      // Send acceptance notification to the inviter
+      try {
+        const accepter = await storage.getUser(userId);
+        const inviter = await storage.getUser(invitation.inviterUserId);
+        
+        if (accepter && inviter && inviter.email) {
+          const accepterName = `${accepter.firstName} ${accepter.lastName}` || accepter.email;
+          
+          // Get resource name
+          let resourceName = `${invitation.resourceType} item`;
+          try {
+            if (invitation.resourceType === 'market_data') {
+              const marketData = await storage.getMarketDataDownload(invitation.resourceId);
+              resourceName = marketData ? `${marketData.symbol} Market Data` : 'Market Data';
+            } else if (invitation.resourceType === 'csv') {
+              const csvUpload = await storage.getCsvUpload(invitation.resourceId);
+              resourceName = csvUpload ? csvUpload.fileName : 'CSV Analysis Results';
+            } else if (invitation.resourceType === 'course') {
+              const course = await storage.getCourse(invitation.resourceId);
+              resourceName = course ? course.title : 'Course';
+            }
+          } catch (error) {
+            console.warn('Could not fetch resource name for acceptance notification:', error);
+          }
+          
+          const emailSent = await sendShareAcceptedNotification(
+            inviter.email,
+            accepterName,
+            invitation.resourceType,
+            resourceName
+          );
+          
+          if (emailSent) {
+            console.log(`✅ Share acceptance notification sent to ${inviter.email}`);
+          }
+        }
+      } catch (emailError) {
+        console.error('Failed to send acceptance notification:', emailError);
+        // Continue even if email fails
       }
       
       res.json({ success: true, message: 'Invitation accepted' });

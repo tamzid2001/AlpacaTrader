@@ -144,6 +144,152 @@ export const emailTemplates = {
     `
   }),
 
+  shareInvitation: (inviterName: string, resourceType: string, resourceName: string, acceptUrl: string, declineUrl: string, permissions: string[], message?: string) => ({
+    subject: `📊 ${inviterName} shared ${resourceType === 'market_data' ? 'Market Data' : resourceType === 'csv' ? 'Analysis Results' : 'Content'} with you`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Share Invitation</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f7f9fc; }
+          .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; }
+          .header h1 { margin: 0; font-size: 28px; font-weight: 700; }
+          .content { padding: 30px; }
+          .invitation-box { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 25px; margin: 20px 0; text-align: center; }
+          .resource-info { background: #e3f2fd; border-left: 4px solid #2196f3; padding: 20px; margin: 20px 0; border-radius: 0 8px 8px 0; }
+          .permissions-list { background: #fff; border: 1px solid #e9ecef; border-radius: 8px; padding: 15px; margin: 15px 0; }
+          .permission-item { display: inline-block; background: #e7f3ff; color: #1976d2; padding: 6px 12px; border-radius: 20px; margin: 4px; font-size: 14px; }
+          .action-buttons { text-align: center; margin: 30px 0; }
+          .btn { display: inline-block; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; margin: 0 10px; font-size: 16px; }
+          .btn-accept { background: #28a745; color: white; }
+          .btn-decline { background: #6c757d; color: white; }
+          .btn:hover { opacity: 0.9; }
+          .message-box { background: #fffbf0; border: 1px solid #ffeaa7; border-radius: 8px; padding: 15px; margin: 15px 0; font-style: italic; }
+          .footer { background: #f8f9fa; padding: 20px; text-align: center; color: #6c757d; font-size: 14px; }
+          .security-note { font-size: 12px; color: #6c757d; text-align: center; margin-top: 20px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🔗 MarketDifferentials</h1>
+            <p style="margin: 10px 0 0 0; font-size: 18px;">You've been invited to access shared content</p>
+          </div>
+          <div class="content">
+            <div class="invitation-box">
+              <h2 style="margin-top: 0; color: #333;">📤 ${inviterName} wants to share content with you</h2>
+              <p style="font-size: 18px; margin-bottom: 0;">Click below to accept this invitation and gain access to shared ${resourceType === 'market_data' ? 'market data' : resourceType === 'csv' ? 'analysis results' : 'content'}.</p>
+            </div>
+            
+            <div class="resource-info">
+              <h3 style="margin-top: 0; color: #1976d2;">📋 What's being shared:</h3>
+              <p><strong>${resourceName}</strong></p>
+              <p style="margin-bottom: 0;">Type: ${resourceType === 'market_data' ? '📈 Market Data Analysis' : resourceType === 'csv' ? '📊 CSV Analysis Results' : '📄 Content'}</p>
+            </div>
+
+            ${message ? `
+              <div class="message-box">
+                <h4 style="margin-top: 0;">💬 Personal Message:</h4>
+                <p style="margin-bottom: 0;">"${message}"</p>
+              </div>
+            ` : ''}
+
+            <div class="permissions-list">
+              <h4 style="margin-top: 0;">🔐 Your Access Permissions:</h4>
+              <div>
+                ${permissions.map(p => `<span class="permission-item">${p === 'view' ? '👁️ View' : p === 'edit' ? '✏️ Edit' : p === 'share' ? '🔗 Share' : p === 'delete' ? '🗑️ Delete' : p}</span>`).join('')}
+              </div>
+            </div>
+
+            <div class="action-buttons">
+              <a href="${acceptUrl}" class="btn btn-accept">✅ Accept Invitation</a>
+              <a href="${declineUrl}" class="btn btn-decline">❌ Decline</a>
+            </div>
+
+            <div style="background: #e8f5e8; border-radius: 8px; padding: 20px; margin: 20px 0;">
+              <h4 style="margin-top: 0; color: #155724;">🔒 Security & Privacy</h4>
+              <ul style="margin-bottom: 0; padding-left: 20px;">
+                <li>This invitation is secure and only you can access it</li>
+                <li>The invitation will expire automatically for security</li>
+                <li>You can revoke access at any time from your dashboard</li>
+                <li>All sharing activity is logged for security purposes</li>
+              </ul>
+            </div>
+
+            <div class="security-note">
+              <p>🔗 This invitation link is unique and secure. If you didn't expect this invitation, you can safely ignore this email.</p>
+            </div>
+          </div>
+          <div class="footer">
+            <p><strong>MarketDifferentials</strong> - Professional Market Analysis & Collaboration</p>
+            <p>Secure sharing made simple for financial professionals</p>
+            <p style="font-size: 12px;">© 2024 MarketDifferentials. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `
+  }),
+
+  shareAccepted: (accepterName: string, resourceType: string, resourceName: string) => ({
+    subject: `✅ ${accepterName} accepted your share invitation`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Share Accepted</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f7f9fc; }
+          .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+          .header { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 30px; text-align: center; }
+          .header h1 { margin: 0; font-size: 28px; font-weight: 700; }
+          .content { padding: 30px; }
+          .success-box { background: #d4edda; border: 1px solid #c3e6cb; border-radius: 8px; padding: 25px; margin: 20px 0; text-align: center; }
+          .resource-info { background: #f8f9fa; border-radius: 8px; padding: 20px; margin: 20px 0; }
+          .footer { background: #f8f9fa; padding: 20px; text-align: center; color: #6c757d; font-size: 14px; }
+          .btn { display: inline-block; background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600; margin: 10px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🎉 MarketDifferentials</h1>
+            <p style="margin: 10px 0 0 0; font-size: 18px;">Share invitation accepted!</p>
+          </div>
+          <div class="content">
+            <div class="success-box">
+              <h2 style="margin-top: 0; color: #155724;">✅ Great news!</h2>
+              <p style="font-size: 18px; margin-bottom: 0;"><strong>${accepterName}</strong> has accepted your invitation and now has access to your shared content.</p>
+            </div>
+            
+            <div class="resource-info">
+              <h3 style="margin-top: 0;">📋 Shared Content:</h3>
+              <p><strong>${resourceName}</strong></p>
+              <p style="margin-bottom: 0;">Type: ${resourceType === 'market_data' ? '📈 Market Data Analysis' : resourceType === 'csv' ? '📊 CSV Analysis Results' : '📄 Content'}</p>
+            </div>
+
+            <p>You can now collaborate on this content together. You can manage sharing permissions and monitor access from your dashboard.</p>
+
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="#" class="btn">View Sharing Dashboard →</a>
+            </div>
+          </div>
+          <div class="footer">
+            <p><strong>MarketDifferentials</strong> - Professional Market Analysis & Collaboration</p>
+            <p style="font-size: 12px;">© 2024 MarketDifferentials. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `
+  }),
+
   excelReportInsights: (reportName: string, insights: any) => ({
     subject: `📊 Excel Analysis Complete: ${reportName}`,
     html: `
@@ -842,6 +988,39 @@ export async function sendPriceAlert(
     userId,
     ticker,
     alertType 
+  });
+}
+
+// Share invitation email functions
+export async function sendShareInvitation(
+  email: string,
+  inviterName: string,
+  resourceType: string,
+  resourceName: string,
+  acceptUrl: string,
+  declineUrl: string,
+  permissions: string[],
+  message?: string
+): Promise<boolean> {
+  const template = emailTemplates.shareInvitation(inviterName, resourceType, resourceName, acceptUrl, declineUrl, permissions, message);
+  return await sendEmail(email, template, { 
+    type: 'share_invitation',
+    resourceType,
+    inviter: inviterName 
+  });
+}
+
+export async function sendShareAcceptedNotification(
+  email: string,
+  accepterName: string,
+  resourceType: string,
+  resourceName: string
+): Promise<boolean> {
+  const template = emailTemplates.shareAccepted(accepterName, resourceType, resourceName);
+  return await sendEmail(email, template, { 
+    type: 'share_accepted',
+    resourceType,
+    accepter: accepterName 
   });
 }
 

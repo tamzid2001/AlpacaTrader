@@ -23,9 +23,11 @@ import {
   Activity,
   AlertCircle,
   CheckCircle2,
-  Loader2
+  Loader2,
+  Share2
 } from 'lucide-react';
 import { format, subDays } from 'date-fns';
+import ShareDialog from '@/components/sharing/share-dialog';
 
 interface MarketDataOptions {
   intervals: Array<{ value: string; label: string }>;
@@ -143,11 +145,7 @@ export default function MarketDataPage() {
   // Batch download mutation
   const batchDownloadMutation = useMutation({
     mutationFn: async (params: { symbols: string[]; startDate: string; endDate: string; interval: string }) => {
-      const response = await apiRequest('/api/market-data/batch-download', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params),
-      });
+      const response = await apiRequest('POST', '/api/market-data/batch-download', params);
       
       if (!response.ok) {
         const error = await response.json();
@@ -544,19 +542,42 @@ export default function MarketDataPage() {
                       <span>{formatFileSize(download.fileSize)}</span>
                       <span>{download.recordCount} records</span>
                       <span>{format(new Date(download.downloadedAt), 'MMM d, HH:mm')}</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          if (download.downloadType === 'single') {
-                            handleQuickDownload(download.symbol);
-                          }
-                        }}
-                        data-testid={`button-redownload-${download.id}`}
-                        disabled={downloadSingleMutation.isPending || batchDownloadMutation.isPending}
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            if (download.downloadType === 'single') {
+                              handleQuickDownload(download.symbol);
+                            }
+                          }}
+                          data-testid={`button-redownload-${download.id}`}
+                          disabled={downloadSingleMutation.isPending || batchDownloadMutation.isPending}
+                          title="Re-download this data"
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <ShareDialog
+                          resourceType="market_data"
+                          resourceId={download.id}
+                          resourceName={`${download.symbol} Market Data (${getIntervalLabel(download.interval)})`}
+                          onShareSuccess={() => {
+                            toast({
+                              title: 'Market data shared!',
+                              description: `${download.symbol} data has been shared successfully.`,
+                            });
+                          }}
+                        >
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            data-testid={`button-share-${download.id}`}
+                            title="Share this market data"
+                          >
+                            <Share2 className="h-4 w-4" />
+                          </Button>
+                        </ShareDialog>
+                      </div>
                     </div>
                   </div>
                 ))}

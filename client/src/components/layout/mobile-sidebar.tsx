@@ -19,6 +19,11 @@ export function MobileSidebar() {
     { href: "/my-shared-results", icon: "Share2", label: "My Shared Results" },
   ];
 
+  const sharingItems = [
+    { href: "/invitations", icon: "Mail", label: "Invitations" },
+    { href: "/share-dashboard", icon: "Settings", label: "Share Management" },
+  ];
+
   const handleNavClick = () => {
     setIsOpen(false);
   };
@@ -54,6 +59,40 @@ export function MobileSidebar() {
             
             <ul className="space-y-2" role="list">
               {navItems.map((item) => (
+                <li key={item.href} role="listitem">
+                  <Link href={item.href}>
+                    <a
+                      className={cn(
+                        "flex items-center space-x-3 p-3 rounded-lg transition-colors",
+                        location === item.href
+                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      )}
+                      data-testid={`mobile-link-${item.label.toLowerCase().replace(' ', '-')}`}
+                      aria-current={location === item.href ? 'page' : undefined}
+                      aria-label={`Navigate to ${item.label}`}
+                      onClick={handleNavClick}
+                    >
+                      <EnhancedIcon 
+                        name={item.icon} 
+                        size={20} 
+                        aria-hidden={true}
+                      />
+                      <span>{item.label}</span>
+                    </a>
+                  </Link>
+                </li>
+              ))}
+              
+              {/* Sharing Section */}
+              <li className="pt-4 border-t border-sidebar-border" role="listitem">
+                <div className="px-3 py-2">
+                  <h2 className="text-xs font-semibold text-sidebar-foreground/60 uppercase tracking-wider">
+                    Sharing
+                  </h2>
+                </div>
+              </li>
+              {sharingItems.map((item) => (
                 <li key={item.href} role="listitem">
                   <Link href={item.href}>
                     <a

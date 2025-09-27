@@ -880,7 +880,7 @@ export const insertAccessGrantSchema = createInsertSchema(accessGrants).omit({
   id: true,
   grantedAt: true,
 }).extend({
-  resourceType: z.enum(["csv", "course", "report", "user_content"]),
+  resourceType: z.enum(["csv", "course", "report", "user_content", "market_data"]),
   principalType: z.enum(["user", "group", "link"]),
   permissions: z.array(z.enum(["view", "edit", "share", "delete"])),
 });
@@ -902,7 +902,7 @@ export const insertShareInviteSchema = createInsertSchema(shareInvites).omit({
   createdAt: true,
   token: true, // Generated automatically
 }).extend({
-  resourceType: z.enum(["csv", "course", "report", "user_content"]),
+  resourceType: z.enum(["csv", "course", "report", "user_content", "market_data"]),
   permissions: z.array(z.enum(["view", "edit", "share", "delete"])),
   status: z.enum(["pending", "accepted", "declined", "expired"]).default("pending"),
 });
@@ -913,7 +913,7 @@ export const insertShareLinkSchema = createInsertSchema(shareLinks).omit({
   token: true, // Generated automatically
   accessCount: true,
 }).extend({
-  resourceType: z.enum(["csv", "course", "report", "user_content"]),
+  resourceType: z.enum(["csv", "course", "report", "user_content", "market_data"]),
   permissions: z.array(z.enum(["view", "edit", "share", "delete"])),
 });
 
@@ -1223,7 +1223,7 @@ export type InsertAutoMLJob = z.infer<typeof insertAutoMLJobSchema>;
 export type AutoMLJob = typeof automlJobs.$inferSelect;
 
 // Permission Management Enums for type safety
-export const RESOURCE_TYPES = ["csv", "course", "report", "user_content"] as const;
+export const RESOURCE_TYPES = ["csv", "course", "report", "user_content", "market_data"] as const;
 export const PRINCIPAL_TYPES = ["user", "group", "link"] as const;
 export const PERMISSIONS = ["view", "edit", "share", "delete"] as const;
 export const TEAM_ROLES = ["owner", "admin", "member"] as const;

@@ -1,18 +1,20 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { 
-  createChart, 
-  IChartApi, 
-  ISeriesApi, 
-  Time, 
-  UTCTimestamp, 
-  LineStyle,
-  CandlestickSeriesPartialOptions,
-  HistogramSeriesPartialOptions
-} from 'lightweight-charts';
+  ResponsiveContainer,
+  ComposedChart,
+  Line,
+  Area,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ReferenceLine
+} from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { 
   TrendingUp, 
@@ -20,18 +22,18 @@ import {
   Activity, 
   AlertCircle, 
   Loader2,
-  ZoomIn,
-  BarChart3,
-  Eye
+  BarChart3
 } from 'lucide-react';
 
 interface ChartData {
-  time: Time;
+  time: string;
+  date: Date;
   open: number;
   high: number;
   low: number;
   close: number;
   volume?: number;
+  priceDisplay: string;
 }
 
 interface StockInfo {
@@ -57,17 +59,13 @@ interface StockChartProps {
 type TimeFrame = '1D' | '5D' | '1M' | '3M' | '6M' | '1Y' | '5Y';
 
 export function StockChart({ symbol, onSymbolChange, className = '', height = 400 }: StockChartProps) {
-  const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
-  
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stockInfo, setStockInfo] = useState<StockInfo | null>(null);
+  const [chartData, setChartData] = useState<ChartData[]>([]);
   const [timeFrame, setTimeFrame] = useState<TimeFrame>('1M');
   const [showVolume, setShowVolume] = useState(true);
-  const [showMA, setShowMA] = useState(false);
+  const [chartType, setChartType] = useState<'candlestick' | 'line' | 'area'>('area');
   
   const { toast } = useToast();
 
@@ -99,12 +97,14 @@ export function StockChart({ symbol, onSymbolChange, className = '', height = 40
       const volume = Math.floor(baseVolume * (1 + Math.abs(change / open) * 5));
       
       data.push({
-        time: (date.getTime() / 1000) as UTCTimestamp,
+        time: date.toLocaleDateString(),
+        date,
         open,
         high,
         low,
         close,
-        volume
+        volume,
+        priceDisplay: `$${close.toFixed(2)}`
       });
       
       currentPrice = close;
@@ -188,166 +188,154 @@ export function StockChart({ symbol, onSymbolChange, className = '', height = 40
       const data = generateMockData(currentSymbol, days);
       const info = generateMockStockInfo(currentSymbol, data);
       
+      setChartData(data);
       setStockInfo(info);
-      
-      if (candleSeriesRef.current && data.length > 0) {
-        candleSeriesRef.current.setData(data);
-        
-        if (volumeSeriesRef.current && showVolume) {
-          const volumeData = data.map(d => ({
-            time: d.time,
-            value: d.volume || 0,
-            color: d.close >= d.open ? 'rgba(34, 197, 94, 0.5)' : 'rgba(239, 68, 68, 0.5)'
-          }));
-          volumeSeriesRef.current.setData(volumeData);
-        }
-        
-        // Auto-fit content
-        chartRef.current?.timeScale().fitContent();
-      }
       
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load chart data';
       setError(errorMessage);
       setStockInfo(null);
-      
-      // Clear chart data on error
-      if (candleSeriesRef.current) {
-        candleSeriesRef.current.setData([]);
-      }
-      if (volumeSeriesRef.current) {
-        volumeSeriesRef.current.setData([]);
-      }
+      setChartData([]);
     } finally {
       setIsLoading(false);
     }
-  }, [generateMockData, generateMockStockInfo, showVolume]);
-
-  // Initialize chart
-  useEffect(() => {
-    if (!chartContainerRef.current) return;
-    
-    const chart = createChart(chartContainerRef.current, {
-      width: chartContainerRef.current.clientWidth,
-      height,
-      layout: {
-        background: { color: 'transparent' },
-        textColor: 'hsl(var(--foreground))',
-      },
-      grid: {
-        vertLines: { color: 'hsl(var(--border))' },
-        horzLines: { color: 'hsl(var(--border))' },
-      },
-      crosshair: {
-        mode: 1,
-      },
-      rightPriceScale: {
-        borderColor: 'hsl(var(--border))',
-      },
-      timeScale: {
-        borderColor: 'hsl(var(--border))',
-        timeVisible: true,
-        secondsVisible: false,
-      },
-      handleScroll: {
-        mouseWheel: true,
-        pressedMouseMove: true,
-      },
-      handleScale: {
-        axisPressedMouseMove: true,
-        mouseWheel: true,
-        pinch: true,
-      },
-    });
-    
-    // Add candlestick series with proper API
-    let candleSeries: ISeriesApi<'Candlestick'>;
-    let volumeSeries: ISeriesApi<'Histogram'>;
-    
-    try {
-      // Try the standard TradingView API
-      if (typeof (chart as any).addCandlestickSeries === 'function') {
-        candleSeries = (chart as any).addCandlestickSeries({
-          upColor: '#26a69a',
-          downColor: '#ef5350',
-          borderVisible: false,
-          wickUpColor: '#26a69a',
-          wickDownColor: '#ef5350',
-        });
-      } else {
-        // Fallback method for different API versions
-        candleSeries = (chart as any).addAreaSeries({
-          topColor: 'rgba(38, 166, 154, 0.56)',
-          bottomColor: 'rgba(38, 166, 154, 0.04)',
-          lineColor: 'rgba(38, 166, 154, 1)',
-          lineWidth: 2,
-        });
-      }
-      
-      // Try to add volume series
-      if (typeof (chart as any).addHistogramSeries === 'function') {
-        volumeSeries = (chart as any).addHistogramSeries({
-          color: 'rgba(76, 175, 80, 0.5)',
-          priceFormat: {
-            type: 'volume',
-          },
-          priceScaleId: 'volume',
-        });
-      }
-    } catch (seriesError) {
-      console.warn('Failed to add chart series:', seriesError);
-      // Create a fallback line series instead
-      candleSeries = (chart as any).addLineSeries({
-        color: '#26a69a',
-        lineWidth: 2,
-      });
-    }
-    
-    chart.priceScale('volume').applyOptions({
-      scaleMargins: {
-        top: 0.8,
-        bottom: 0,
-      },
-    });
-    
-    chartRef.current = chart;
-    candleSeriesRef.current = candleSeries;
-    volumeSeriesRef.current = volumeSeries;
-    
-    // Handle resize
-    const handleResize = () => {
-      if (chartContainerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-        });
-      }
-    };
-    
-    window.addEventListener('resize', handleResize);
-    
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      chart.remove();
-    };
-  }, [height]);
+  }, [generateMockData, generateMockStockInfo]);
 
   // Load data when symbol or timeframe changes
   useEffect(() => {
-    if (symbol && chartRef.current) {
+    if (symbol) {
       loadChartData(symbol, timeFrame);
     }
   }, [symbol, timeFrame, loadChartData]);
 
-  // Handle volume toggle
-  useEffect(() => {
-    if (volumeSeriesRef.current) {
-      volumeSeriesRef.current.applyOptions({
-        visible: showVolume,
-      });
-    }
-  }, [showVolume]);
-
   const timeFrames: TimeFrame[] = ['1D', '5D', '1M', '3M', '6M', '1Y', '5Y'];
+
+  // Custom tooltip for the chart
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="bg-background border border-border rounded-lg p-3 shadow-lg">
+          <p className="font-medium">{label}</p>
+          <div className="space-y-1 text-sm">
+            <p className="text-green-600">Open: ${data.open?.toFixed(2)}</p>
+            <p className="text-blue-600">High: ${data.high?.toFixed(2)}</p>
+            <p className="text-red-600">Low: ${data.low?.toFixed(2)}</p>
+            <p className="font-semibold">Close: ${data.close?.toFixed(2)}</p>
+            {data.volume && (
+              <p className="text-muted-foreground">Volume: {data.volume.toLocaleString()}</p>
+            )}
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const renderChart = () => {
+    if (chartData.length === 0) return null;
+
+    const minPrice = Math.min(...chartData.map(d => d.low)) * 0.95;
+    const maxPrice = Math.max(...chartData.map(d => d.high)) * 1.05;
+
+    return (
+      <ResponsiveContainer width="100%" height={height}>
+        <ComposedChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+          <XAxis 
+            dataKey="time" 
+            stroke="hsl(var(--foreground))"
+            fontSize={12}
+            interval="preserveStartEnd"
+          />
+          <YAxis 
+            yAxisId="price"
+            domain={[minPrice, maxPrice]}
+            stroke="hsl(var(--foreground))"
+            fontSize={12}
+            tickFormatter={(value) => `$${value.toFixed(0)}`}
+          />
+          {showVolume && (
+            <YAxis 
+              yAxisId="volume"
+              orientation="right"
+              stroke="hsl(var(--muted-foreground))"
+              fontSize={12}
+              tickFormatter={(value) => `${(value / 1000000).toFixed(1)}M`}
+            />
+          )}
+          <Tooltip content={<CustomTooltip />} />
+          <Legend />
+          
+          {chartType === 'area' && (
+            <Area
+              yAxisId="price"
+              type="monotone"
+              dataKey="close"
+              stroke="hsl(var(--primary))"
+              strokeWidth={2}
+              fill="hsl(var(--primary))"
+              fillOpacity={0.1}
+              name="Price"
+            />
+          )}
+          
+          {chartType === 'line' && (
+            <Line
+              yAxisId="price"
+              type="monotone"
+              dataKey="close"
+              stroke="hsl(var(--primary))"
+              strokeWidth={2}
+              dot={false}
+              name="Price"
+            />
+          )}
+          
+          {chartType === 'candlestick' && (
+            <>
+              <Line
+                yAxisId="price"
+                type="monotone"
+                dataKey="high"
+                stroke="transparent"
+                dot={false}
+                name="High"
+              />
+              <Line
+                yAxisId="price"
+                type="monotone"
+                dataKey="low"
+                stroke="transparent"
+                dot={false}
+                name="Low"
+              />
+              <Area
+                yAxisId="price"
+                type="monotone"
+                dataKey="close"
+                stroke="hsl(var(--primary))"
+                strokeWidth={2}
+                fill="hsl(var(--primary))"
+                fillOpacity={0.2}
+                name="Close Price"
+              />
+            </>
+          )}
+          
+          {showVolume && (
+            <Bar
+              yAxisId="volume"
+              dataKey="volume"
+              fill="hsl(var(--muted))"
+              opacity={0.6}
+              name="Volume"
+            />
+          )}
+        </ComposedChart>
+      </ResponsiveContainer>
+    );
+  };
 
   return (
     <Card className={`w-full ${className}`} data-testid="stock-chart-container">
@@ -387,15 +375,33 @@ export function StockChart({ symbol, onSymbolChange, className = '', height = 40
                 ))}
               </div>
               
-              <Button
-                variant={showVolume ? "default" : "outline"}
-                size="sm"
-                onClick={() => setShowVolume(!showVolume)}
-                data-testid="button-toggle-volume"
-              >
-                <Activity className="h-4 w-4 sm:mr-1" />
-                <span className="hidden sm:inline">Volume</span>
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant={chartType === 'area' ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setChartType('area')}
+                  data-testid="button-chart-area"
+                >
+                  Area
+                </Button>
+                <Button
+                  variant={chartType === 'line' ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setChartType('line')}
+                  data-testid="button-chart-line"
+                >
+                  Line
+                </Button>
+                <Button
+                  variant={showVolume ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowVolume(!showVolume)}
+                  data-testid="button-toggle-volume"
+                >
+                  <Activity className="h-4 w-4 sm:mr-1" />
+                  <span className="hidden sm:inline">Volume</span>
+                </Button>
+              </div>
             </div>
           </div>
         
@@ -403,35 +409,35 @@ export function StockChart({ symbol, onSymbolChange, className = '', height = 40
           {stockInfo && !error && (
             <div className="flex flex-col sm:flex-row sm:items-center gap-4 pt-2 border-t" data-testid="stock-info-section">
               <div className="flex items-center gap-4">
-              <div>
-                <h3 className="font-semibold text-lg" data-testid="text-stock-symbol">{stockInfo.symbol}</h3>
-                <p className="text-sm text-muted-foreground" data-testid="text-company-name">{stockInfo.companyName}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-2xl font-bold" data-testid="text-current-price">
-                  ${stockInfo.currentPrice.toFixed(2)}
-                </span>
-                <div className={`flex items-center gap-1 ${stockInfo.change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {stockInfo.change >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-                  <span className="font-medium" data-testid="text-price-change">
-                    ${Math.abs(stockInfo.change).toFixed(2)} ({stockInfo.changePercent.toFixed(2)}%)
+                <div>
+                  <h3 className="font-semibold text-lg" data-testid="text-stock-symbol">{stockInfo.symbol}</h3>
+                  <p className="text-sm text-muted-foreground" data-testid="text-company-name">{stockInfo.companyName}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold" data-testid="text-current-price">
+                    ${stockInfo.currentPrice.toFixed(2)}
                   </span>
+                  <div className={`flex items-center gap-1 ${stockInfo.change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {stockInfo.change >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+                    <span className="font-medium" data-testid="text-price-change">
+                      ${Math.abs(stockInfo.change).toFixed(2)} ({stockInfo.changePercent.toFixed(2)}%)
+                    </span>
+                  </div>
                 </div>
               </div>
+              
+              <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                {stockInfo.marketCap && (
+                  <span data-testid="text-market-cap">Market Cap: {stockInfo.marketCap}</span>
+                )}
+                {stockInfo.pe && (
+                  <span data-testid="text-pe-ratio">P/E: {stockInfo.pe.toFixed(1)}</span>
+                )}
+                {stockInfo.dayRange && (
+                  <span data-testid="text-day-range">Day: {stockInfo.dayRange}</span>
+                )}
+              </div>
             </div>
-            
-            <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-              {stockInfo.marketCap && (
-                <span data-testid="text-market-cap">Market Cap: {stockInfo.marketCap}</span>
-              )}
-              {stockInfo.pe && (
-                <span data-testid="text-pe-ratio">P/E: {stockInfo.pe.toFixed(1)}</span>
-              )}
-              {stockInfo.dayRange && (
-                <span data-testid="text-day-range">Day: {stockInfo.dayRange}</span>
-              )}
-            </div>
-          </div>
           )}
         </div>
       </CardHeader>
@@ -458,16 +464,16 @@ export function StockChart({ symbol, onSymbolChange, className = '', height = 40
         ) : (
           <div className="space-y-4">
             <div 
-              ref={chartContainerRef} 
-              className="w-full border rounded-lg"
-              style={{ height: `${height}px` }}
+              className="w-full border rounded-lg p-4"
               data-testid="chart-canvas"
-            />
+            >
+              {renderChart()}
+            </div>
             
             {symbol && (
               <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>Timeframe: {timeFrame}</span>
-                <span>Data provided by TradingView equivalent</span>
+                <span>Timeframe: {timeFrame} • Chart Type: {chartType}</span>
+                <span>Powered by Recharts</span>
               </div>
             )}
           </div>

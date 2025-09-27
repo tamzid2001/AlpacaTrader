@@ -25,6 +25,8 @@ import CoursesPage from "@/pages/courses";
 import MyCoursesPage from "@/pages/my-courses";
 import CourseViewer from "@/pages/course-viewer";
 import NotFound from "@/pages/not-found";
+import InvitationsPage from "@/pages/invitations";
+import ShareDashboardPage from "@/pages/share-dashboard";
 import { CookieConsent } from "@/components/gdpr/cookie-consent";
 import SupportChat from "@/components/support/support-chat";
 import { ErrorBoundary } from "@/components/error-boundary/ErrorBoundary";
@@ -134,6 +136,18 @@ function Router() {
             </Route>
             <Route path="/my-courses">
               {() => <ErrorBoundary><AuthenticatedLayout><MyCoursesPage /></AuthenticatedLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/invitations">
+              {() => <ErrorBoundary><AuthenticatedLayout><InvitationsPage /></AuthenticatedLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/share-dashboard">
+              {() => <ErrorBoundary><AuthenticatedLayout><ShareDashboardPage /></AuthenticatedLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/share/accept/:token">
+              {() => <ErrorBoundary><PublicLayout><SharedResultsViewer /></PublicLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/share/decline/:token">
+              {() => <ErrorBoundary><PublicLayout><SharedResultsViewer /></PublicLayout></ErrorBoundary>}
             </Route>
             <Route path="/:rest*">
               {() => <ErrorBoundary><NotFoundFallback /></ErrorBoundary>}
