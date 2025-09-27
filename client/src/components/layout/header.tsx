@@ -10,6 +10,7 @@ import { SiGithub, SiReplit } from "react-icons/si";
 import { TrendingUp, Shield } from "lucide-react";
 import { EnhancedIcon } from "@/components/icons/enhanced-icon";
 import SkipNavigation from "@/components/accessibility/skip-navigation";
+import { MobileSidebar } from "@/components/layout/mobile-sidebar";
 
 export default function Header() {
   const { user, isAuthenticated, isLoading } = useAuth();
@@ -31,6 +32,7 @@ export default function Header() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center space-x-4">
+            {isAuthenticated && <MobileSidebar />}
             <Link href="/" className="flex items-center space-x-2" data-testid="link-home">
               <img 
                 src="/favicon.png" 

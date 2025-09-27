@@ -28,11 +28,11 @@ import { NotFoundFallback } from "@/components/error-boundary/NotFoundFallback";
 // Layout wrapper for authenticated pages
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex flex-col lg:flex-row">
       <Sidebar />
-      <div className="flex-1">
+      <div className="flex-1 flex flex-col lg:ml-64">
         <Header />
-        <main className="flex-1">{children}</main>
+        <main className="flex-1 p-4 md:p-6 lg:p-8">{children}</main>
         <Footer />
       </div>
     </div>
@@ -82,8 +82,11 @@ function Router() {
             <Route path="/dashboard">
               {() => <ErrorBoundary><AuthenticatedLayout><Dashboard /></AuthenticatedLayout></ErrorBoundary>}
             </Route>
+            <Route path="/admin/:path*">
+              {() => <ErrorBoundary><AdminDashboard /></ErrorBoundary>}
+            </Route>
             <Route path="/admin">
-              {() => <ErrorBoundary><AuthenticatedLayout><AdminDashboard /></AuthenticatedLayout></ErrorBoundary>}
+              {() => <ErrorBoundary><AdminDashboard /></ErrorBoundary>}
             </Route>
             <Route path="/market-data">
               {() => <ErrorBoundary><AuthenticatedLayout><MarketDataPage /></AuthenticatedLayout></ErrorBoundary>}

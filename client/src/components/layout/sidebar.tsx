@@ -17,7 +17,7 @@ export default function Sidebar() {
 
   return (
     <nav 
-      className="sidebar-nav w-64 bg-sidebar border-r border-sidebar-border fixed h-full z-30 overflow-y-auto"
+      className="sidebar-nav hidden lg:block w-64 bg-sidebar border-r border-sidebar-border fixed h-full z-30 overflow-y-auto"
       role="navigation"
       aria-label="Main sidebar navigation"
     >
@@ -76,12 +76,12 @@ export default function Sidebar() {
                   <a
                     className={cn(
                       "flex items-center space-x-3 p-3 rounded-lg transition-colors bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-950/50 dark:to-orange-950/50 border border-red-200/50 dark:border-red-800/50",
-                      location === "/admin"
+                      location.startsWith("/admin")
                         ? "bg-red-100 dark:bg-red-900/70 text-red-900 dark:text-red-100 border-red-300 dark:border-red-700"
                         : "text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/70 hover:border-red-300 dark:hover:border-red-700"
                     )}
                     data-testid="link-admin-panel"
-                    aria-current={location === "/admin" ? 'page' : undefined}
+                    aria-current={location.startsWith("/admin") ? 'page' : undefined}
                     aria-label="Navigate to Admin Panel"
                   >
                     <EnhancedIcon 

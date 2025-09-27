@@ -3,9 +3,8 @@ import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
 import { useUserEnrollments } from "@/hooks/use-courses";
-import Sidebar from "@/components/layout/sidebar";
-import SupportChat from "@/components/support/support-chat";
 import VideoPlayer from "@/components/courses/video-player";
+import SupportChat from "@/components/support/support-chat";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -92,44 +91,41 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex">
-      <Sidebar />
-      
-      <div className="flex-1 ml-64 p-8" data-testid="dashboard-main">
-        {/* Top Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground" data-testid="text-welcome">
-              Welcome back, {user?.firstName || user?.email?.split('@')[0] || 'Student'}!
-            </h1>
-            <p className="text-muted-foreground" data-testid="text-subtitle">
-              Continue your learning journey
-            </p>
-          </div>
-          <div className="flex items-center space-x-4">
-            <Button 
-              variant="outline" 
-              size="icon" 
-              data-testid="button-notifications"
-              aria-label="View notifications"
-            >
-              <EnhancedIcon 
-                name="Bell" 
-                size={16} 
-                className="text-muted-foreground" 
-                aria-hidden={true}
-              />
-            </Button>
-            <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center" data-testid="avatar-user">
-              <span className="text-primary-foreground font-semibold">
-                {user?.firstName?.charAt(0) || user?.email?.charAt(0)?.toUpperCase() || 'U'}
-              </span>
-            </div>
+    <div className="w-full" data-testid="dashboard-main">
+      {/* Top Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 md:mb-8 gap-4">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold text-foreground" data-testid="text-welcome">
+            Welcome back, {user?.firstName || user?.email?.split('@')[0] || 'Student'}!
+          </h1>
+          <p className="text-muted-foreground" data-testid="text-subtitle">
+            Continue your learning journey
+          </p>
+        </div>
+        <div className="flex items-center space-x-4">
+          <Button 
+            variant="outline" 
+            size="icon" 
+            data-testid="button-notifications"
+            aria-label="View notifications"
+          >
+            <EnhancedIcon 
+              name="Bell" 
+              size={16} 
+              className="text-muted-foreground" 
+              aria-hidden={true}
+            />
+          </Button>
+          <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center" data-testid="avatar-user">
+            <span className="text-primary-foreground font-semibold">
+              {user?.firstName?.charAt(0) || user?.email?.charAt(0)?.toUpperCase() || 'U'}
+            </span>
           </div>
         </div>
+      </div>
 
-        {/* Stats Cards */}
-        <div className="grid md:grid-cols-4 gap-6 mb-8" role="region" aria-labelledby="stats-heading">
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-6 md:mb-8" role="region" aria-labelledby="stats-heading">
           <h2 id="stats-heading" className="sr-only">Learning Statistics</h2>
           <Card data-testid="card-enrolled" role="article" aria-labelledby="enrolled-heading">
             <CardContent className="p-6">
@@ -201,10 +197,10 @@ export default function Dashboard() {
               </div>
             </CardContent>
           </Card>
-        </div>
+      </div>
 
-        {/* Current Courses */}
-        <div className="mb-8" role="region" aria-labelledby="current-courses-heading">
+      {/* Current Courses */}
+      <div className="mb-8" role="region" aria-labelledby="current-courses-heading">
           <h2 className="text-2xl font-bold text-foreground mb-6" data-testid="text-continue-learning">
             Continue Learning
           </h2>
@@ -250,15 +246,14 @@ export default function Dashboard() {
               </Card>
             )}
           </div>
-        </div>
+      </div>
 
-        {/* Video Course Section */}
-        <div className="mb-8" role="region" aria-labelledby="latest-content-heading">
+      {/* Video Course Section */}
+      <div className="mb-8" role="region" aria-labelledby="latest-content-heading">
           <h2 className="text-2xl font-bold text-foreground mb-6" data-testid="text-latest-content">
             Latest Course Content
           </h2>
           <VideoPlayer />
-        </div>
       </div>
       
       <SupportChat />
