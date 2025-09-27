@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { createChart, IChartApi, ISeriesApi, Time, UTCTimestamp, LineStyle } from 'lightweight-charts';
+import { 
+  createChart, 
+  IChartApi, 
+  ISeriesApi, 
+  Time, 
+  UTCTimestamp, 
+  LineStyle,
+  CandlestickSeriesPartialOptions,
+  HistogramSeriesPartialOptions
+} from 'lightweight-charts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -251,21 +260,48 @@ export function StockChart({ symbol, onSymbolChange, className = '', height = 40
       },
     });
     
-    const candleSeries = chart.addCandlestickSeries({
-      upColor: 'hsl(var(--chart-1))',
-      downColor: 'hsl(var(--destructive))',
-      borderVisible: false,
-      wickUpColor: 'hsl(var(--chart-1))',
-      wickDownColor: 'hsl(var(--destructive))',
-    });
+    // Add candlestick series with proper API
+    let candleSeries: ISeriesApi<'Candlestick'>;
+    let volumeSeries: ISeriesApi<'Histogram'>;
     
-    const volumeSeries = chart.addHistogramSeries({
-      color: 'rgba(76, 175, 80, 0.5)',
-      priceFormat: {
-        type: 'volume',
-      },
-      priceScaleId: 'volume',
-    });
+    try {
+      // Try the standard TradingView API
+      if (typeof (chart as any).addCandlestickSeries === 'function') {
+        candleSeries = (chart as any).addCandlestickSeries({
+          upColor: '#26a69a',
+          downColor: '#ef5350',
+          borderVisible: false,
+          wickUpColor: '#26a69a',
+          wickDownColor: '#ef5350',
+        });
+      } else {
+        // Fallback method for different API versions
+        candleSeries = (chart as any).addAreaSeries({
+          topColor: 'rgba(38, 166, 154, 0.56)',
+          bottomColor: 'rgba(38, 166, 154, 0.04)',
+          lineColor: 'rgba(38, 166, 154, 1)',
+          lineWidth: 2,
+        });
+      }
+      
+      // Try to add volume series
+      if (typeof (chart as any).addHistogramSeries === 'function') {
+        volumeSeries = (chart as any).addHistogramSeries({
+          color: 'rgba(76, 175, 80, 0.5)',
+          priceFormat: {
+            type: 'volume',
+          },
+          priceScaleId: 'volume',
+        });
+      }
+    } catch (seriesError) {
+      console.warn('Failed to add chart series:', seriesError);
+      // Create a fallback line series instead
+      candleSeries = (chart as any).addLineSeries({
+        color: '#26a69a',
+        lineWidth: 2,
+      });
+    }
     
     chart.priceScale('volume').applyOptions({
       scaleMargins: {
