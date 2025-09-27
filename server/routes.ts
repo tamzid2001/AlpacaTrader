@@ -15,6 +15,8 @@ import {
   insertTeamMemberSchema,
   insertShareInviteSchema,
   insertShareLinkSchema,
+  // Course Schemas
+  insertCourseSchema,
   // Comprehensive Quiz System Schemas
   insertQuizSchema,
   insertQuestionSchema,
@@ -698,6 +700,89 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(course);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  // CREATE new course (Admin only)
+  app.post("/api/courses", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const courseData = insertCourseSchema.parse({
+        ...req.body,
+        ownerId: req.user.claims.sub, // Set owner to current admin user
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+      
+      const course = await storage.createCourse(courseData);
+      res.status(201).json(course);
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ 
+          error: "Validation failed", 
+          details: error.errors 
+        });
+      }
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // UPDATE existing course (Admin only)
+  app.put("/api/courses/:id", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const courseId = req.params.id;
+      
+      // Check if course exists
+      const existingCourse = await storage.getCourse(courseId);
+      if (!existingCourse) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+
+      // Parse and validate updates
+      const updates = {
+        ...req.body,
+        updatedAt: new Date()
+      };
+
+      const updatedCourse = await storage.updateCourse(courseId, updates);
+      if (!updatedCourse) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+      
+      res.json(updatedCourse);
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ 
+          error: "Validation failed", 
+          details: error.errors 
+        });
+      }
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // DELETE course (Admin only)
+  app.delete("/api/courses/:id", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const courseId = req.params.id;
+      
+      // Check if course exists
+      const existingCourse = await storage.getCourse(courseId);
+      if (!existingCourse) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+
+      const deleted = await storage.deleteCourse(courseId);
+      if (!deleted) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+      
+      res.status(204).send(); // No content response for successful deletion
+    } catch (error: any) {
+      console.error("Error deleting course:", error);
+      res.status(500).json({ 
+        error: "Failed to delete course", 
+        details: error.message 
+      });
     }
   });
 

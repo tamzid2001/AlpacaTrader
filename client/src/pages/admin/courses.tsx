@@ -10,7 +10,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { BookOpen, Plus, Edit, Trash2, Search, Star, DollarSign, Users } from "lucide-react";
+import AdminCourseForm from "@/components/courses/admin-course-form";
 
 export default function AdminCoursesPage() {
   const { user, isAuthenticated, isLoading } = useAuth();
@@ -18,6 +21,9 @@ export default function AdminCoursesPage() {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [levelFilter, setLevelFilter] = useState("all");
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [editingCourse, setEditingCourse] = useState<Course | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   // Fetch all courses
   const { data: courses, isLoading: isLoadingCourses } = useQuery<Course[]>({
@@ -30,7 +36,11 @@ export default function AdminCoursesPage() {
   const deleteCourse = useMutation({
     mutationFn: async (courseId: string) => {
       const response = await apiRequest("DELETE", `/api/courses/${courseId}`);
-      return response.json();
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to delete course");
+      }
+      return true; // DELETE returns 204 with no content
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/courses"] });
@@ -53,11 +63,35 @@ export default function AdminCoursesPage() {
       }
       toast({
         title: "Error",
-        description: "Failed to delete course.",
+        description: error.message || "Failed to delete course.",
         variant: "destructive",
       });
     },
   });
+
+  // Handlers for dialogs
+  const handleAddCourse = () => {
+    setIsAddDialogOpen(true);
+  };
+
+  const handleEditCourse = (course: Course) => {
+    setEditingCourse(course);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleCloseAddDialog = () => {
+    setIsAddDialogOpen(false);
+  };
+
+  const handleCloseEditDialog = () => {
+    setIsEditDialogOpen(false);
+    setEditingCourse(null);
+  };
+
+  const handleCourseFormSuccess = () => {
+    handleCloseAddDialog();
+    handleCloseEditDialog();
+  };
 
   useEffect(() => {
     if (!isLoading && (!isAuthenticated || !user || user.role !== "admin")) {
@@ -117,7 +151,11 @@ export default function AdminCoursesPage() {
               Course Management
             </h1>
           </div>
-          <Button className="flex items-center gap-2" data-testid="button-add-course">
+          <Button 
+            className="flex items-center gap-2" 
+            onClick={handleAddCourse}
+            data-testid="button-add-course"
+          >
             <Plus className="h-4 w-4" />
             Add Course
           </Button>
@@ -272,20 +310,42 @@ export default function AdminCoursesPage() {
                       variant="outline" 
                       size="sm" 
                       className="flex-1"
+                      onClick={() => handleEditCourse(course)}
                       data-testid={`button-edit-course-${course.id}`}
                     >
                       <Edit className="h-4 w-4 mr-1" />
                       Edit
                     </Button>
-                    <Button 
-                      variant="destructive" 
-                      size="sm" 
-                      onClick={() => deleteCourse.mutate(course.id)}
-                      disabled={deleteCourse.isPending}
-                      data-testid={`button-delete-course-${course.id}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button 
+                          variant="destructive" 
+                          size="sm" 
+                          disabled={deleteCourse.isPending}
+                          data-testid={`button-delete-course-${course.id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Course</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to delete "{course.title}"? This action cannot be undone.
+                            All associated enrollments and progress will also be deleted.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => deleteCourse.mutate(course.id)}
+                            className="bg-red-600 hover:bg-red-700"
+                          >
+                            Delete Course
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </CardContent>
               </Card>
@@ -297,13 +357,42 @@ export default function AdminCoursesPage() {
               </div>
               <h3 className="text-xl font-semibold mb-2">No courses found</h3>
               <p className="text-muted-foreground mb-4">No courses match your current filters</p>
-              <Button data-testid="button-create-first-course">
+              <Button onClick={handleAddCourse} data-testid="button-create-first-course">
                 <Plus className="h-4 w-4 mr-2" />
                 Create Your First Course
               </Button>
             </div>
           )}
         </div>
+
+        {/* Add Course Dialog */}
+        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Add New Course</DialogTitle>
+            </DialogHeader>
+            <AdminCourseForm
+              onSuccess={handleCourseFormSuccess}
+              onCancel={handleCloseAddDialog}
+            />
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Course Dialog */}
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Edit Course</DialogTitle>
+            </DialogHeader>
+            {editingCourse && (
+              <AdminCourseForm
+                course={editingCourse}
+                onSuccess={handleCourseFormSuccess}
+                onCancel={handleCloseEditDialog}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

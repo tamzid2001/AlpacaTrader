@@ -1043,6 +1043,32 @@ export class MemStorage implements IStorage {
     return updatedCourse;
   }
 
+  async deleteCourse(id: string): Promise<boolean> {
+    const course = this.courses.get(id);
+    if (!course) return false;
+
+    // Remove course from storage
+    this.courses.delete(id);
+
+    // Also remove all related enrollments
+    const enrollmentsToDelete = Array.from(this.enrollments.values())
+      .filter(enrollment => enrollment.courseId === id);
+    
+    enrollmentsToDelete.forEach(enrollment => {
+      this.enrollments.delete(enrollment.id);
+    });
+
+    // Remove all related quizzes
+    const quizzesToDelete = Array.from(this.quizzes.values())
+      .filter(quiz => quiz.courseId === id);
+    
+    quizzesToDelete.forEach(quiz => {
+      this.quizzes.delete(quiz.id);
+    });
+
+    return true;
+  }
+
   // Enrollments
   async getUserEnrollments(userId: string): Promise<(CourseEnrollment & { course: Course })[]> {
     const enrollments = Array.from(this.enrollments.values()).filter(e => e.userId === userId);
