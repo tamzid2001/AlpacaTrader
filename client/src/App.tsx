@@ -40,7 +40,9 @@ function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <div className="flex-1 flex flex-col lg:ml-64">
         <Header />
-        <main className="flex-1 p-4 md:p-6 lg:p-8">{children}</main>
+        <main className="flex-1 p-4 md:p-6 lg:p-8" id="main-content" tabIndex={-1}>
+          {children}
+        </main>
         <Footer />
       </div>
     </div>
@@ -52,7 +54,9 @@ function PublicLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen">
       <Header />
-      <main className="flex-1">{children}</main>
+      <div className="flex-1" id="main-content" tabIndex={-1}>
+        {children}
+      </div>
       <Footer />
     </div>
   );

@@ -2,6 +2,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState } from "react";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { useUserEnrollments } from "@/hooks/use-courses";
 import VideoPlayer from "@/components/courses/video-player";
 import SupportChat from "@/components/support/support-chat";
@@ -25,6 +26,11 @@ export default function Dashboard() {
   const { user, isAuthenticated, isLoading } = useAuth();
   
   const [activeTab, setActiveTab] = useState("overview");
+
+  usePageTitle({
+    title: "Dashboard",
+    description: "View your learning progress, course enrollment, and financial analytics dashboard."
+  });
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { data: enrollments } = useUserEnrollments(user?.id || "");

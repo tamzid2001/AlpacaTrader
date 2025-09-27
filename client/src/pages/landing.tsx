@@ -1,6 +1,7 @@
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
 import { useEffect, useState } from "react";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +37,11 @@ export default function LandingPage() {
   const { data: courses } = useCourses();
   const [showDemoModal, setShowDemoModal] = useState(false);
 
+  usePageTitle({
+    title: "AI-Powered Financial Learning Platform",
+    description: "Master financial markets with AI-powered learning, real-time market data, and comprehensive courses. Professional trading education platform."
+  });
+
   useEffect(() => {
     if (isAuthenticated && user?.isApproved) {
       setLocation("/dashboard");
@@ -51,7 +57,7 @@ export default function LandingPage() {
       {/* Header removed - now handled by App layout */}
       
       {/* Main Content */}
-      <div id="main-content">
+      <div>
         {/* Hero Section */}
         <section className="relative min-h-screen overflow-hidden bg-gradient-to-br from-purple-600 via-blue-600 to-emerald-500">
           {/* Dynamic floating elements */}

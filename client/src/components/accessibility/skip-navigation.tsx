@@ -4,7 +4,6 @@ export function SkipNavigation() {
   const skipLinks = [
     { href: "#main-content", label: "Skip to main content" },
     { href: "#navigation", label: "Skip to navigation" },
-    { href: "#search", label: "Skip to search" },
   ];
 
   return (

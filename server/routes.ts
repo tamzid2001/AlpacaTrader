@@ -892,6 +892,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Enhanced Webhook Integration with comprehensive logging - must be BEFORE express.json() middleware
+  // Test webhook endpoint for integration testing
+  app.post('/api/stripe/test-webhook', express.json(), async (req, res) => {
+    // Only allow in development/test mode
+    if (process.env.NODE_ENV === 'production' && !req.headers['x-test-mode']) {
+      return res.status(403).json({ error: 'Test endpoint not available in production' });
+    }
+    
+    console.log('🧪 TEST WEBHOOK CALLED:', req.body.type);
+    
+    try {
+      const { type, data } = req.body;
+      
+      switch (type) {
+        case 'payment_intent.succeeded':
+          await handlePaymentSuccess(data.object);
+          break;
+        case 'payment_intent.payment_failed':
+          await handlePaymentFailure(data.object);
+          break;
+        default:
+          console.log('Unhandled test event type:', type);
+      }
+      
+      res.status(200).json({ received: true, type });
+    } catch (error: any) {
+      console.error('Test webhook error:', error);
+      res.status(200).json({ received: true, error: error.message });
+    }
+  });
+
   app.post('/api/stripe/webhook', express.raw({type: 'application/json'}), async (req, res) => {
     const sig = req.headers['stripe-signature'] as string;
     const timestamp = new Date().toISOString();
@@ -2937,7 +2967,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===================
 
   // Import AI Chat Service
-  const { aiChatService } = require("./services/ai-chat-service");
+  const { aiChatService } = await import("./services/ai-chat-service");
 
   // Send message and get AI response
   app.post("/api/chat/message", isAuthenticated, async (req: any, res) => {

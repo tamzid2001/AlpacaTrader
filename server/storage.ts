@@ -5498,4 +5498,6 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+import { DatabaseStorageMinimal } from "./database-storage-minimal";
+
+export const storage = new DatabaseStorageMinimal();
