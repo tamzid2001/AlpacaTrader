@@ -160,15 +160,10 @@ export default function Header() {
             ) : (
               <a href="/api/login">
                 <Button 
-                  className="flex items-center gap-2" 
+                  size="lg"
                   data-testid="button-login"
                   aria-label="Sign in with Google, GitHub, or Replit to get started"
                 >
-                  <div className="flex items-center gap-1" aria-hidden="true">
-                    <FcGoogle className="w-4 h-4" />
-                    <SiGithub className="w-3 h-3" />
-                    <SiReplit className="w-3 h-3 text-orange-500" />
-                  </div>
                   Get Started
                 </Button>
               </a>

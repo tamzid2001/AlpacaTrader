@@ -107,14 +107,9 @@ export default function LandingPage() {
                 <a href="/api/login">
                   <Button 
                     size="lg" 
-                    className="bg-white text-primary hover:bg-gray-100 px-8 py-4 text-lg font-semibold shadow-xl hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-200 flex items-center gap-3"
+                    className="bg-white text-primary hover:bg-gray-100 px-8 py-4 text-lg font-semibold shadow-xl hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-200"
                     data-testid="button-start-learning"
                   >
-                    <div className="flex items-center gap-1">
-                      <FcGoogle className="w-5 h-5" role="img" aria-label="Google" />
-                      <SiGithub className="w-4 h-4" role="img" aria-label="GitHub" />
-                      <SiReplit className="w-4 h-4 text-orange-500" role="img" aria-label="Replit" />
-                    </div>
                     Start Learning Today
                   </Button>
                 </a>
