@@ -69,18 +69,39 @@ export function setupSecurityHeaders(app: Express) {
     const replitDomains = process.env.REPLIT_DOMAINS.split(',');
     replitDomains.forEach(domain => {
       allowedOrigins.push(`https://${domain.trim()}`);
+      allowedOrigins.push(`http://${domain.trim()}`);
     });
   }
 
+  // Add common Replit deployment domains
+  const replitDomains = [
+    'https://*.replit.app',
+    'https://*.replit.dev', 
+    'https://*.replit.com',
+    'http://localhost:*',
+    'https://localhost:*'
+  ];
+  allowedOrigins.push(...replitDomains);
+
   app.use(cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps or curl requests) in development
-      if (!origin && process.env.NODE_ENV === 'development') {
+      // Allow requests with no origin (like mobile apps, curl requests, health checks) 
+      // Both in development AND production for Cloud Run deployment
+      if (!origin) {
         return callback(null, true);
       }
       
       if (origin && allowedOrigins.includes(origin)) {
         return callback(null, true);
+      }
+      
+      // In production, be more permissive for deployment environment
+      if (process.env.NODE_ENV === 'production' && origin) {
+        // Allow replit.app domains and common deployment domains
+        if (origin.includes('.replit.app') || origin.includes('.replit.dev') || 
+            origin.includes('replit.com') || origin.includes('localhost')) {
+          return callback(null, true);
+        }
       }
       
       callback(new Error(`Origin ${origin} not allowed by CORS policy`));

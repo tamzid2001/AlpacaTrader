@@ -53,7 +53,36 @@ import {
   type MarketDataDownload,
   type InsertMarketDataDownload,
   type PopularSymbol,
-  type InsertPopularSymbol
+  type InsertPopularSymbol,
+  // Billing and Payment Types
+  type Payment,
+  type InsertPayment,
+  type AutoMLJob,
+  type InsertAutoMLJob,
+  // Comprehensive Notification System Types
+  type NotificationTemplate,
+  type InsertNotificationTemplate,
+  type AlertRule,
+  type InsertAlertRule,
+  type AlertSubscription,
+  type InsertAlertSubscription,
+  type NotificationQueue,
+  type InsertNotificationQueue,
+  type NotificationEvent,
+  type InsertNotificationEvent,
+  type AdminApproval,
+  type InsertAdminApproval,
+  type CrashReport,
+  type InsertCrashReport,
+  type MarketDataCache,
+  type InsertMarketDataCache,
+  type NotificationTemplateType,
+  type AlertRuleType,
+  type NotificationChannel,
+  type NotificationQueueStatus,
+  type NotificationEventType,
+  type AdminApprovalStatus,
+  type AdminApprovalResourceType
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -67,6 +96,22 @@ export interface IStorage {
   getAllUsers(): Promise<User[]>;
   getPendingUsers(): Promise<User[]>;
   approveUser(id: string): Promise<User | undefined>;
+  
+  // Stripe Integration
+  updateStripeCustomerId(userId: string, customerId: string): Promise<User | undefined>;
+  updateUserStripeInfo(userId: string, stripeInfo: { customerId?: string; subscriptionId?: string }): Promise<User | undefined>;
+  
+  // Stripe & Billing
+  updateUserSubscription(userId: string, subscriptionData: any): Promise<User | undefined>;
+  cancelUserSubscription(userId: string): Promise<void>;
+  deductAutoMLCredits(userId: string, credits: number): Promise<void>;
+  recordPayment(paymentData: InsertPayment): Promise<Payment>;
+  findUserByEmail(email: string): Promise<User | undefined>;
+  
+  // AutoML Jobs
+  createAutoMLJob(jobData: InsertAutoMLJob): Promise<AutoMLJob>;
+  updateAutoMLJob(jobId: string, updates: Partial<AutoMLJob>): Promise<AutoMLJob | undefined>;
+  getUserAutoMLJobs(userId: string): Promise<AutoMLJob[]>;
 
   // Courses
   getAllCourses(): Promise<Course[]>;
@@ -311,6 +356,101 @@ export interface IStorage {
   getPopularSymbol(symbol: string): Promise<PopularSymbol | undefined>;
   getPopularSymbols(limit?: number): Promise<PopularSymbol[]>;
   updatePopularSymbolStats(symbol: string, fileSize?: number): Promise<void>;
+
+  // ===========================================
+  // COMPREHENSIVE NOTIFICATION SYSTEM METHODS
+  // ===========================================
+
+  // Notification Templates
+  createNotificationTemplate(template: InsertNotificationTemplate): Promise<NotificationTemplate>;
+  getNotificationTemplate(id: string): Promise<NotificationTemplate | undefined>;
+  getNotificationTemplates(type?: NotificationTemplateType): Promise<NotificationTemplate[]>;
+  updateNotificationTemplate(id: string, updates: Partial<NotificationTemplate>): Promise<NotificationTemplate | undefined>;
+  deleteNotificationTemplate(id: string): Promise<boolean>;
+
+  // Alert Rules Management
+  createAlertRule(rule: InsertAlertRule): Promise<AlertRule>;
+  getAlertRule(id: string): Promise<AlertRule | undefined>;
+  getUserAlertRules(userId: string): Promise<AlertRule[]>;
+  getActiveAlertRules(): Promise<AlertRule[]>;
+  updateAlertRule(id: string, updates: Partial<AlertRule>): Promise<AlertRule | undefined>;
+  updateAlertRuleStatus(id: string, isActive: boolean): Promise<AlertRule | undefined>;
+  updateAlertRuleLastTriggered(id: string, triggeredAt: Date): Promise<AlertRule | undefined>;
+  deleteAlertRule(id: string): Promise<boolean>;
+
+  // Alert Subscriptions Management
+  createAlertSubscription(subscription: InsertAlertSubscription): Promise<AlertSubscription>;
+  getAlertSubscription(id: string): Promise<AlertSubscription | undefined>;
+  getUserAlertSubscriptions(userId: string): Promise<AlertSubscription[]>;
+  getAlertRuleSubscriptions(alertRuleId: string): Promise<AlertSubscription[]>;
+  updateAlertSubscription(id: string, updates: Partial<AlertSubscription>): Promise<AlertSubscription | undefined>;
+  deleteAlertSubscription(id: string): Promise<boolean>;
+
+  // Notification Queue Management
+  createNotificationQueue(notification: InsertNotificationQueue): Promise<string>;
+  getNotificationQueue(id: string): Promise<NotificationQueue | undefined>;
+  getPendingNotifications(limit?: number): Promise<NotificationQueue[]>;
+  getScheduledNotifications(beforeDate?: Date): Promise<NotificationQueue[]>;
+  getUserNotifications(userId: string, limit?: number): Promise<NotificationQueue[]>;
+  updateNotificationQueueStatus(
+    id: string, 
+    status: NotificationQueueStatus, 
+    processedAt?: Date, 
+    errorMessage?: string,
+    attempts?: number
+  ): Promise<NotificationQueue | undefined>;
+  scheduleNotificationRetry(
+    id: string, 
+    retryAt: Date, 
+    errorMessage: string, 
+    attempts: number
+  ): Promise<NotificationQueue | undefined>;
+  getRetryableNotifications(): Promise<NotificationQueue[]>;
+  cancelNotificationsByMetadata(metadata: any): Promise<number>;
+
+  // Notification Events (Audit Trail)
+  createNotificationEvent(event: InsertNotificationEvent): Promise<NotificationEvent>;
+  getNotificationEvents(notificationId: string): Promise<NotificationEvent[]>;
+  getNotificationEventsByType(event: NotificationEventType, limit?: number): Promise<NotificationEvent[]>;
+  getUserNotificationEvents(userId: string, limit?: number): Promise<NotificationEvent[]>;
+
+  // Admin Approval Workflow
+  createAdminApproval(approval: InsertAdminApproval): Promise<string>;
+  getAdminApproval(id: string): Promise<AdminApproval | undefined>;
+  getPendingAdminApprovals(): Promise<AdminApproval[]>;
+  getUserAdminApprovals(userId: string): Promise<AdminApproval[]>;
+  getExpiredAdminApprovals(): Promise<AdminApproval[]>;
+  updateAdminApprovalStatus(
+    id: string, 
+    status: AdminApprovalStatus, 
+    reviewerId: string | null, 
+    notes?: string,
+    reviewedAt?: Date
+  ): Promise<AdminApproval | undefined>;
+  getAdminApprovalStats(): Promise<{
+    pending: number;
+    approved: number;
+    rejected: number;
+    expired: number;
+    total: number;
+  }>;
+
+  // Crash Reports Management
+  createCrashReport(report: InsertCrashReport): Promise<CrashReport>;
+  getCrashReport(id: string): Promise<CrashReport | undefined>;
+  getCrashReports(resolved?: boolean, limit?: number): Promise<CrashReport[]>;
+  getUserCrashReports(userId: string): Promise<CrashReport[]>;
+  updateCrashReportStatus(id: string, resolved: boolean): Promise<CrashReport | undefined>;
+  deleteCrashReport(id: string): Promise<boolean>;
+
+  // Market Data Cache Management
+  upsertMarketDataCache(data: InsertMarketDataCache): Promise<MarketDataCache>;
+  getMarketDataCache(id: string): Promise<MarketDataCache | undefined>;
+  getMarketDataCacheByTicker(ticker: string): Promise<MarketDataCache | undefined>;
+  getAllMarketDataCache(): Promise<MarketDataCache[]>;
+  updateMarketDataCache(ticker: string, updates: Partial<MarketDataCache>): Promise<MarketDataCache | undefined>;
+  deleteMarketDataCache(ticker: string): Promise<boolean>;
+  cleanupStaleMarketData(olderThanHours: number): Promise<number>;
 }
 
 export class MemStorage implements IStorage {
@@ -343,6 +483,16 @@ export class MemStorage implements IStorage {
   // User content storage
   public userNotes: Map<string, any> = new Map();
   public userAchievements: Map<string, any> = new Map();
+
+  // Comprehensive Notification System Storage
+  private notificationTemplates: Map<string, NotificationTemplate> = new Map();
+  private alertRules: Map<string, AlertRule> = new Map();
+  private alertSubscriptions: Map<string, AlertSubscription> = new Map();
+  private notificationQueue: Map<string, NotificationQueue> = new Map();
+  private notificationEvents: Map<string, NotificationEvent> = new Map();
+  private adminApprovals: Map<string, AdminApproval> = new Map();
+  private crashReports: Map<string, CrashReport> = new Map();
+  private marketDataCache: Map<string, MarketDataCache> = new Map();
 
   constructor() {
     this.initializeData();
@@ -490,6 +640,22 @@ export class MemStorage implements IStorage {
 
   async approveUser(id: string): Promise<User | undefined> {
     return this.updateUser(id, { isApproved: true });
+  }
+
+  // Stripe Integration
+  async updateStripeCustomerId(userId: string, customerId: string): Promise<User | undefined> {
+    return this.updateUser(userId, { stripeCustomerId: customerId });
+  }
+
+  async updateUserStripeInfo(userId: string, stripeInfo: { customerId?: string; subscriptionId?: string }): Promise<User | undefined> {
+    const updates: Partial<User> = {};
+    if (stripeInfo.customerId !== undefined) {
+      updates.stripeCustomerId = stripeInfo.customerId;
+    }
+    if (stripeInfo.subscriptionId !== undefined) {
+      updates.stripeSubscriptionId = stripeInfo.subscriptionId;
+    }
+    return this.updateUser(userId, updates);
   }
 
   // Courses
@@ -2385,6 +2551,72 @@ export class MemStorage implements IStorage {
         improvement: Math.round(((before - after) / before) * 100),
       },
     };
+  }
+
+  // Missing critical methods for TypeScript compliance
+  async deductAutoMLCredits(userId: string, credits: number): Promise<void> {
+    const user = this.users.get(userId);
+    if (user) {
+      user.automlCreditsRemaining = Math.max(0, (user.automlCreditsRemaining || 0) - credits);
+      this.users.set(userId, user);
+    }
+  }
+
+  async findUserByEmail(email: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find(user => user.email === email);
+  }
+
+  async updateUserSubscription(userId: string, subscriptionData: any): Promise<User | undefined> {
+    const user = this.users.get(userId);
+    if (user) {
+      Object.assign(user, subscriptionData);
+      this.users.set(userId, user);
+      return user;
+    }
+    return undefined;
+  }
+
+  async cancelUserSubscription(userId: string): Promise<void> {
+    const user = this.users.get(userId);
+    if (user) {
+      user.subscriptionStatus = 'cancelled';
+      this.users.set(userId, user);
+    }
+  }
+
+  async recordPayment(paymentData: InsertPayment): Promise<Payment> {
+    const payment: Payment = {
+      id: randomUUID(),
+      ...paymentData,
+      createdAt: new Date(),
+    };
+    this.payments.set(payment.id, payment);
+    return payment;
+  }
+
+  async createAutoMLJob(jobData: InsertAutoMLJob): Promise<AutoMLJob> {
+    const job: AutoMLJob = {
+      id: randomUUID(),
+      ...jobData,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.autoMLJobs.set(job.id, job);
+    return job;
+  }
+
+  async updateAutoMLJob(jobId: string, updates: Partial<AutoMLJob>): Promise<AutoMLJob | undefined> {
+    const job = this.autoMLJobs.get(jobId);
+    if (job) {
+      Object.assign(job, updates, { updatedAt: new Date() });
+      this.autoMLJobs.set(jobId, job);
+      return job;
+    }
+    return undefined;
+  }
+
+  async getUserAutoMLJobs(userId: string): Promise<AutoMLJob[]> {
+    return Array.from(this.autoMLJobs.values()).filter(job => job.userId === userId);
   }
   
   // Market Data Implementation

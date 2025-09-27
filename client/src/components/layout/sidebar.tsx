@@ -10,15 +10,9 @@ export default function Sidebar() {
 
   const navItems = [
     { href: "/dashboard", icon: "LayoutDashboard", label: "Dashboard" },
-    { href: "/courses", icon: "Play", label: "My Courses" },
     { href: "/market-data", icon: "TrendingUp", label: "Market Data" },
     { href: "/anomaly-detection", icon: "BarChart3", label: "Anomaly Detection" },
-    { href: "/icon-generator", icon: "Palette", label: "Icon Generator" },
     { href: "/my-shared-results", icon: "Share2", label: "My Shared Results" },
-    { href: "/downloads", icon: "Download", label: "Downloads" },
-    { href: "/quizzes", icon: "HelpCircle", label: "Quizzes" },
-    { href: "/certificates", icon: "Award", label: "Certificates" },
-    { href: "/profile", icon: "User", label: "Profile" },
   ];
 
   return (
@@ -34,7 +28,7 @@ export default function Sidebar() {
               name="TrendingUp" 
               size={16} 
               color="hsl(var(--sidebar-primary-foreground))" 
-              aria-hidden="true"
+              aria-hidden={true}
             />
           </div>
           <span className="text-xl font-bold text-sidebar-foreground" data-testid="text-sidebar-title">
@@ -60,7 +54,7 @@ export default function Sidebar() {
                   <EnhancedIcon 
                     name={item.icon} 
                     size={20} 
-                    aria-hidden="true"
+                    aria-hidden={true}
                   />
                   <span>{item.label}</span>
                 </a>
@@ -93,7 +87,7 @@ export default function Sidebar() {
                     <EnhancedIcon 
                       name="Shield" 
                       size={20} 
-                      aria-hidden="true"
+                      aria-hidden={true}
                     />
                     <span className="font-medium">Admin Panel</span>
                   </a>
@@ -102,22 +96,6 @@ export default function Sidebar() {
             </>
           )}
           
-          <li className="pt-4 border-t border-sidebar-border" role="listitem">
-            <Link href="/settings">
-              <a
-                className="flex items-center space-x-3 p-3 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
-                data-testid="link-settings"
-                aria-label="Navigate to settings"
-              >
-                <EnhancedIcon 
-                  name="Settings" 
-                  size={20} 
-                  aria-hidden="true"
-                />
-                <span>Settings</span>
-              </a>
-            </Link>
-          </li>
           
           <li role="listitem">
             <a href="/api/logout" className="block">
@@ -130,7 +108,7 @@ export default function Sidebar() {
                 <EnhancedIcon 
                   name="LogOut" 
                   size={20} 
-                  aria-hidden="true"
+                  aria-hidden={true}
                 />
                 <span>Logout</span>
               </Button>

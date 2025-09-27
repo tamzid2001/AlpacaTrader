@@ -51,7 +51,7 @@ export default function LandingPage() {
       {/* Header removed - now handled by App layout */}
       
       {/* Main Content */}
-      <main id="main-content" role="main">
+      <div id="main-content">
         {/* Hero Section */}
         <section className="relative min-h-screen overflow-hidden bg-gradient-to-br from-purple-600 via-blue-600 to-emerald-500">
           {/* Dynamic floating elements */}
@@ -616,7 +616,7 @@ export default function LandingPage() {
           </div>
         </div>
         </section>
-      </main>
+      </div>
 
       {/* Footer and SupportChat removed - now handled by App layout */}
       <DemoVideoModal 

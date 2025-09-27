@@ -231,7 +231,7 @@ export default function SharedResultsViewer() {
   return (
     <div className="min-h-screen bg-background" data-testid="page-shared-results">
       {/* Header */}
-      <header className="border-b bg-card" role="banner">
+      <div className="border-b bg-card">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div className="flex items-center gap-3">
@@ -297,10 +297,10 @@ export default function SharedResultsViewer() {
             </div>
           </div>
         </div>
-      </header>
+      </div>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8" role="main" id="main-content">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* Description */}
         {data.description && (
           <Alert>
@@ -504,7 +504,7 @@ export default function SharedResultsViewer() {
             </div>
           </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

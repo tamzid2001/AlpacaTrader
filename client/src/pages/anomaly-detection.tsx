@@ -263,7 +263,7 @@ export default function AnomalyDetection() {
     <div className="min-h-screen bg-background flex">
       <Sidebar />
       
-      <main className="flex-1 ml-64 p-8" data-testid="anomaly-detection-main" role="main" id="main-content">
+      <div className="flex-1 ml-64 p-8" data-testid="anomaly-detection-main">
         <div className="max-w-7xl mx-auto space-y-8">
           {/* Header */}
           <div className="flex items-center justify-between">
@@ -484,7 +484,7 @@ export default function AnomalyDetection() {
             setShareUpload(null);
           }}
         />
-      </main>
+      </div>
     </div>
   );
 }

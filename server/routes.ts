@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import express from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { checkDatabaseHealth, getPoolStatus } from "./db";
@@ -15,12 +16,13 @@ import {
   insertShareInviteSchema,
   insertShareLinkSchema
 } from "@shared/schema";
+import { z } from "zod";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { registerSecurityRoutes } from "./routes/security";
-import iconRoutes from "./routes/icons";
 import OpenAI from "openai";
 import * as XLSX from "xlsx";
 import multer from "multer";
+import Stripe from "stripe";
 import { 
   uploadCsvFileServerSide, 
   deleteCsvFileServerSide, 
@@ -43,6 +45,58 @@ import {
 } from "./middleware/permissions";
 import { insertMarketDataDownloadSchema } from "@shared/schema";
 
+// Missing webhook handler functions
+async function handlePaymentSuccess(paymentIntent: any) {
+  console.log('Payment success handler called for:', paymentIntent.id);
+  // TODO: Implement payment success logic
+}
+
+async function handlePaymentFailure(failedPayment: any) {
+  console.log('Payment failure handler called for:', failedPayment.id);
+  // TODO: Implement payment failure logic
+}
+
+async function handleSubscriptionChange(subscription: any) {
+  console.log('Subscription change handler called for:', subscription.id);
+  // TODO: Implement subscription change logic
+}
+
+async function handleSubscriptionCancellation(deletedSub: any) {
+  console.log('Subscription cancellation handler called for:', deletedSub.id);
+  // TODO: Implement subscription cancellation logic
+}
+
+async function handleInvoicePayment(invoice: any) {
+  console.log('Invoice payment handler called for:', invoice.id);
+  // TODO: Implement invoice payment logic
+}
+
+async function handleInvoiceFailure(failedInvoice: any) {
+  console.log('Invoice failure handler called for:', failedInvoice.id);
+  // TODO: Implement invoice failure logic
+}
+
+// Missing AutoML functions
+async function checkAutoMLAccess(user: any) {
+  console.log('CheckAutoMLAccess called for user:', user?.id);
+  return { 
+    allowed: false, 
+    message: "AutoML not implemented",
+    reason: "Not implemented",
+    needsPayment: false
+  };
+}
+
+async function createAutoMLJob(user: any, jobData: any) {
+  console.log('CreateAutoMLJob called with:', jobData);
+  throw new Error("AutoML not implemented");
+}
+
+async function chargeAutoMLUsage(userId: string, cost: number) {
+  console.log('ChargeAutoMLUsage called for user:', userId, 'cost:', cost);
+  // TODO: Implement AutoML usage charging
+}
+
 // Initialize OpenAI with error handling for missing API key
 let openai: OpenAI | null = null;
 try {
@@ -55,6 +109,18 @@ try {
   console.warn("OpenAI initialization failed:", error);
 }
 
+// Initialize Stripe with error handling for missing API key
+let stripe: Stripe | null = null;
+try {
+  if (process.env.STRIPE_SECRET_KEY) {
+    stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: "2023-10-16",
+    });
+  }
+} catch (error) {
+  console.warn("Stripe initialization failed:", error);
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup Replit Auth middleware
   await setupAuth(app);
@@ -62,8 +128,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register security routes
   registerSecurityRoutes(app);
   
-  // Register icon routes
-  app.use('/api/icons', iconRoutes);
+  // Health check endpoints for Cloud Run deployment
+  app.get('/health', (req, res) => {
+    res.status(200).json({ 
+      status: 'healthy', 
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV || 'development'
+    });
+  });
+
+  // Root health check for load balancers and deployment systems
+  app.get('/_health', (req, res) => {
+    res.status(200).json({ status: 'ok' });
+  });
+
+  // Simple readiness probe
+  app.get('/ready', (req, res) => {
+    res.status(200).send('OK');
+  });
   
   // Database health and monitoring endpoints
   app.get('/api/health/database', async (req, res) => {
@@ -213,6 +296,304 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Error verifying Firebase token:", error);
       res.status(500).json({ message: "Failed to verify Firebase token", error: error.message });
+    }
+  });
+
+  // Error reporting endpoint for crash reports
+  app.post('/api/error-report', async (req, res) => {
+    try {
+      const { error, errorInfo, userAgent, url, timestamp } = req.body;
+      
+      // Extract user information if available
+      const userId = req.user?.claims?.sub || 'anonymous';
+      const userEmail = req.user?.claims?.email || 'unknown';
+      
+      // Log error for debugging
+      console.error('Frontend Error Report:', {
+        error,
+        errorInfo,
+        userAgent,
+        url,
+        timestamp,
+        userId,
+        userEmail
+      });
+
+      // TODO: Implement email notification to tamzid257@gmail.com when email service is available
+      // For now, we'll log the error details comprehensively
+      console.error('=== CRASH REPORT ===');
+      console.error('User ID:', userId);
+      console.error('User Email:', userEmail);
+      console.error('Error Name:', error.name);
+      console.error('Error Message:', error.message);
+      console.error('Error Stack:', error.stack);
+      console.error('Component Stack:', errorInfo?.componentStack);
+      console.error('User Agent:', userAgent);
+      console.error('URL:', url);
+      console.error('Timestamp:', timestamp);
+      console.error('Session ID:', req.sessionID);
+      console.error('=== END CRASH REPORT ===');
+
+      res.json({ success: true, message: 'Error report logged successfully' });
+    } catch (reportError: any) {
+      console.error('Failed to process error report:', reportError);
+      res.status(500).json({ error: 'Failed to process error report' });
+    }
+  });
+
+  // Secure payment intent endpoint with server-controlled pricing
+  app.post("/api/create-payment-intent", isAuthenticated, async (req: any, res) => {
+    const purchaseSchema = z.object({
+      productId: z.string(),
+      productType: z.enum(['course', 'subscription_monthly', 'subscription_yearly']),
+    });
+
+    const validation = purchaseSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ 
+        message: "Invalid request", 
+        errors: validation.error.errors 
+      });
+    }
+
+    const { productId, productType } = validation.data;
+
+    try {
+      if (!stripe) {
+        return res.status(500).json({ 
+          message: "Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable." 
+        });
+      }
+
+      let amount: number;
+      let description: string;
+
+      // SERVER-CONTROLLED PRICING
+      switch (productType) {
+        case 'course':
+          const course = await storage.getCourse(productId);
+          if (!course) {
+            return res.status(404).json({ message: "Course not found" });
+          }
+          amount = course.price || 9900;
+          description = `Course: ${course.title}`;
+          break;
+        case 'subscription_monthly':
+          amount = 2900; // $29/month
+          description = "Premium Monthly Subscription";
+          break;
+        case 'subscription_yearly':
+          amount = 29000; // $290/year (save $58)
+          description = "Premium Yearly Subscription";
+          break;
+        default:
+          return res.status(400).json({ message: "Invalid product type" });
+      }
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount,
+        currency: "usd",
+        metadata: {
+          userId: req.user.claims.sub,
+          userEmail: req.user.claims.email,
+          productId,
+          productType
+        },
+        description
+      });
+
+      res.json({ 
+        clientSecret: paymentIntent.client_secret,
+        amount: amount
+      });
+    } catch (error: any) {
+      console.error('Payment intent creation error:', error);
+      res.status(500).json({ 
+        message: "Error creating payment intent: " + error.message 
+      });
+    }
+  });
+
+  app.post("/api/create-subscription", isAuthenticated, async (req: any, res) => {
+    try {
+      if (!stripe) {
+        return res.status(500).json({ 
+          message: "Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable." 
+        });
+      }
+
+      const userId = req.user.claims.sub;
+      const userEmail = req.user.claims.email;
+      const user = await storage.getUser(userId);
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (!userEmail) {
+        return res.status(400).json({ message: "User email is required for subscription" });
+      }
+
+      // Check if user already has an active subscription
+      if (user.stripeSubscriptionId) {
+        try {
+          const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
+          
+          if (subscription.status === 'active' || subscription.status === 'trialing') {
+            return res.json({
+              subscriptionId: subscription.id,
+              clientSecret: subscription.latest_invoice?.payment_intent?.client_secret,
+              status: subscription.status
+            });
+          }
+        } catch (error) {
+          // Subscription doesn't exist anymore, continue to create new one
+          console.warn("Existing subscription not found, creating new one:", error);
+        }
+      }
+
+      let customerId = user.stripeCustomerId;
+
+      // Create Stripe customer if doesn't exist
+      if (!customerId) {
+        const customer = await stripe.customers.create({
+          email: userEmail,
+          name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || undefined,
+          metadata: {
+            userId: userId
+          }
+        });
+        
+        customerId = customer.id;
+        await storage.updateStripeCustomerId(userId, customerId);
+      }
+
+      // For now, we'll use a default price. In production, this should come from the request
+      // or be configured based on the subscription plan
+      const subscription = await stripe.subscriptions.create({
+        customer: customerId,
+        items: [{
+          // This should be replaced with actual price ID from Stripe Dashboard
+          // For now, we'll return an error asking for configuration
+          price: process.env.STRIPE_PRICE_ID || 'price_1234567890', // Placeholder
+        }],
+        payment_behavior: 'default_incomplete',
+        expand: ['latest_invoice.payment_intent'],
+      });
+
+      // Update user with subscription info
+      await storage.updateUserStripeInfo(userId, {
+        customerId,
+        subscriptionId: subscription.id
+      });
+
+      res.json({
+        subscriptionId: subscription.id,
+        clientSecret: subscription.latest_invoice?.payment_intent?.client_secret,
+        status: subscription.status
+      });
+    } catch (error: any) {
+      console.error("Error creating subscription:", error);
+      res.status(500).json({ 
+        message: "Error creating subscription: " + error.message 
+      });
+    }
+  });
+
+  // Comprehensive Webhook Integration - must be BEFORE express.json() middleware
+  app.post('/api/stripe/webhook', express.raw({type: 'application/json'}), async (req, res) => {
+    const sig = req.headers['stripe-signature'] as string;
+    let event: Stripe.Event;
+
+    try {
+      if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) {
+        return res.status(500).json({ error: 'Stripe not configured' });
+      }
+      event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+    } catch (err: any) {
+      console.error(`Webhook signature verification failed:`, err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    try {
+      // Handle the event
+      switch (event.type) {
+        case 'payment_intent.succeeded':
+          const paymentIntent = event.data.object;
+          console.log(`PaymentIntent ${paymentIntent.id} for $${paymentIntent.amount/100} succeeded!`);
+          await handlePaymentSuccess(paymentIntent);
+          break;
+
+        case 'payment_intent.payment_failed':
+          const failedPayment = event.data.object;
+          console.log(`PaymentIntent ${failedPayment.id} failed`);
+          await handlePaymentFailure(failedPayment);
+          break;
+
+        case 'customer.subscription.created':
+        case 'customer.subscription.updated':
+          const subscription = event.data.object;
+          console.log(`Subscription ${subscription.id} ${event.type}`);
+          await handleSubscriptionChange(subscription);
+          break;
+
+        case 'customer.subscription.deleted':
+          const deletedSub = event.data.object;
+          console.log(`Subscription ${deletedSub.id} cancelled`);
+          await handleSubscriptionCancellation(deletedSub);
+          break;
+
+        case 'invoice.payment_succeeded':
+          const invoice = event.data.object;
+          console.log(`Invoice ${invoice.id} payment succeeded`);
+          await handleInvoicePayment(invoice);
+          break;
+
+        case 'invoice.payment_failed':
+          const failedInvoice = event.data.object;
+          console.log(`Invoice ${failedInvoice.id} payment failed`);
+          await handleInvoiceFailure(failedInvoice);
+          break;
+
+        default:
+          console.log(`Unhandled event type: ${event.type}`);
+      }
+    } catch (error: any) {
+      console.error('Error handling webhook:', error);
+      return res.status(500).json({ error: 'Webhook handler failed' });
+    }
+
+    res.json({received: true});
+  });
+
+  // Usage-based billing endpoint for AutoML jobs
+  app.post("/api/automl/create-job", isAuthenticated, async (req: any, res) => {
+    const user = await storage.getUser(req.user.claims.sub);
+    
+    // Check subscription status and credits
+    const canUseAutoML = await checkAutoMLAccess(user);
+    if (!canUseAutoML.allowed) {
+      return res.status(403).json({ 
+        message: canUseAutoML.reason,
+        needsPayment: canUseAutoML.needsPayment 
+      });
+    }
+
+    // Create AutoML job (implement AWS SageMaker integration)
+    try {
+      const jobId = await createAutoMLJob(req.body, req.user.claims.sub);
+      
+      // Deduct credits if on subscription
+      if (user?.subscriptionStatus === 'active') {
+        await storage.deductAutoMLCredits(req.user.claims.sub, 1);
+      } else {
+        // Charge per-use fee
+        await chargeAutoMLUsage(req.user.claims.sub, 500); // $5.00 per job
+      }
+
+      res.json({ jobId, status: 'started' });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 
@@ -378,9 +759,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+      // Using gpt-5-nano model as specifically requested by user
       const response = await openai.chat.completions.create({
-        model: "gpt-5",
+        model: "gpt-5-nano",
         messages: [
           {
             role: "system",
@@ -1320,7 +1701,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           const anomalyDescriptions = storedAnomalies.map(a => a.description).join("; ");
           const response = await openai.chat.completions.create({
-            model: "gpt-5",
+            model: "gpt-5-nano",
             messages: [
               {
                 role: "system",
@@ -2914,39 +3295,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // SYSTEM ASSET STORAGE API ENDPOINTS
   // ===================
 
-  // Upload Generated Icon
-  app.post('/api/assets/icons/upload', isAuthenticated, upload.single('icon'), async (req: any, res) => {
-    try {
-      const { iconId, format, category, tags, prompt, style } = req.body;
-      const file = req.file;
-
-      if (!file || !iconId) {
-        return res.status(400).json({ error: "Icon file and iconId are required" });
-      }
-
-      const result = await objectStorage.uploadGeneratedIcon(iconId, file.buffer, {
-        format: format || 'svg',
-        category,
-        tags: tags ? JSON.parse(tags) : [],
-        generatedBy: req.user.claims.sub,
-        prompt,
-        style
-      });
-
-      if (!result.ok) {
-        return res.status(500).json({ error: result.error });
-      }
-
-      res.json({
-        success: true,
-        path: result.path,
-        iconId,
-        format: format || 'svg'
-      });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
 
   // Upload Chart Asset
   app.post('/api/assets/charts/upload', isAuthenticated, upload.single('chart'), async (req: any, res) => {

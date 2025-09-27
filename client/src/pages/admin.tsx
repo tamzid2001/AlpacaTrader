@@ -192,7 +192,7 @@ export default function AdminDashboard() {
       </nav>
 
       {/* Admin Main Content */}
-      <main className="flex-1 ml-64 p-8" role="main" id="main-content">
+      <div className="flex-1 ml-64 p-8">
         <div className="flex items-center gap-3 mb-8">
           <div className="w-10 h-10 bg-gradient-to-r from-red-600 to-orange-600 rounded-lg flex items-center justify-center">
             <Shield className="h-6 w-6 text-white" aria-hidden="true" />
@@ -411,7 +411,7 @@ export default function AdminDashboard() {
             )}
           </CardContent>
         </Card>
-      </main>
+      </div>
     </div>
   );
 }

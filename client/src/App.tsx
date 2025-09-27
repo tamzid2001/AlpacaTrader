@@ -20,9 +20,10 @@ import PrivacyPage from "@/pages/privacy";
 import PrivacySettings from "@/pages/privacy-settings";
 import TermsPage from "@/pages/terms";
 import NotFound from "@/pages/not-found";
-import IconGeneratorPage from "@/pages/icon-generator";
 import { CookieConsent } from "@/components/gdpr/cookie-consent";
 import SupportChat from "@/components/support/support-chat";
+import { ErrorBoundary } from "@/components/error-boundary/ErrorBoundary";
+import { NotFoundFallback } from "@/components/error-boundary/NotFoundFallback";
 
 // Layout wrapper for authenticated pages
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
@@ -42,7 +43,9 @@ function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
 function PublicLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen">
-      {children}
+      <Header />
+      <main className="flex-1">{children}</main>
+      <Footer />
     </div>
   );
 }
@@ -51,82 +54,91 @@ function Router() {
   const { isAuthenticated, isLoading } = useAuth();
 
   return (
-    <Switch>
-      {isLoading || !isAuthenticated ? (
-        <>
-          <Route path="/">
-            {() => <PublicLayout><LandingPage /></PublicLayout>}
-          </Route>
-          <Route path="/shared/:token">
-            {(params) => <PublicLayout><SharedResultsViewer {...params} /></PublicLayout>}
-          </Route>
-          <Route path="/privacy">
-            {() => <PublicLayout><PrivacyPage /></PublicLayout>}
-          </Route>
-          <Route path="/terms">
-            {() => <PublicLayout><TermsPage /></PublicLayout>}
-          </Route>
-          <Route>
-            {() => <PublicLayout><LandingPage /></PublicLayout>}
-          </Route>
-        </>
-      ) : (
-        <>
-          <Route path="/">
-            {() => <AuthenticatedLayout><Dashboard /></AuthenticatedLayout>}
-          </Route>
-          <Route path="/dashboard">
-            {() => <AuthenticatedLayout><Dashboard /></AuthenticatedLayout>}
-          </Route>
-          <Route path="/admin">
-            {() => <AuthenticatedLayout><AdminDashboard /></AuthenticatedLayout>}
-          </Route>
-          <Route path="/icon-generator">
-            {() => <AuthenticatedLayout><IconGeneratorPage /></AuthenticatedLayout>}
-          </Route>
-          <Route path="/market-data">
-            {() => <AuthenticatedLayout><MarketDataPage /></AuthenticatedLayout>}
-          </Route>
-          <Route path="/anomaly-detection">
-            {() => <AuthenticatedLayout><AnomalyDetection /></AuthenticatedLayout>}
-          </Route>
-          <Route path="/my-shared-results">
-            {() => <AuthenticatedLayout><MySharedResults /></AuthenticatedLayout>}
-          </Route>
-          <Route path="/shared/:token">
-            {(params) => <PublicLayout><SharedResultsViewer {...params} /></PublicLayout>}
-          </Route>
-          <Route path="/privacy">
-            {() => <AuthenticatedLayout><PrivacyPage /></AuthenticatedLayout>}
-          </Route>
-          <Route path="/privacy-settings">
-            {() => <AuthenticatedLayout><PrivacySettings /></AuthenticatedLayout>}
-          </Route>
-          <Route path="/terms">
-            {() => <AuthenticatedLayout><TermsPage /></AuthenticatedLayout>}
-          </Route>
-          <Route>
-            {() => <AuthenticatedLayout><NotFound /></AuthenticatedLayout>}
-          </Route>
-        </>
-      )}
-    </Switch>
+    <ErrorBoundary>
+      <Switch>
+        {isLoading || !isAuthenticated ? (
+          <>
+            <Route path="/">
+              {() => <ErrorBoundary><PublicLayout><LandingPage /></PublicLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/shared/:token">
+              {() => <ErrorBoundary><PublicLayout><SharedResultsViewer /></PublicLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/privacy">
+              {() => <ErrorBoundary><PublicLayout><PrivacyPage /></PublicLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/terms">
+              {() => <ErrorBoundary><PublicLayout><TermsPage /></PublicLayout></ErrorBoundary>}
+            </Route>
+            <Route>
+              {() => <ErrorBoundary><PublicLayout><LandingPage /></PublicLayout></ErrorBoundary>}
+            </Route>
+          </>
+        ) : (
+          <>
+            <Route path="/">
+              {() => <ErrorBoundary><AuthenticatedLayout><Dashboard /></AuthenticatedLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/dashboard">
+              {() => <ErrorBoundary><AuthenticatedLayout><Dashboard /></AuthenticatedLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/admin">
+              {() => <ErrorBoundary><AuthenticatedLayout><AdminDashboard /></AuthenticatedLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/market-data">
+              {() => <ErrorBoundary><AuthenticatedLayout><MarketDataPage /></AuthenticatedLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/anomaly-detection">
+              {() => <ErrorBoundary><AuthenticatedLayout><AnomalyDetection /></AuthenticatedLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/my-shared-results">
+              {() => <ErrorBoundary><AuthenticatedLayout><MySharedResults /></AuthenticatedLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/shared/:token">
+              {() => <ErrorBoundary><PublicLayout><SharedResultsViewer /></PublicLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/privacy">
+              {() => <ErrorBoundary><AuthenticatedLayout><PrivacyPage /></AuthenticatedLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/privacy-settings">
+              {() => <ErrorBoundary><AuthenticatedLayout><PrivacySettings /></AuthenticatedLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/terms">
+              {() => <ErrorBoundary><AuthenticatedLayout><TermsPage /></AuthenticatedLayout></ErrorBoundary>}
+            </Route>
+            <Route>
+              {() => <ErrorBoundary fallback={<NotFoundFallback />}><AuthenticatedLayout><NotFound /></AuthenticatedLayout></ErrorBoundary>}
+            </Route>
+          </>
+        )}
+      </Switch>
+    </ErrorBoundary>
   );
 }
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <TooltipProvider>
-          <AccessibilityTesting />
-          <Toaster />
-          <Router />
-          <SupportChat />
-          <CookieConsent />
-        </TooltipProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ErrorBoundary>
+          <AuthProvider>
+            <TooltipProvider>
+              <ErrorBoundary>
+                <AccessibilityTesting />
+              </ErrorBoundary>
+              <Toaster />
+              <Router />
+              <ErrorBoundary>
+                <SupportChat />
+              </ErrorBoundary>
+              <ErrorBoundary>
+                <CookieConsent />
+              </ErrorBoundary>
+            </TooltipProvider>
+          </AuthProvider>
+        </ErrorBoundary>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

@@ -29,6 +29,24 @@ export const users = pgTable("users", {
   analyticsConsent: boolean("analytics_consent").default(false),
   dataProcessingBasis: varchar("data_processing_basis"), // contract, consent, legitimate_interest
   lastConsentUpdate: timestamp("last_consent_update"),
+  // Stripe Integration Fields
+  stripeCustomerId: varchar("stripe_customer_id"), // Stripe customer ID
+  stripeSubscriptionId: varchar("stripe_subscription_id"), // Active subscription ID (nullable)
+  
+  // Subscription Management
+  subscriptionStatus: varchar("subscription_status"), // active, past_due, cancelled, etc.
+  subscriptionPlan: varchar("subscription_plan"), // monthly, yearly
+  subscriptionStartDate: timestamp("subscription_start_date"),
+  subscriptionEndDate: timestamp("subscription_end_date"),
+  
+  // Usage Tracking
+  automlCreditsRemaining: integer("automl_credits_remaining").default(0),
+  automlCreditsTotal: integer("automl_credits_total").default(0),
+  monthlyUsageResetDate: timestamp("monthly_usage_reset_date"),
+  
+  // Payment Methods
+  defaultPaymentMethodId: varchar("default_payment_method_id"),
+  
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
@@ -547,6 +565,45 @@ export const popularSymbols = pgTable("popular_symbols", {
   index("IDX_popular_symbols_sector").on(table.sector),
 ]);
 
+// ===================
+// BILLING AND PAYMENT TABLES
+// ===================
+
+// Payment Records Table
+export const payments = pgTable("payments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id),
+  paymentIntentId: varchar("payment_intent_id").notNull(),
+  amount: integer("amount").notNull(), // in cents
+  currency: varchar("currency").default("usd"),
+  status: varchar("status").notNull(), // succeeded, failed, pending
+  productType: varchar("product_type").notNull(),
+  productId: varchar("product_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("IDX_payments_user_id").on(table.userId),
+  index("IDX_payments_status").on(table.status),
+  index("IDX_payments_product_type").on(table.productType),
+  index("IDX_payments_created_at").on(table.createdAt),
+]);
+
+// AutoML Job Records
+export const automlJobs = pgTable("automl_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id),
+  jobName: varchar("job_name").notNull(),
+  status: varchar("status").notNull(), // started, running, completed, failed
+  sagemakerJobArn: varchar("sagemaker_job_arn"),
+  resultsCsvUrl: varchar("results_csv_url"),
+  cost: integer("cost"), // in cents
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (table) => [
+  index("IDX_automl_jobs_user_id").on(table.userId),
+  index("IDX_automl_jobs_status").on(table.status),
+  index("IDX_automl_jobs_created_at").on(table.createdAt),
+]);
+
 // Permission Management Insert Schemas
 export const insertAccessGrantSchema = createInsertSchema(accessGrants).omit({
   id: true,
@@ -735,6 +792,24 @@ export const insertPopularSymbolSchema = createInsertSchema(popularSymbols).omit
   marketCap: z.enum(["large", "mid", "small"]).optional(),
 });
 
+// Billing and Payment Insert Schemas
+export const insertPaymentSchema = createInsertSchema(payments).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  status: z.enum(["succeeded", "failed", "pending"]),
+  productType: z.enum(["course", "subscription_monthly", "subscription_yearly", "automl_usage"]),
+  currency: z.string().default("usd"),
+});
+
+export const insertAutoMLJobSchema = createInsertSchema(automlJobs).omit({
+  id: true,
+  createdAt: true,
+  completedAt: true,
+}).extend({
+  status: z.enum(["started", "running", "completed", "failed"]),
+});
+
 export const insertAnomalySchema = createInsertSchema(anomalies).omit({
   id: true,
   createdAt: true,
@@ -849,6 +924,12 @@ export type MarketDataDownload = typeof marketDataDownloads.$inferSelect;
 export type InsertPopularSymbol = z.infer<typeof insertPopularSymbolSchema>;
 export type PopularSymbol = typeof popularSymbols.$inferSelect;
 
+// Billing and Payment Type Exports
+export type InsertPayment = z.infer<typeof insertPaymentSchema>;
+export type Payment = typeof payments.$inferSelect;
+export type InsertAutoMLJob = z.infer<typeof insertAutoMLJobSchema>;
+export type AutoMLJob = typeof automlJobs.$inferSelect;
+
 // Permission Management Enums for type safety
 export const RESOURCE_TYPES = ["csv", "course", "report", "user_content"] as const;
 export const PRINCIPAL_TYPES = ["user", "group", "link"] as const;
@@ -910,3 +991,252 @@ export type AccessLevel = typeof ACCESS_LEVELS[number];
 export type AssetType = typeof ASSET_TYPES[number];
 export type ProcessType = typeof PROCESS_TYPES[number];
 export type ProcessStatus = typeof PROCESS_STATUSES[number];
+
+// ===========================================
+// COMPREHENSIVE EMAIL NOTIFICATIONS SYSTEM TABLES
+// Following Architect's Strategic Design
+// ===========================================
+
+// Notification Templates (reusable email templates)
+export const notificationTemplates = pgTable("notification_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  type: varchar("type").notNull(), // 'price_alert', 'scheduled', 'excel_report', 'crash_report'
+  name: varchar("name").notNull(),
+  subject: text("subject").notNull(),
+  htmlTemplate: text("html_template").notNull(),
+  textTemplate: text("text_template"),
+  variables: json("variables").default('[]'), // Array of template variables
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("IDX_notification_templates_type").on(table.type),
+  index("IDX_notification_templates_is_active").on(table.isActive),
+  index("IDX_notification_templates_created_at").on(table.createdAt),
+]);
+
+// Alert Rules (user-configurable conditions)
+export const alertRules = pgTable("alert_rules", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  name: varchar("name").notNull(),
+  type: varchar("type").notNull(), // 'price_crossing', 'percentile_threshold', 'volume_spike'
+  ticker: varchar("ticker").notNull(),
+  conditions: json("conditions").notNull(), // Dynamic conditions based on type
+  isActive: boolean("is_active").default(true),
+  triggerCount: integer("trigger_count").default(0),
+  lastTriggered: timestamp("last_triggered"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("IDX_alert_rules_user_id").on(table.userId),
+  index("IDX_alert_rules_ticker").on(table.ticker),
+  index("IDX_alert_rules_type").on(table.type),
+  index("IDX_alert_rules_is_active").on(table.isActive),
+  index("IDX_alert_rules_last_triggered").on(table.lastTriggered),
+  index("IDX_alert_rules_created_at").on(table.createdAt),
+]);
+
+// Alert Subscriptions (user to rule mapping with channels)
+export const alertSubscriptions = pgTable("alert_subscriptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  alertRuleId: varchar("alert_rule_id").notNull().references(() => alertRules.id),
+  channel: varchar("channel").notNull().default("email"), // 'email', 'sms', 'webhook'
+  schedule: json("schedule"), // Timing preferences, frequency limits
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("IDX_alert_subscriptions_user_id").on(table.userId),
+  index("IDX_alert_subscriptions_alert_rule_id").on(table.alertRuleId),
+  index("IDX_alert_subscriptions_channel").on(table.channel),
+  index("IDX_alert_subscriptions_is_active").on(table.isActive),
+  index("IDX_alert_subscriptions_created_at").on(table.createdAt),
+]);
+
+// Notification Queue (pending jobs with payload + status)
+export const notificationQueue = pgTable("notification_queue", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  templateId: varchar("template_id").references(() => notificationTemplates.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  recipient: varchar("recipient").notNull(), // Email address
+  payload: json("payload").notNull(), // Template variables and data
+  status: varchar("status").default("pending"), // 'pending', 'processing', 'sent', 'failed', 'cancelled'
+  priority: integer("priority").default(0), // Higher numbers = higher priority
+  scheduledAt: timestamp("scheduled_at").defaultNow(),
+  processedAt: timestamp("processed_at"),
+  attempts: integer("attempts").default(0),
+  maxAttempts: integer("max_attempts").default(3),
+  errorMessage: text("error_message"),
+  metadata: json("metadata"), // Additional context
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("IDX_notification_queue_user_id").on(table.userId),
+  index("IDX_notification_queue_template_id").on(table.templateId),
+  index("IDX_notification_queue_status").on(table.status),
+  index("IDX_notification_queue_priority").on(table.priority),
+  index("IDX_notification_queue_scheduled_at").on(table.scheduledAt),
+  index("IDX_notification_queue_created_at").on(table.createdAt),
+]);
+
+// Notification Events (history/audit trail)
+export const notificationEvents = pgTable("notification_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  notificationId: varchar("notification_id").references(() => notificationQueue.id),
+  event: varchar("event").notNull(), // 'created', 'processing', 'sent', 'failed', 'opened', 'clicked'
+  details: json("details"),
+  timestamp: timestamp("timestamp").defaultNow(),
+  userAgent: varchar("user_agent"),
+  ipAddress: varchar("ip_address"),
+}, (table) => [
+  index("IDX_notification_events_notification_id").on(table.notificationId),
+  index("IDX_notification_events_event").on(table.event),
+  index("IDX_notification_events_timestamp").on(table.timestamp),
+]);
+
+// Admin Approvals (state machine for pending alerts/reports)
+export const adminApprovals = pgTable("admin_approvals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  resourceType: varchar("resource_type").notNull(), // 'alert_rule', 'scheduled_notification', 'excel_report'
+  resourceId: varchar("resource_id").notNull(),
+  requesterId: varchar("requester_id").notNull().references(() => users.id),
+  reviewerId: varchar("reviewer_id").references(() => users.id),
+  status: varchar("status").default("pending"), // 'pending', 'approved', 'rejected', 'expired'
+  requestDetails: json("request_details").notNull(),
+  reviewNotes: text("review_notes"),
+  autoApprove: boolean("auto_approve").default(false),
+  expiresAt: timestamp("expires_at"),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("IDX_admin_approvals_resource_type").on(table.resourceType),
+  index("IDX_admin_approvals_resource_id").on(table.resourceId),
+  index("IDX_admin_approvals_requester_id").on(table.requesterId),
+  index("IDX_admin_approvals_reviewer_id").on(table.reviewerId),
+  index("IDX_admin_approvals_status").on(table.status),
+  index("IDX_admin_approvals_expires_at").on(table.expiresAt),
+  index("IDX_admin_approvals_created_at").on(table.createdAt),
+]);
+
+// Crash Reports (for diagnostics)
+export const crashReports = pgTable("crash_reports", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionHash: varchar("session_hash"), // Hashed session ID to protect PII
+  errorType: varchar("error_type").notNull(),
+  errorMessage: text("error_message").notNull(),
+  stackTrace: text("stack_trace"),
+  userAgent: varchar("user_agent"),
+  url: varchar("url"),
+  userId: varchar("user_id").references(() => users.id),
+  metadata: json("metadata"),
+  resolved: boolean("resolved").default(false),
+  reportedAt: timestamp("reported_at").defaultNow(),
+}, (table) => [
+  index("IDX_crash_reports_user_id").on(table.userId),
+  index("IDX_crash_reports_error_type").on(table.errorType),
+  index("IDX_crash_reports_resolved").on(table.resolved),
+  index("IDX_crash_reports_reported_at").on(table.reportedAt),
+]);
+
+// Market Data Cache (for efficient alert processing) - Enhanced
+export const marketDataCache = pgTable("market_data_cache", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticker: varchar("ticker").notNull().unique(),
+  currentPrice: real("current_price").notNull(),
+  previousClose: real("previous_close"),
+  dayHigh: real("day_high"),
+  dayLow: real("day_low"),
+  volume: integer("volume"),
+  percentileData: json("percentile_data"), // P1-P99 calculations
+  priceHistory: json("price_history"), // Recent price array for analysis
+  lastUpdated: timestamp("last_updated").defaultNow(),
+  isValid: boolean("is_valid").default(true),
+  fetchErrorCount: integer("fetch_error_count").default(0),
+}, (table) => [
+  index("IDX_market_data_cache_ticker").on(table.ticker),
+  index("IDX_market_data_cache_last_updated").on(table.lastUpdated),
+  index("IDX_market_data_cache_is_valid").on(table.isValid),
+  index("IDX_market_data_cache_fetch_error_count").on(table.fetchErrorCount),
+]);
+
+// ===========================================
+// COMPREHENSIVE NOTIFICATION SYSTEM SCHEMAS & TYPES
+// ===========================================
+
+// Notification Template Schemas
+export const insertNotificationTemplateSchema = createInsertSchema(notificationTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertAlertRuleSchema = createInsertSchema(alertRules).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertAlertSubscriptionSchema = createInsertSchema(alertSubscriptions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertNotificationQueueSchema = createInsertSchema(notificationQueue).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertNotificationEventSchema = createInsertSchema(notificationEvents).omit({
+  id: true,
+  timestamp: true,
+});
+
+export const insertAdminApprovalSchema = createInsertSchema(adminApprovals).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertCrashReportSchema = createInsertSchema(crashReports).omit({
+  id: true,
+  reportedAt: true,
+});
+
+export const insertMarketDataCacheSchema = createInsertSchema(marketDataCache).omit({
+  id: true,
+  lastUpdated: true,
+});
+
+// Comprehensive Notification Type Exports
+export type InsertNotificationTemplate = z.infer<typeof insertNotificationTemplateSchema>;
+export type NotificationTemplate = typeof notificationTemplates.$inferSelect;
+export type InsertAlertRule = z.infer<typeof insertAlertRuleSchema>;
+export type AlertRule = typeof alertRules.$inferSelect;
+export type InsertAlertSubscription = z.infer<typeof insertAlertSubscriptionSchema>;
+export type AlertSubscription = typeof alertSubscriptions.$inferSelect;
+export type InsertNotificationQueue = z.infer<typeof insertNotificationQueueSchema>;
+export type NotificationQueue = typeof notificationQueue.$inferSelect;
+export type InsertNotificationEvent = z.infer<typeof insertNotificationEventSchema>;
+export type NotificationEvent = typeof notificationEvents.$inferSelect;
+export type InsertAdminApproval = z.infer<typeof insertAdminApprovalSchema>;
+export type AdminApproval = typeof adminApprovals.$inferSelect;
+export type InsertCrashReport = z.infer<typeof insertCrashReportSchema>;
+export type CrashReport = typeof crashReports.$inferSelect;
+export type InsertMarketDataCache = z.infer<typeof insertMarketDataCacheSchema>;
+export type MarketDataCache = typeof marketDataCache.$inferSelect;
+
+// Comprehensive Notification Constants
+export const NOTIFICATION_TEMPLATE_TYPES = ["price_alert", "scheduled", "excel_report", "crash_report"] as const;
+export const ALERT_RULE_TYPES = ["price_crossing", "percentile_threshold", "volume_spike"] as const;
+export const NOTIFICATION_CHANNELS = ["email", "sms", "webhook"] as const;
+export const NOTIFICATION_QUEUE_STATUSES = ["pending", "processing", "sent", "failed", "cancelled"] as const;
+export const NOTIFICATION_EVENTS = ["created", "processing", "sent", "failed", "opened", "clicked"] as const;
+export const ADMIN_APPROVAL_STATUSES = ["pending", "approved", "rejected", "expired"] as const;
+export const ADMIN_APPROVAL_RESOURCE_TYPES = ["alert_rule", "scheduled_notification", "excel_report"] as const;
+
+export type NotificationTemplateType = typeof NOTIFICATION_TEMPLATE_TYPES[number];
+export type AlertRuleType = typeof ALERT_RULE_TYPES[number];
+export type NotificationChannel = typeof NOTIFICATION_CHANNELS[number];
+export type NotificationQueueStatus = typeof NOTIFICATION_QUEUE_STATUSES[number];
+export type NotificationEventType = typeof NOTIFICATION_EVENTS[number];
+export type AdminApprovalStatus = typeof ADMIN_APPROVAL_STATUSES[number];
+export type AdminApprovalResourceType = typeof ADMIN_APPROVAL_RESOURCE_TYPES[number];

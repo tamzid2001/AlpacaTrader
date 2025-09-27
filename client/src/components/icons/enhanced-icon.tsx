@@ -1,15 +1,13 @@
 import { forwardRef, useMemo } from 'react';
-import { useIcon } from '@/hooks/use-icons';
-import { IconComponent, IconAccessibility } from '@/types/icons';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertTriangle } from 'lucide-react';
+import * as LucideIcons from 'lucide-react';
 
 // Enhanced Icon Props
 export interface EnhancedIconProps {
   // Icon identification
   name: string;
-  library?: string;
   
   // Styling
   size?: number | string;
@@ -22,7 +20,6 @@ export interface EnhancedIconProps {
   opacity?: number;
   
   // Accessibility
-  accessibility?: IconAccessibility;
   'aria-label'?: string;
   'aria-hidden'?: boolean;
   role?: string;
@@ -31,6 +28,7 @@ export interface EnhancedIconProps {
   loading?: boolean;
   fallback?: React.ReactNode;
   onClick?: () => void;
+  onKeyDown?: (e: any) => void;
   
   // Animation
   animate?: 'none' | 'spin' | 'pulse' | 'bounce';
@@ -39,32 +37,27 @@ export interface EnhancedIconProps {
   'data-testid'?: string;
 }
 
-// Enhanced Icon Component with dynamic loading and accessibility
+// Enhanced Icon Component with simplified icon loading
 export const EnhancedIcon = forwardRef<HTMLElement, EnhancedIconProps>(
   ({
     name,
-    library = 'lucide',
     size = 24,
     color,
     className,
     strokeWidth,
     fill,
     opacity,
-    accessibility,
     'aria-label': ariaLabel,
     'aria-hidden': ariaHidden,
     role,
     loading: externalLoading,
     fallback,
     onClick,
+    onKeyDown,
     animate = 'none',
     'data-testid': testId,
     ...props
   }, ref) => {
-    // Load icon dynamically
-    const { icon, loading: iconLoading, error } = useIcon(name, library);
-    
-    const loading = externalLoading || iconLoading;
     
     // Animation classes
     const animationClasses = useMemo(() => {
@@ -80,35 +73,11 @@ export const EnhancedIcon = forwardRef<HTMLElement, EnhancedIconProps>(
       }
     }, [animate]);
 
-    // Accessibility props
-    const accessibilityProps = useMemo(() => {
-      const props: Record<string, any> = {};
-      
-      if (accessibility?.label || ariaLabel) {
-        props['aria-label'] = accessibility?.label || ariaLabel;
-      }
-      
-      if (accessibility?.description) {
-        props['aria-describedby'] = accessibility?.describedBy;
-      }
-      
-      if (accessibility?.hidden || ariaHidden) {
-        props['aria-hidden'] = true;
-      }
-      
-      if (accessibility?.role || role) {
-        props.role = accessibility?.role || role;
-      }
-      
-      return props;
-    }, [accessibility, ariaLabel, ariaHidden, role]);
-
     // Icon props
     const iconProps = useMemo(() => {
       const props: Record<string, any> = {
         size,
         className: cn(animationClasses, className),
-        ...accessibilityProps,
       };
       
       if (color) props.color = color;
@@ -116,7 +85,11 @@ export const EnhancedIcon = forwardRef<HTMLElement, EnhancedIconProps>(
       if (fill) props.fill = fill;
       if (opacity) props.opacity = opacity;
       if (onClick) props.onClick = onClick;
+      if (onKeyDown) props.onKeyDown = onKeyDown;
       if (testId) props['data-testid'] = testId;
+      if (ariaLabel) props['aria-label'] = ariaLabel;
+      if (ariaHidden) props['aria-hidden'] = ariaHidden;
+      if (role) props.role = role;
       
       return props;
     }, [
@@ -126,14 +99,17 @@ export const EnhancedIcon = forwardRef<HTMLElement, EnhancedIconProps>(
       fill, 
       opacity, 
       onClick, 
+      onKeyDown,
       testId,
       animationClasses,
       className,
-      accessibilityProps
+      ariaLabel,
+      ariaHidden,
+      role
     ]);
 
     // Loading state
-    if (loading) {
+    if (externalLoading) {
       return (
         <Skeleton
           className={cn("inline-block", animationClasses, className)}
@@ -143,8 +119,11 @@ export const EnhancedIcon = forwardRef<HTMLElement, EnhancedIconProps>(
       );
     }
 
+    // Get icon from lucide-react
+    const IconComponent = (LucideIcons as any)[name];
+    
     // Error state
-    if (error || !icon) {
+    if (!IconComponent) {
       if (fallback) {
         return <>{fallback}</>;
       }
@@ -154,16 +133,12 @@ export const EnhancedIcon = forwardRef<HTMLElement, EnhancedIconProps>(
           {...iconProps}
           className={cn("text-destructive", iconProps.className)}
           data-testid={testId ? `${testId}-error` : undefined}
-          title={`Failed to load icon: ${name} from ${library}`}
+          aria-label={`Icon not found: ${name}`}
         />
       );
     }
 
-    // Render the loaded icon
-    const IconComponent = icon;
-    
-    // Debug logging removed - icons working correctly
-    
+    // Render the icon
     return <IconComponent {...iconProps} {...props} />;
   }
 );
@@ -200,7 +175,6 @@ export function ClickableIcon({ onClick, ...props }: EnhancedIconProps & { onCli
       onClick={onClick}
       className={cn("cursor-pointer hover:opacity-75 transition-opacity", props.className)}
       role="button"
-      tabIndex={0}
       onKeyDown={(e: any) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
@@ -226,23 +200,6 @@ export function WarningIcon(props: Omit<EnhancedIconProps, 'color' | 'name'>) {
 
 export function InfoIcon(props: Omit<EnhancedIconProps, 'color' | 'name'>) {
   return <EnhancedIcon name="Info" color="rgb(59 130 246)" {...props} />;
-}
-
-// Social media icons with brand colors
-export function GoogleIcon(props: Omit<EnhancedIconProps, 'name' | 'library'>) {
-  return <EnhancedIcon name="SiGoogle" library="si" {...props} />;
-}
-
-export function GithubIcon(props: Omit<EnhancedIconProps, 'name' | 'library'>) {
-  return <EnhancedIcon name="SiGithub" library="si" {...props} />;
-}
-
-export function TwitterIcon(props: Omit<EnhancedIconProps, 'name' | 'library'>) {
-  return <EnhancedIcon name="SiTwitter" library="si" {...props} />;
-}
-
-export function LinkedinIcon(props: Omit<EnhancedIconProps, 'name' | 'library'>) {
-  return <EnhancedIcon name="SiLinkedin" library="si" {...props} />;
 }
 
 // Navigation icons

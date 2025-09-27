@@ -29,6 +29,38 @@ const app = initializeApp(firebaseConfig);
 const storage = getStorage(app);
 const auth = getAuth(app);
 
+// Prevent Firebase from automatically trying to refresh tokens
+// Since we use custom tokens from Replit Auth, we handle refresh manually
+const originalGetIdToken = auth.currentUser?.getIdToken;
+if (originalGetIdToken) {
+  // Override getIdToken to prevent automatic STS token refresh
+  Object.defineProperty(auth, 'currentUser', {
+    get() {
+      const user = this._currentUser;
+      if (user && !user._overrideGetIdToken) {
+        user._overrideGetIdToken = true;
+        const originalMethod = user.getIdToken.bind(user);
+        user.getIdToken = async (forceRefresh = false) => {
+          try {
+            // If we have a cached custom token and it's not expired, use it
+            if (cachedFirebaseToken && tokenExpires && Date.now() < tokenExpires - 60000 && !forceRefresh) {
+              return cachedFirebaseToken;
+            }
+            // Otherwise, get a new custom token from our server
+            const { token } = await getFirebaseAuthToken();
+            return token;
+          } catch (error: any) {
+            console.warn('Custom getIdToken failed, falling back to original:', error.message);
+            return originalMethod(forceRefresh);
+          }
+        };
+      }
+      return user;
+    },
+    configurable: true
+  });
+}
+
 // Cache for Firebase auth token
 let cachedFirebaseToken: string | null = null;
 let tokenExpires: number | null = null;
@@ -66,30 +98,62 @@ export async function getFirebaseAuthToken(): Promise<{ token: string; expires: 
     return { token: cachedFirebaseToken, expires: tokenExpires };
   }
 
-  try {
-    const response = await fetch('/api/auth/firebase-token', {
-      method: 'GET',
-      credentials: 'include', // Include Replit Auth session cookies
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
+  let retryCount = 0;
+  const maxRetries = 3;
 
-    if (!response.ok) {
-      throw new Error(`Failed to get Firebase token: ${response.status}`);
+  while (retryCount < maxRetries) {
+    try {
+      console.log(`Fetching Firebase token (attempt ${retryCount + 1}/${maxRetries})`);
+      
+      const response = await fetch('/api/auth/firebase-token', {
+        method: 'GET',
+        credentials: 'include', // Include Replit Auth session cookies
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        // Handle specific HTTP errors
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.');
+        } else if (response.status === 403) {
+          throw new Error('Access denied. Please check your permissions.');
+        } else if (response.status >= 500) {
+          throw new Error(`Server error (${response.status}). Please try again later.`);
+        } else {
+          throw new Error(`Failed to get Firebase token: ${response.status}`);
+        }
+      }
+
+      const data = await response.json();
+      
+      // Cache the token
+      cachedFirebaseToken = data.firebaseToken;
+      tokenExpires = data.expires;
+
+      console.log('Successfully obtained Firebase token');
+      return { token: data.firebaseToken, expires: data.expires };
+    } catch (error: any) {
+      retryCount++;
+      console.error(`Firebase token fetch attempt ${retryCount} failed:`, error.message);
+      
+      if (retryCount >= maxRetries) {
+        console.error('All Firebase token fetch attempts failed');
+        // Clear cached token to force fresh attempt next time
+        cachedFirebaseToken = null;
+        tokenExpires = null;
+        throw new Error(`Authentication failed after ${maxRetries} attempts: ${error.message}`);
+      }
+      
+      // Wait before retrying (exponential backoff)
+      const backoffTime = Math.pow(2, retryCount) * 1000;
+      console.log(`Waiting ${backoffTime}ms before retry...`);
+      await new Promise(resolve => setTimeout(resolve, backoffTime));
     }
-
-    const data = await response.json();
-    
-    // Cache the token
-    cachedFirebaseToken = data.firebaseToken;
-    tokenExpires = data.expires;
-
-    return { token: data.firebaseToken, expires: data.expires };
-  } catch (error: any) {
-    console.error('Error fetching Firebase auth token:', error);
-    throw new Error(`Authentication failed: ${error.message}`);
   }
+
+  throw new Error('Unexpected error in Firebase token fetch');
 }
 
 /**
@@ -106,6 +170,26 @@ export async function authenticateWithFirebase(): Promise<FirebaseAuthStatus> {
     
     console.log('Successfully authenticated with Firebase Storage');
     
+    // Add event listener to handle token refresh errors
+    const handleTokenError = (error: any) => {
+      console.warn('Firebase token error detected:', error);
+      // Clear cached token to force fresh fetch on next operation
+      cachedFirebaseToken = null;
+      tokenExpires = null;
+    };
+
+    // Listen for auth state changes to handle token refresh errors
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (!user && cachedFirebaseToken) {
+        console.warn('Firebase user signed out unexpectedly, clearing cached token');
+        cachedFirebaseToken = null;
+        tokenExpires = null;
+      }
+    });
+
+    // Store unsubscribe function for cleanup if needed
+    (userCredential.user as any)._unsubscribeTokenError = unsubscribe;
+    
     return {
       isAuthenticated: true,
       user: userCredential.user,
@@ -114,6 +198,11 @@ export async function authenticateWithFirebase(): Promise<FirebaseAuthStatus> {
     };
   } catch (error: any) {
     console.error('Firebase authentication failed:', error);
+    
+    // Clear cached token on authentication failure
+    cachedFirebaseToken = null;
+    tokenExpires = null;
+    
     return {
       isAuthenticated: false,
       user: null,
@@ -164,12 +253,29 @@ async function ensureFirebaseAuthenticated(): Promise<void> {
     }
   }
   
-  // Check if token needs refresh
+  // Check if token needs refresh (with retry logic for token refresh errors)
   if (tokenExpires && Date.now() >= tokenExpires - 300000) { // 5 minutes buffer
-    try {
-      await authenticateWithFirebase(); // Refresh token
-    } catch (error) {
-      console.warn('Token refresh failed, continuing with existing authentication');
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    while (retryCount < maxRetries) {
+      try {
+        console.log(`Attempting to refresh Firebase token (attempt ${retryCount + 1}/${maxRetries})`);
+        await authenticateWithFirebase(); // Refresh token
+        break; // Success, exit retry loop
+      } catch (error: any) {
+        retryCount++;
+        console.warn(`Token refresh attempt ${retryCount} failed:`, error.message);
+        
+        if (retryCount >= maxRetries) {
+          console.error('All token refresh attempts failed. Continuing with existing authentication.');
+          // Don't throw error - allow operation to continue with existing token
+          break;
+        }
+        
+        // Wait before retrying (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+      }
     }
   }
 }

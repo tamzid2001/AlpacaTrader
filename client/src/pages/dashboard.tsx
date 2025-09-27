@@ -95,7 +95,7 @@ export default function Dashboard() {
     <div className="min-h-screen bg-background flex">
       <Sidebar />
       
-      <main className="flex-1 ml-64 p-8" data-testid="dashboard-main" role="main" id="main-content">
+      <div className="flex-1 ml-64 p-8" data-testid="dashboard-main">
         {/* Top Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -254,7 +254,7 @@ export default function Dashboard() {
           </h2>
           <VideoPlayer />
         </div>
-      </main>
+      </div>
       
       <SupportChat />
     </div>
