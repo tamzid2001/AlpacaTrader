@@ -25,9 +25,9 @@ import {
 } from "lucide-react";
 
 interface VideoPlayerProps {
-  lesson: Lesson;
-  courseId: string;
-  userId: string;
+  lesson?: Lesson;
+  courseId?: string;
+  userId?: string;
   onLessonComplete?: () => void;
   onProgress?: (progress: number) => void;
 }
@@ -39,6 +39,22 @@ export default function VideoPlayer({
   onLessonComplete, 
   onProgress 
 }: VideoPlayerProps) {
+  // Early return if no lesson data is provided
+  if (!lesson) {
+    return (
+      <Card className="overflow-hidden" data-testid="card-video-player">
+        <CardContent className="p-6">
+          <div className="flex items-center justify-center h-64 bg-secondary rounded-lg">
+            <div className="text-center">
+              <FileText className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No lesson selected</p>
+              <p className="text-sm text-muted-foreground mt-2">Select a course to start learning</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const progressUpdateRef = useRef<number>();
@@ -58,8 +74,11 @@ export default function VideoPlayer({
 
   // Fetch user progress for this lesson
   const { data: userProgress } = useQuery<UserProgress>({
-    queryKey: ["/api/user/progress", lesson.id],
+    queryKey: ["/api/user/progress", lesson?.id],
     queryFn: async () => {
+      if (!courseId || !lesson?.id) {
+        throw new Error('Missing required data for progress fetch');
+      }
       const response = await fetch(`/api/user/progress/${courseId}`, {
         credentials: 'include'
       });
@@ -67,25 +86,31 @@ export default function VideoPlayer({
       const allProgress = await response.json();
       return allProgress.find((p: UserProgress) => p.lessonId === lesson.id);
     },
-    enabled: !!userId && !!lesson.id
+    enabled: !!userId && !!lesson?.id && !!courseId
   });
 
   // Fetch lesson materials
   const { data: materials } = useQuery<CourseMaterial[]>({
-    queryKey: ["/api/lessons", lesson.id, "materials"],
+    queryKey: ["/api/lessons", lesson?.id, "materials"],
     queryFn: async () => {
+      if (!lesson?.id) {
+        throw new Error('Missing lesson ID for materials fetch');
+      }
       const response = await fetch(`/api/lessons/${lesson.id}/materials`, {
         credentials: 'include'
       });
       if (!response.ok) throw new Error('Failed to fetch materials');
       return response.json();
     },
-    enabled: !!lesson.id
+    enabled: !!lesson?.id
   });
 
   // Update video progress mutation
   const updateProgressMutation = useMutation({
     mutationFn: async ({ lastWatched, progressPercentage }: { lastWatched: number; progressPercentage: number }) => {
+      if (!lesson?.id) {
+        throw new Error('Missing lesson ID for progress update');
+      }
       await apiRequest("POST", `/api/user/progress/${lesson.id}/video`, {
         lastWatched,
         progressPercentage
@@ -99,6 +124,9 @@ export default function VideoPlayer({
   // Mark lesson complete mutation
   const completeLessonMutation = useMutation({
     mutationFn: async () => {
+      if (!lesson?.id) {
+        throw new Error('Missing lesson ID for completion');
+      }
       await apiRequest("POST", `/api/user/progress/${lesson.id}/complete`, {});
     },
     onSuccess: () => {
@@ -271,7 +299,7 @@ export default function VideoPlayer({
     }
   };
 
-  if (!lesson.videoUrl) {
+  if (!lesson?.videoUrl) {
     return (
       <Card className="overflow-hidden" data-testid="card-video-player">
         <CardContent className="p-6">
@@ -292,9 +320,9 @@ export default function VideoPlayer({
         <div className="flex items-center justify-between mb-6">
           <div>
             <h3 className="text-xl font-semibold" data-testid="text-lesson-title">
-              {lesson.title}
+              {lesson?.title || 'Untitled Lesson'}
             </h3>
-            {lesson.description && (
+            {lesson?.description && (
               <p className="text-muted-foreground mt-1" data-testid="text-lesson-description">
                 {lesson.description}
               </p>
@@ -307,7 +335,7 @@ export default function VideoPlayer({
               </Badge>
             )}
             <Badge variant="outline" data-testid="badge-duration">
-              {lesson.duration ? formatTime(lesson.duration) : 'N/A'}
+              {lesson?.duration ? formatTime(lesson.duration) : 'N/A'}
             </Badge>
           </div>
         </div>
@@ -322,9 +350,9 @@ export default function VideoPlayer({
             >
               <video
                 ref={videoRef}
-                src={lesson.videoUrl}
+                src={lesson?.videoUrl}
                 className="w-full h-full"
-                poster={lesson.thumbnailUrl}
+                poster={lesson?.thumbnailUrl || undefined}
                 onLoadedMetadata={() => {
                   if (videoRef.current) {
                     setDuration(videoRef.current.duration);
