@@ -36,7 +36,9 @@ import {
   insertActivityLogSchema,
   // User Notification System Schemas
   insertUserNotificationPreferencesSchema,
-  insertInAppNotificationSchema
+  insertInAppNotificationSchema,
+  // Background Jobs System Schemas
+  insertBackgroundJobSchema
 } from "@shared/schema";
 import { z } from "zod";
 import { setupAuth, isAuthenticated } from "./replitAuth";
@@ -68,6 +70,7 @@ import {
 import { adminWorkflowService } from "./services/notifications/admin-workflow-service";
 import { insertMarketDataDownloadSchema } from "@shared/schema";
 import { sendShareInvitation, sendShareAcceptedNotification } from "./services/email";
+import { jobProcessor } from "./services/background-jobs/job-processor";
 
 // Enhanced webhook handler functions with comprehensive logging
 async function handlePaymentSuccess(paymentIntent: any) {
@@ -1336,6 +1339,144 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(insights);
     } catch (error: any) {
       console.error('Error getting premium career insights:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ===========================================
+  // PREMIUM BACKGROUND JOBS SYSTEM ENDPOINTS
+  // ===========================================
+
+  // Create a new background job (Premium users only)
+  app.post("/api/premium/jobs", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { jobType, params } = req.body;
+      
+      // Validate request body
+      const validatedData = insertBackgroundJobSchema.parse({
+        userId,
+        jobType,
+        jobParams: params,
+      });
+      
+      const jobId = await jobProcessor.createJob(userId, validatedData.jobType, validatedData.jobParams);
+      res.json({ jobId, message: 'Job queued successfully' });
+    } catch (error: any) {
+      if (error.message.includes('Premium access required')) {
+        return res.status(403).json({ error: error.message });
+      }
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ 
+          error: "Validation failed", 
+          details: error.errors 
+        });
+      }
+      console.error('Error creating background job:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get all background jobs for the authenticated user
+  app.get("/api/premium/jobs", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      // Check premium access
+      if (!user?.isPremiumApproved) {
+        return res.status(403).json({ error: "Premium access required" });
+      }
+      
+      const jobs = await storage.getUserBackgroundJobs(userId);
+      res.json(jobs);
+    } catch (error: any) {
+      console.error('Error getting user background jobs:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get a specific background job by ID
+  app.get("/api/premium/jobs/:jobId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { jobId } = req.params;
+      
+      const job = await storage.getBackgroundJob(jobId);
+      if (!job || job.userId !== userId) {
+        return res.status(404).json({ error: 'Job not found' });
+      }
+      
+      res.json(job);
+    } catch (error: any) {
+      console.error('Error getting background job:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Cancel a background job
+  app.delete("/api/premium/jobs/:jobId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { jobId } = req.params;
+      
+      const success = await storage.cancelBackgroundJob(jobId, userId);
+      if (!success) {
+        return res.status(404).json({ error: 'Job not found or cannot be cancelled' });
+      }
+      
+      res.json({ message: 'Job cancelled successfully' });
+    } catch (error: any) {
+      console.error('Error cancelling background job:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get job statistics (Admin only)
+  app.get("/api/admin/jobs/statistics", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const statistics = await storage.getJobStatistics();
+      res.json(statistics);
+    } catch (error: any) {
+      console.error('Error getting job statistics:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get all background jobs (Admin only)
+  app.get("/api/admin/jobs", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const { status, jobType } = req.query;
+      
+      let jobs;
+      if (status) {
+        jobs = await storage.getJobsByStatus(status as any);
+      } else if (jobType) {
+        jobs = await storage.getJobsByType(jobType as any);
+      } else {
+        jobs = await storage.getAllBackgroundJobs();
+      }
+      
+      res.json(jobs);
+    } catch (error: any) {
+      console.error('Error getting all background jobs:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete a background job (Admin only)
+  app.delete("/api/admin/jobs/:jobId", isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const { jobId } = req.params;
+      
+      const success = await storage.deleteBackgroundJob(jobId);
+      if (!success) {
+        return res.status(404).json({ error: 'Job not found' });
+      }
+      
+      res.json({ message: 'Job deleted successfully' });
+    } catch (error: any) {
+      console.error('Error deleting background job:', error);
       res.status(500).json({ error: error.message });
     }
   });

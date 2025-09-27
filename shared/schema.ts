@@ -2227,3 +2227,81 @@ export const insertPremiumRequestSchema = z.object({
 });
 
 export type InsertPremiumRequest = z.infer<typeof insertPremiumRequestSchema>;
+
+// ===================
+// BACKGROUND JOBS SYSTEM FOR PREMIUM USERS
+// ===================
+
+// Job Types for Premium Users
+export const PREMIUM_JOB_TYPES = [
+  "market_data_analysis",     // Advanced market data processing
+  "portfolio_optimization",   // AI-powered portfolio suggestions  
+  "risk_assessment",          // Comprehensive risk analysis
+  "financial_forecasting",    // ML-based financial predictions
+  "batch_data_processing",    // Large dataset processing
+  "automated_reporting",      // Scheduled report generation
+  "anomaly_detection",        // Advanced anomaly detection using ML
+  "sentiment_analysis",       // News sentiment analysis for stocks
+  "correlation_analysis",     // Cross-asset correlation studies
+  "backtesting"               // Historical strategy backtesting
+] as const;
+
+export const JOB_STATUSES = ["queued", "running", "completed", "failed", "cancelled"] as const;
+
+export type PremiumJobType = typeof PREMIUM_JOB_TYPES[number];
+export type JobStatus = typeof JOB_STATUSES[number];
+
+// Background Jobs Table
+export const backgroundJobs = pgTable("background_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  jobType: varchar("job_type").notNull(), // PremiumJobType
+  status: varchar("status").notNull().default("queued"), // queued, running, completed, failed, cancelled
+  priority: integer("priority").default(3), // 1-5 (premium users get higher priority)
+  
+  // Job Configuration
+  jobParams: json("job_params").notNull(), // Job-specific parameters
+  estimatedDuration: integer("estimated_duration_minutes"),
+  maxRetries: integer("max_retries").default(3),
+  
+  // Execution Tracking
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  failedAt: timestamp("failed_at"),
+  retryCount: integer("retry_count").default(0),
+  
+  // Results & Output
+  resultData: json("result_data"), // Job output/results
+  outputFileUrls: text("output_file_urls").array(), // URLs to generated files
+  errorMessage: text("error_message"),
+  progressPercentage: integer("progress_percentage").default(0),
+  
+  // AWS Integration Fields
+  awsJobId: varchar("aws_job_id"), // AWS service job identifier
+  awsJobType: varchar("aws_job_type"), // sagemaker, batch, lambda
+  awsRegion: varchar("aws_region").default("us-east-1"), // AWS region
+  
+  // Metadata
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_background_jobs_user_id").on(table.userId),
+  index("IDX_background_jobs_status").on(table.status),
+  index("IDX_background_jobs_job_type").on(table.jobType),
+  index("IDX_background_jobs_created_at").on(table.createdAt),
+]);
+
+// Background Job Types
+export type BackgroundJob = typeof backgroundJobs.$inferSelect;
+export type InsertBackgroundJob = typeof backgroundJobs.$inferInsert;
+
+// Background Job Schemas
+export const insertBackgroundJobSchema = createInsertSchema(backgroundJobs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateBackgroundJobSchema = insertBackgroundJobSchema.partial();
+
+export type UpdateBackgroundJob = z.infer<typeof updateBackgroundJobSchema>;

@@ -137,7 +137,12 @@ import {
   type InsertInAppNotification,
   type InAppNotificationType,
   type NotificationCategory,
-  type NotificationPriority
+  type NotificationPriority,
+  // Background Jobs Types
+  type BackgroundJob,
+  type InsertBackgroundJob,
+  type PremiumJobType,
+  type JobStatus
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -863,6 +868,36 @@ export interface IStorage {
   shouldSendEmailNotification(userId: string, notificationType: InAppNotificationType): Promise<boolean>;
   shouldSendInAppNotification(userId: string, notificationType: InAppNotificationType): Promise<boolean>;
   shouldSendPushNotification(userId: string, notificationType: InAppNotificationType): Promise<boolean>;
+
+  // ===========================================
+  // BACKGROUND JOBS SYSTEM METHODS
+  // ===========================================
+
+  // Background Jobs Management
+  createBackgroundJob(job: InsertBackgroundJob): Promise<string>;
+  getBackgroundJob(jobId: string): Promise<BackgroundJob | undefined>;
+  getUserBackgroundJobs(userId: string): Promise<BackgroundJob[]>;
+  getNextQueuedJob(): Promise<BackgroundJob | undefined>;
+  getAllQueuedJobs(): Promise<BackgroundJob[]>;
+  updateJobStatus(jobId: string, status: JobStatus, updates?: Partial<BackgroundJob>): Promise<void>;
+  updateJobResults(jobId: string, results: any): Promise<void>;
+  updateJobProgress(jobId: string, progressPercentage: number): Promise<void>;
+  updateJob(jobId: string, updates: Partial<BackgroundJob>): Promise<void>;
+  cancelBackgroundJob(jobId: string, userId: string): Promise<boolean>;
+  
+  // Job Management Utilities
+  getAllBackgroundJobs(): Promise<BackgroundJob[]>;
+  getJobsByStatus(status: JobStatus): Promise<BackgroundJob[]>;
+  getJobsByType(jobType: PremiumJobType): Promise<BackgroundJob[]>;
+  deleteBackgroundJob(jobId: string): Promise<boolean>;
+  getJobStatistics(): Promise<{
+    totalJobs: number;
+    queuedJobs: number;
+    runningJobs: number;
+    completedJobs: number;
+    failedJobs: number;
+    averageCompletionTime: number;
+  }>;
 }
 
 export class MemStorage implements IStorage {
@@ -917,6 +952,9 @@ export class MemStorage implements IStorage {
   // User Notification System Storage
   private userNotificationPreferences: Map<string, UserNotificationPreferences> = new Map();
   private inAppNotifications: Map<string, InAppNotification> = new Map();
+
+  // Background Jobs System Storage
+  private backgroundJobs: Map<string, BackgroundJob> = new Map();
 
   constructor() {
     this.initializeData();
@@ -5007,6 +5045,196 @@ export class MemStorage implements IStorage {
         new Date(notification.updatedAt || notification.createdAt) >= sinceDate
       )
       .sort((a, b) => (a.priority || 0) - (b.priority || 0)); // Sort by priority desc
+  }
+
+  // ===========================================
+  // BACKGROUND JOBS SYSTEM IMPLEMENTATION
+  // ===========================================
+
+  async createBackgroundJob(job: InsertBackgroundJob): Promise<string> {
+    const id = randomUUID();
+    const now = new Date();
+    const jobData: BackgroundJob = {
+      id,
+      ...job,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.backgroundJobs.set(id, jobData);
+    return id;
+  }
+
+  async getBackgroundJob(jobId: string): Promise<BackgroundJob | undefined> {
+    return this.backgroundJobs.get(jobId);
+  }
+
+  async getUserBackgroundJobs(userId: string): Promise<BackgroundJob[]> {
+    return Array.from(this.backgroundJobs.values())
+      .filter(job => job.userId === userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  async getNextQueuedJob(): Promise<BackgroundJob | undefined> {
+    // This method is now deprecated in favor of getAllQueuedJobs for smart scheduling
+    const allQueued = await this.getAllQueuedJobs();
+    return allQueued[0];
+  }
+
+  async getAllQueuedJobs(): Promise<BackgroundJob[]> {
+    return Array.from(this.backgroundJobs.values())
+      .filter(job => job.status === 'queued')
+      .sort((a, b) => {
+        // Get user tiers for priority calculation
+        const userA = this.users.get(a.userId);
+        const userB = this.users.get(b.userId);
+        
+        const tierPriorityA = this.getTierPriority(userA?.premiumTier || null);
+        const tierPriorityB = this.getTierPriority(userB?.premiumTier || null);
+        
+        // Professional tier gets highest priority
+        if (tierPriorityA !== tierPriorityB) {
+          return tierPriorityB - tierPriorityA;
+        }
+        
+        // Then sort by job priority
+        const priorityDiff = (b.priority || 3) - (a.priority || 3);
+        if (priorityDiff !== 0) return priorityDiff;
+        
+        // Finally by creation time (FIFO within same tier/priority)
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      });
+  }
+
+  private getTierPriority(premiumTier: string | null): number {
+    switch (premiumTier) {
+      case 'professional': return 10;
+      case 'advanced': return 5;
+      default: return 1; // basic
+    }
+  }
+
+  async updateJobStatus(jobId: string, status: JobStatus, updates: Partial<BackgroundJob> = {}): Promise<void> {
+    const job = this.backgroundJobs.get(jobId);
+    if (job) {
+      const updatedJob = {
+        ...job,
+        status,
+        ...updates,
+        updatedAt: new Date(),
+      };
+      this.backgroundJobs.set(jobId, updatedJob);
+    }
+  }
+
+  async updateJobResults(jobId: string, results: any): Promise<void> {
+    const job = this.backgroundJobs.get(jobId);
+    if (job) {
+      const updatedJob = {
+        ...job,
+        resultData: results,
+        updatedAt: new Date(),
+      };
+      this.backgroundJobs.set(jobId, updatedJob);
+    }
+  }
+
+  async updateJobProgress(jobId: string, progressPercentage: number): Promise<void> {
+    const job = this.backgroundJobs.get(jobId);
+    if (job) {
+      const updatedJob = {
+        ...job,
+        progressPercentage,
+        updatedAt: new Date(),
+      };
+      this.backgroundJobs.set(jobId, updatedJob);
+    }
+  }
+
+  async updateJob(jobId: string, updates: Partial<BackgroundJob>): Promise<void> {
+    const job = this.backgroundJobs.get(jobId);
+    if (job) {
+      const updatedJob = {
+        ...job,
+        ...updates,
+        updatedAt: new Date()
+      };
+      this.backgroundJobs.set(jobId, updatedJob);
+    }
+  }
+
+  async cancelBackgroundJob(jobId: string, userId: string): Promise<boolean> {
+    const job = this.backgroundJobs.get(jobId);
+    if (!job || job.userId !== userId) return false;
+    
+    if (['queued', 'running'].includes(job.status)) {
+      const updatedJob = {
+        ...job,
+        status: 'cancelled' as JobStatus,
+        updatedAt: new Date(),
+      };
+      this.backgroundJobs.set(jobId, updatedJob);
+      return true;
+    }
+    
+    return false;
+  }
+
+  async getAllBackgroundJobs(): Promise<BackgroundJob[]> {
+    return Array.from(this.backgroundJobs.values())
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  async getJobsByStatus(status: JobStatus): Promise<BackgroundJob[]> {
+    return Array.from(this.backgroundJobs.values())
+      .filter(job => job.status === status)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  async getJobsByType(jobType: PremiumJobType): Promise<BackgroundJob[]> {
+    return Array.from(this.backgroundJobs.values())
+      .filter(job => job.jobType === jobType)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  async deleteBackgroundJob(jobId: string): Promise<boolean> {
+    return this.backgroundJobs.delete(jobId);
+  }
+
+  async getJobStatistics(): Promise<{
+    totalJobs: number;
+    queuedJobs: number;
+    runningJobs: number;
+    completedJobs: number;
+    failedJobs: number;
+    averageCompletionTime: number;
+  }> {
+    const jobs = Array.from(this.backgroundJobs.values());
+    const completedJobs = jobs.filter(job => job.status === 'completed');
+    
+    // Calculate average completion time for completed jobs
+    let totalCompletionTime = 0;
+    let completedJobsWithTime = 0;
+    
+    for (const job of completedJobs) {
+      if (job.startedAt && job.completedAt) {
+        const duration = new Date(job.completedAt).getTime() - new Date(job.startedAt).getTime();
+        totalCompletionTime += duration;
+        completedJobsWithTime++;
+      }
+    }
+    
+    const averageCompletionTime = completedJobsWithTime > 0 
+      ? Math.round(totalCompletionTime / completedJobsWithTime / 60000) // Convert to minutes
+      : 0;
+
+    return {
+      totalJobs: jobs.length,
+      queuedJobs: jobs.filter(job => job.status === 'queued').length,
+      runningJobs: jobs.filter(job => job.status === 'running').length,
+      completedJobs: completedJobs.length,
+      failedJobs: jobs.filter(job => job.status === 'failed').length,
+      averageCompletionTime,
+    };
   }
 }
 
