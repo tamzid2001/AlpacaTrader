@@ -71,6 +71,11 @@ export default function VideoPlayer({
   const [playbackRate, setPlaybackRate] = useState(1);
   const [showControls, setShowControls] = useState(true);
   const [isBuffering, setIsBuffering] = useState(false);
+  
+  // Session time tracking
+  const [sessionStartTime] = useState(Date.now());
+  const [sessionTimeSpent, setSessionTimeSpent] = useState(0);
+  const [totalWatchTimeThisSession, setTotalWatchTimeThisSession] = useState(0);
 
   // Fetch user progress for this lesson
   const { data: userProgress } = useQuery<UserProgress>({
@@ -105,15 +110,24 @@ export default function VideoPlayer({
     enabled: !!lesson?.id
   });
 
-  // Update video progress mutation
+  // Update video progress mutation with enhanced time tracking
   const updateProgressMutation = useMutation({
-    mutationFn: async ({ lastWatched, progressPercentage }: { lastWatched: number; progressPercentage: number }) => {
+    mutationFn: async ({ 
+      lastWatched, 
+      progressPercentage, 
+      totalWatchTime 
+    }: { 
+      lastWatched: number; 
+      progressPercentage: number; 
+      totalWatchTime?: number;
+    }) => {
       if (!lesson?.id) {
         throw new Error('Missing lesson ID for progress update');
       }
       await apiRequest("POST", `/api/user/progress/${lesson.id}/video`, {
         lastWatched,
-        progressPercentage
+        progressPercentage,
+        totalWatchTime // Include total watch time for real time tracking
       });
     },
     onError: (error) => {
@@ -192,7 +206,7 @@ export default function VideoPlayer({
     return () => clearTimeout(hideTimer);
   }, [isPlaying]);
 
-  // Progress tracking
+  // Enhanced progress tracking with session time
   useEffect(() => {
     if (isPlaying && videoRef.current) {
       progressUpdateRef.current = window.setInterval(() => {
@@ -200,11 +214,18 @@ export default function VideoPlayer({
         if (video && duration > 0) {
           const progress = (video.currentTime / duration) * 100;
           
-          // Update progress in database every 10 seconds
+          // Increment session time and total watch time
+          setSessionTimeSpent(prev => prev + 1);
+          setTotalWatchTimeThisSession(prev => prev + 1);
+          
+          // Update progress in database every 10 seconds with enhanced data
           if (Math.floor(video.currentTime) % 10 === 0) {
+            const currentTotalWatchTime = (userProgress?.totalWatchTime || 0) + totalWatchTimeThisSession;
+            
             updateProgressMutation.mutate({
               lastWatched: video.currentTime,
-              progressPercentage: Math.floor(progress)
+              progressPercentage: Math.floor(progress),
+              totalWatchTime: currentTotalWatchTime // Include real time tracking
             });
           }
 
@@ -223,7 +244,7 @@ export default function VideoPlayer({
         }
       };
     }
-  }, [isPlaying, duration, userProgress?.completed]);
+  }, [isPlaying, duration, userProgress?.completed, totalWatchTimeThisSession]);
 
   const togglePlay = () => {
     if (videoRef.current) {

@@ -2167,3 +2167,32 @@ export type ReminderFrequency = typeof REMINDER_FREQUENCIES[number];
 export type ProductivityNotificationChannel = typeof PRODUCTIVITY_NOTIFICATION_CHANNELS[number];
 export type ActivityAction = typeof ACTIVITY_ACTIONS[number];
 export type EntityType = typeof ENTITY_TYPES[number];
+
+// ===================
+// MISSING TYPE DEFINITIONS FOR QUIZ SYSTEM
+// ===================
+
+// Quiz Results - Results from completed quiz attempts
+export interface QuizResult {
+  id: string;
+  quizId: string;
+  userId: string;
+  attemptId: string;
+  score: number;
+  passed: boolean;
+  completedAt: Date;
+  answers: any; // JSON object with question answers
+  metadata?: any;
+}
+
+// Insert type for QuizResult
+export interface InsertQuizResult {
+  quizId: string;
+  userId: string;
+  attemptId: string;
+  score: number;
+  passed: boolean;
+  completedAt: Date;
+  answers: any;
+  metadata?: any;
+}

@@ -33,13 +33,29 @@ export default function Dashboard() {
     }
   });
 
-  // Calculate real learning hours based on enrollment data
+  // Fetch real learning statistics from new API endpoint
+  const { data: learningStats } = useQuery({
+    queryKey: ["/api/users", user?.id, "learning-stats"],
+    enabled: isAuthenticated && !!user?.id,
+    queryFn: async () => {
+      const response = await apiRequest("GET", `/api/users/${user?.id}/learning-stats`);
+      return response.json();
+    }
+  });
+
+  // Calculate real learning hours from actual watch time data
   const calculateLearningHours = () => {
+    if (learningStats?.totalLearningHours !== undefined) {
+      // Use real data from the new API endpoint
+      return learningStats.totalLearningHours;
+    }
+    
+    // Fallback: Use real time spent from enrollment data if available
     if (!enrollments) return 0;
     return enrollments.reduce((total, enrollment) => {
-      // Estimate hours based on progress - assuming each course is about 20 hours
-      const estimatedCourseHours = 20;
-      return total + (estimatedCourseHours * (enrollment.progress || 0) / 100);
+      // Use actual time spent from user progress records (in seconds)
+      const realTimeSpentSeconds = enrollment.totalTimeSpent || 0;
+      return total + (realTimeSpentSeconds / 3600); // Convert seconds to hours
     }, 0);
   };
 

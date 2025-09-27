@@ -105,35 +105,74 @@ export default function CourseProgressTracker({
 
   // Fetch user progress
   const { data: userProgress } = useQuery<UserProgress[]>({
-    queryKey: ["/api/users", user?.sub, "courses", courseId, "quiz-progress"],
-    enabled: !!courseId && !!user?.sub && isAuthenticated
+    queryKey: ["/api/users", user?.id, "courses", courseId, "quiz-progress"],
+    enabled: !!courseId && !!user?.id && isAuthenticated
   });
 
   // Fetch user quiz attempts
   const { data: userAttempts } = useQuery<QuizAttempt[]>({
-    queryKey: ["/api/users", user?.sub, "quiz-attempts"],
-    enabled: !!user?.sub && isAuthenticated,
+    queryKey: ["/api/users", user?.id, "quiz-attempts"],
+    enabled: !!user?.id && isAuthenticated,
     queryFn: async () => {
-      const response = await apiRequest("GET", `/api/users/${user?.sub}/quiz-attempts`);
+      const response = await apiRequest("GET", `/api/users/${user?.id}/quiz-attempts`);
       return response.json();
     }
   });
+
+  // Fetch enrollment data for automatic completion logic
+  const { data: enrollments } = useQuery({
+    queryKey: ["/api/users", user?.id, "enrollments"],
+    enabled: !!user?.id && isAuthenticated,
+    queryFn: async () => {
+      const response = await apiRequest("GET", `/api/users/${user?.id}/enrollments`);
+      return response.json();
+    }
+  });
+
+  // Get current enrollment for this course
+  const enrollment = enrollments?.find((e: any) => e.courseId === courseId);
 
   // Mark lesson complete mutation
   const markLessonCompleteMutation = useMutation({
     mutationFn: async (lessonId: string) => {
       const response = await apiRequest("POST", `/api/lessons/${lessonId}/complete`, {
-        userId: user?.sub,
+        userId: user?.id,
         courseId
       });
       return response.json();
     },
     onSuccess: (data, lessonId) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/users", user?.sub, "courses", courseId, "quiz-progress"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users", user?.id, "courses", courseId, "quiz-progress"] });
       onLessonComplete?.(lessonId);
       toast({
         title: "Lesson Completed",
         description: "Great job! You've completed this lesson."
+      });
+    }
+  });
+
+  // Complete course mutation
+  const completeCourseAndGenerateCertificateMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", `/api/courses/${courseId}/complete`, {});
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users", user?.id, "enrollments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users", user?.id, "certificates"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users", user?.id, "learning-stats"] });
+      
+      toast({
+        title: "🎉 Course Completed!",
+        description: "Congratulations! You've completed this course. Certificate generated!"
+      });
+    },
+    onError: (error: any) => {
+      console.error('Failed to complete course:', error);
+      toast({
+        title: "Course Completion Failed",
+        description: "Failed to mark course as complete. Please try again.",
+        variant: "destructive"
       });
     }
   });
@@ -235,8 +274,8 @@ export default function CourseProgressTracker({
     setShowResultsDialog(true);
     
     // Invalidate queries to refresh progress
-    queryClient.invalidateQueries({ queryKey: ["/api/users", user?.sub, "quiz-attempts"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/users", user?.sub, "courses", courseId, "quiz-progress"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/users", user?.id, "quiz-attempts"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/users", user?.id, "courses", courseId, "quiz-progress"] });
     
     onQuizComplete?.(selectedQuiz?.id || "", result);
     
@@ -258,11 +297,41 @@ export default function CourseProgressTracker({
   const handleQuizAbandon = () => {
     setShowQuizDialog(false);
     setSelectedQuiz(null);
-    queryClient.invalidateQueries({ queryKey: ["/api/users", user?.sub, "quiz-attempts"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/users", user?.id, "quiz-attempts"] });
   };
 
   const lessonProgress = calculateLessonProgress();
   const courseCompletion = calculateCourseCompletion();
+
+  // Automatic course completion check
+  useEffect(() => {
+    if (courseCompletion.canComplete && enrollment && !enrollment.completed) {
+      // All requirements met and course not yet completed - trigger automatic completion
+      console.log('🎯 Course completion criteria met, triggering automatic completion...');
+      completeCourseAndGenerateCertificateMutation.mutate();
+    }
+  }, [courseCompletion.canComplete, enrollment?.completed]);
+
+  // Check for course completion whenever progress changes
+  useEffect(() => {
+    if (courseCompletion.canComplete && enrollment && !enrollment.completed) {
+      const allLessonsComplete = courseCompletion.completedLessons === courseCompletion.totalLessons;
+      const allRequiredQuizzesComplete = courseCompletion.completedRequiredQuizzes === courseCompletion.requiredQuizzes;
+      
+      if (allLessonsComplete && allRequiredQuizzesComplete) {
+        console.log('🚀 Auto-completing course:', {
+          courseId,
+          completedLessons: courseCompletion.completedLessons,
+          totalLessons: courseCompletion.totalLessons,
+          completedRequiredQuizzes: courseCompletion.completedRequiredQuizzes,
+          requiredQuizzes: courseCompletion.requiredQuizzes
+        });
+        
+        // Trigger course completion
+        completeCourseAndGenerateCertificateMutation.mutate();
+      }
+    }
+  }, [lessonProgress, userAttempts]);
 
   if (!isAuthenticated) {
     return (

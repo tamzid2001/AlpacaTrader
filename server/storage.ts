@@ -127,7 +127,17 @@ import {
   type ProductivityNotificationType,
   type ReminderFrequency,
   type ActivityAction,
-  type EntityType
+  type EntityType,
+  // Missing notification and quiz types
+  type QuizResult,
+  type InsertQuizResult,
+  type UserNotificationPreferences,
+  type InsertUserNotificationPreferences,
+  type InAppNotification,
+  type InsertInAppNotification,
+  type InAppNotificationType,
+  type NotificationCategory,
+  type NotificationPriority
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -859,6 +869,11 @@ export class MemStorage implements IStorage {
   private userProgress: Map<string, UserProgress> = new Map();
   private enrollments: Map<string, CourseEnrollment> = new Map();
   private quizzes: Map<string, Quiz> = new Map();
+  private questions: Map<string, Question> = new Map();
+  private questionOptions: Map<string, QuestionOption> = new Map();
+  private quizAttempts: Map<string, QuizAttempt> = new Map();
+  private questionResponses: Map<string, QuestionResponse> = new Map();
+  private certificates: Map<string, Certificate> = new Map();
   private quizResults: Map<string, QuizResult> = new Map();
   private supportMessages: Map<string, SupportMessage> = new Map();
   private csvUploads: Map<string, CsvUpload> = new Map();
@@ -1455,10 +1470,22 @@ export class MemStorage implements IStorage {
   // Enrollments
   async getUserEnrollments(userId: string): Promise<(CourseEnrollment & { course: Course })[]> {
     const enrollments = Array.from(this.enrollments.values()).filter(e => e.userId === userId);
-    return enrollments.map(enrollment => ({
-      ...enrollment,
-      course: this.courses.get(enrollment.courseId)!
-    })).filter(e => e.course);
+    return enrollments.map(enrollment => {
+      // Calculate real time spent from user progress records
+      const userProgressRecords = Array.from(this.userProgress.values())
+        .filter(progress => progress.userId === userId && progress.courseId === enrollment.courseId);
+      
+      // Sum up total watch time from all lessons in this course
+      const totalWatchTimeSeconds = userProgressRecords.reduce((total, progress) => {
+        return total + (progress.totalWatchTime || 0);
+      }, 0);
+
+      return {
+        ...enrollment,
+        totalTimeSpent: totalWatchTimeSeconds, // Real time spent in seconds
+        course: this.courses.get(enrollment.courseId)!
+      };
+    }).filter(e => e.course);
   }
 
   async enrollUserInCourse(insertEnrollment: InsertCourseEnrollment): Promise<CourseEnrollment> {
@@ -1490,9 +1517,104 @@ export class MemStorage implements IStorage {
     }
   }
 
-  // Quizzes
-  async getCourseQuizzes(courseId: string): Promise<Quiz[]> {
-    return Array.from(this.quizzes.values()).filter(q => q.courseId === courseId);
+  async getUserLearningStats(userId: string) {
+    const enrollments = await this.getUserEnrollments(userId);
+    
+    // Calculate real learning hours from total watch time
+    const totalWatchTimeSeconds = enrollments.reduce((total, enrollment) => {
+      return total + (enrollment.totalTimeSpent || 0);
+    }, 0);
+    
+    const totalLearningHours = totalWatchTimeSeconds / 3600; // Convert to hours
+    
+    // Count completed courses
+    const completedCourses = enrollments.filter(e => e.completed).length;
+    
+    // Count active courses (enrolled but not completed)
+    const activeCourses = enrollments.filter(e => !e.completed).length;
+    
+    // Calculate average progress across all courses
+    const totalProgress = enrollments.reduce((sum, e) => sum + (e.progress || 0), 0);
+    const averageProgress = enrollments.length > 0 ? totalProgress / enrollments.length : 0;
+    
+    return {
+      totalLearningHours: Math.round(totalLearningHours * 10) / 10, // Round to 1 decimal
+      completedCourses,
+      activeCourses,
+      totalCourses: enrollments.length,
+      averageProgress: Math.round(averageProgress),
+      totalWatchTimeSeconds
+    };
+  }
+
+  async markCourseComplete(userId: string, courseId: string): Promise<CourseEnrollment | null> {
+    const enrollment = Array.from(this.enrollments.values()).find(
+      e => e.userId === userId && e.courseId === courseId
+    );
+    
+    if (enrollment) {
+      enrollment.completed = true;
+      enrollment.progress = 100;
+      enrollment.completionDate = new Date();
+      this.enrollments.set(enrollment.id, enrollment);
+      return enrollment;
+    }
+    
+    return null;
+  }
+
+  async checkCourseCompletion(userId: string, courseId: string): Promise<{ 
+    canComplete: boolean; 
+    allLessonsComplete: boolean; 
+    allRequiredQuizzesComplete: boolean;
+    totalLessons: number;
+    completedLessons: number;
+  }> {
+    // Get all lessons for this course
+    const courseLessons = Array.from(this.lessons.values())
+      .filter(lesson => lesson.courseId === courseId);
+    
+    // Get user progress for all lessons in this course
+    const userProgressRecords = Array.from(this.userProgress.values())
+      .filter(progress => progress.userId === userId && progress.courseId === courseId);
+    
+    const completedLessons = userProgressRecords.filter(progress => progress.completed).length;
+    const allLessonsComplete = completedLessons >= courseLessons.length;
+    
+    // Get course quizzes
+    const courseQuizzes = Array.from(this.quizzes.values())
+      .filter(quiz => quiz.courseId === courseId);
+    
+    const requiredQuizzes = courseQuizzes.filter(quiz => quiz.isRequired);
+    
+    // Check quiz completion through quiz attempts
+    const userQuizAttempts = Array.from(this.quizAttempts.values())
+      .filter(attempt => attempt.userId === userId);
+    
+    const completedRequiredQuizzes = requiredQuizzes.filter(quiz => {
+      return userQuizAttempts.some(attempt => 
+        attempt.quizId === quiz.id && attempt.passed
+      );
+    });
+    
+    const allRequiredQuizzesComplete = completedRequiredQuizzes.length >= requiredQuizzes.length;
+    
+    return {
+      canComplete: allLessonsComplete && allRequiredQuizzesComplete,
+      allLessonsComplete,
+      allRequiredQuizzesComplete,
+      totalLessons: courseLessons.length,
+      completedLessons
+    };
+  }
+
+  // Quizzes - Updated to return with questionsCount
+  async getCourseQuizzes(courseId: string): Promise<(Quiz & { questionsCount: number })[]> {
+    const quizzes = Array.from(this.quizzes.values()).filter(q => q.courseId === courseId);
+    return quizzes.map(quiz => ({
+      ...quiz,
+      questionsCount: Array.from(this.questions.values()).filter(q => q.quizId === quiz.id).length
+    }));
   }
 
   async getQuiz(id: string): Promise<Quiz | undefined> {
@@ -1501,7 +1623,28 @@ export class MemStorage implements IStorage {
 
   async createQuiz(insertQuiz: InsertQuiz): Promise<Quiz> {
     const id = randomUUID();
-    const quiz: Quiz = { ...insertQuiz, id, createdAt: new Date() };
+    const quiz: Quiz = { 
+      ...insertQuiz, 
+      id, 
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      isActive: insertQuiz.isActive ?? true,
+      description: insertQuiz.description ?? null,
+      instructions: insertQuiz.instructions ?? null,
+      timeLimit: insertQuiz.timeLimit ?? null,
+      maxAttempts: insertQuiz.maxAttempts ?? null,
+      availableFrom: insertQuiz.availableFrom ?? null,
+      availableUntil: insertQuiz.availableUntil ?? null,
+      createdBy: insertQuiz.createdBy ?? null,
+      lessonId: insertQuiz.lessonId ?? null,
+      passingScore: insertQuiz.passingScore ?? 70,
+      shuffleQuestions: insertQuiz.shuffleQuestions ?? false,
+      shuffleAnswers: insertQuiz.shuffleAnswers ?? false,
+      showResults: insertQuiz.showResults ?? true,
+      showCorrectAnswers: insertQuiz.showCorrectAnswers ?? true,
+      allowBackNavigation: insertQuiz.allowBackNavigation ?? true,
+      requireAllQuestions: insertQuiz.requireAllQuestions ?? true
+    };
     this.quizzes.set(id, quiz);
     return quiz;
   }
@@ -1519,6 +1662,737 @@ export class MemStorage implements IStorage {
 
   async getUserQuizResults(userId: string): Promise<QuizResult[]> {
     return Array.from(this.quizResults.values()).filter(r => r.userId === userId);
+  }
+
+  // Missing Quiz Management Methods
+  async getAllQuizzes(): Promise<Quiz[]> {
+    return Array.from(this.quizzes.values());
+  }
+
+  async getQuizWithQuestions(quizId: string): Promise<(Quiz & { questions: (Question & { options: QuestionOption[] })[] }) | undefined> {
+    const quiz = this.quizzes.get(quizId);
+    if (!quiz) return undefined;
+
+    const questions = Array.from(this.questions.values())
+      .filter(q => q.quizId === quizId)
+      .sort((a, b) => a.order - b.order)
+      .map(question => ({
+        ...question,
+        options: Array.from(this.questionOptions.values())
+          .filter(opt => opt.questionId === question.id)
+          .sort((a, b) => a.order - b.order)
+      }));
+
+    return { ...quiz, questions };
+  }
+
+  async updateQuiz(id: string, updates: Partial<Quiz>): Promise<Quiz | undefined> {
+    const quiz = this.quizzes.get(id);
+    if (!quiz) return undefined;
+
+    const updatedQuiz = { ...quiz, ...updates, updatedAt: new Date() };
+    this.quizzes.set(id, updatedQuiz);
+    return updatedQuiz;
+  }
+
+  async deleteQuiz(id: string): Promise<boolean> {
+    const quiz = this.quizzes.get(id);
+    if (!quiz) return false;
+
+    // Delete associated questions and options
+    const questions = Array.from(this.questions.values()).filter(q => q.quizId === id);
+    questions.forEach(question => {
+      // Delete question options
+      Array.from(this.questionOptions.values())
+        .filter(opt => opt.questionId === question.id)
+        .forEach(opt => this.questionOptions.delete(opt.id));
+      // Delete question
+      this.questions.delete(question.id);
+    });
+
+    // Delete quiz attempts
+    Array.from(this.quizAttempts.values())
+      .filter(attempt => attempt.quizId === id)
+      .forEach(attempt => this.quizAttempts.delete(attempt.id));
+
+    this.quizzes.delete(id);
+    return true;
+  }
+
+  async publishQuiz(id: string): Promise<Quiz | undefined> {
+    return this.updateQuiz(id, { isActive: true });
+  }
+
+  async unpublishQuiz(id: string): Promise<Quiz | undefined> {
+    return this.updateQuiz(id, { isActive: false });
+  }
+
+  async duplicateQuiz(id: string, newTitle: string): Promise<Quiz> {
+    const originalQuiz = this.quizzes.get(id);
+    if (!originalQuiz) throw new Error('Quiz not found');
+
+    const newQuizId = randomUUID();
+    const duplicatedQuiz: Quiz = {
+      ...originalQuiz,
+      id: newQuizId,
+      title: newTitle,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.quizzes.set(newQuizId, duplicatedQuiz);
+
+    // Duplicate questions and options
+    const questions = Array.from(this.questions.values()).filter(q => q.quizId === id);
+    for (const question of questions) {
+      const newQuestionId = randomUUID();
+      const duplicatedQuestion: Question = {
+        ...question,
+        id: newQuestionId,
+        quizId: newQuizId,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      this.questions.set(newQuestionId, duplicatedQuestion);
+
+      // Duplicate options
+      const options = Array.from(this.questionOptions.values()).filter(opt => opt.questionId === question.id);
+      for (const option of options) {
+        const newOptionId = randomUUID();
+        const duplicatedOption: QuestionOption = {
+          ...option,
+          id: newOptionId,
+          questionId: newQuestionId,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+        this.questionOptions.set(newOptionId, duplicatedOption);
+      }
+    }
+
+    return duplicatedQuiz;
+  }
+
+  // Missing Quiz Question Methods
+  async getQuizQuestions(quizId: string): Promise<(Question & { options: QuestionOption[] })[]> {
+    const questions = Array.from(this.questions.values())
+      .filter(q => q.quizId === quizId)
+      .sort((a, b) => a.order - b.order);
+
+    return questions.map(question => ({
+      ...question,
+      options: Array.from(this.questionOptions.values())
+        .filter(opt => opt.questionId === question.id)
+        .sort((a, b) => a.order - b.order)
+    }));
+  }
+
+  async createQuestion(insertQuestion: InsertQuestion): Promise<Question> {
+    const id = randomUUID();
+    const question: Question = {
+      ...insertQuestion,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      metadata: insertQuestion.metadata ?? null,
+      explanation: insertQuestion.explanation ?? null,
+      points: insertQuestion.points ?? 1,
+      required: insertQuestion.required ?? true
+    };
+    this.questions.set(id, question);
+    return question;
+  }
+
+  async updateQuestion(id: string, updates: Partial<Question>): Promise<Question | undefined> {
+    const question = this.questions.get(id);
+    if (!question) return undefined;
+
+    const updatedQuestion = { ...question, ...updates, updatedAt: new Date() };
+    this.questions.set(id, updatedQuestion);
+    return updatedQuestion;
+  }
+
+  async deleteQuestion(id: string): Promise<boolean> {
+    const question = this.questions.get(id);
+    if (!question) return false;
+
+    // Delete associated options
+    Array.from(this.questionOptions.values())
+      .filter(opt => opt.questionId === id)
+      .forEach(opt => this.questionOptions.delete(opt.id));
+
+    this.questions.delete(id);
+    return true;
+  }
+
+  async reorderQuestions(quizId: string, questionOrders: { id: string; order: number }[]): Promise<void> {
+    questionOrders.forEach(({ id, order }) => {
+      const question = this.questions.get(id);
+      if (question && question.quizId === quizId) {
+        this.questions.set(id, { ...question, order, updatedAt: new Date() });
+      }
+    });
+  }
+
+  // Missing Quiz Attempt Methods
+  async canUserAttemptQuiz(userId: string, quizId: string): Promise<{ canAttempt: boolean; reason?: string; attemptsUsed: number; maxAttempts?: number }> {
+    const quiz = this.quizzes.get(quizId);
+    if (!quiz) {
+      return { canAttempt: false, reason: 'Quiz not found', attemptsUsed: 0 };
+    }
+
+    const userAttempts = Array.from(this.quizAttempts.values())
+      .filter(attempt => attempt.userId === userId && attempt.quizId === quizId);
+
+    const attemptsUsed = userAttempts.length;
+    const maxAttempts = quiz.maxAttempts;
+
+    if (maxAttempts && attemptsUsed >= maxAttempts) {
+      return {
+        canAttempt: false,
+        reason: 'Maximum attempts exceeded',
+        attemptsUsed,
+        maxAttempts
+      };
+    }
+
+    // Check if there's an active attempt
+    const activeAttempt = userAttempts.find(attempt => attempt.status === 'in_progress');
+    if (activeAttempt) {
+      return {
+        canAttempt: false,
+        reason: 'Active attempt in progress',
+        attemptsUsed,
+        maxAttempts
+      };
+    }
+
+    return { canAttempt: true, attemptsUsed, maxAttempts };
+  }
+
+  async getActiveQuizAttempt(userId: string, quizId: string): Promise<QuizAttempt | undefined> {
+    return Array.from(this.quizAttempts.values())
+      .find(attempt => 
+        attempt.userId === userId && 
+        attempt.quizId === quizId && 
+        attempt.status === 'in_progress'
+      );
+  }
+
+  async startQuizAttempt(insertAttempt: InsertQuizAttempt): Promise<QuizAttempt> {
+    const id = randomUUID();
+    const attempt: QuizAttempt = {
+      ...insertAttempt,
+      id,
+      status: 'in_progress',
+      startTime: new Date(),
+      endTime: null,
+      score: null,
+      pointsEarned: null,
+      passed: null,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.quizAttempts.set(id, attempt);
+    return attempt;
+  }
+
+  async getUserQuizAttempts(userId: string, quizId?: string): Promise<(QuizAttempt & { quiz: Quiz })[]> {
+    const attempts = Array.from(this.quizAttempts.values())
+      .filter(attempt => {
+        if (attempt.userId !== userId) return false;
+        if (quizId && attempt.quizId !== quizId) return false;
+        return true;
+      });
+
+    return attempts.map(attempt => ({
+      ...attempt,
+      quiz: this.quizzes.get(attempt.quizId)!
+    })).filter(attempt => attempt.quiz);
+  }
+
+  async saveQuestionResponse(insertResponse: InsertQuestionResponse): Promise<QuestionResponse> {
+    const id = randomUUID();
+    const response: QuestionResponse = {
+      ...insertResponse,
+      id,
+      submittedAt: new Date(),
+      grade: null,
+      feedback: null,
+      gradedAt: null,
+      gradedBy: null,
+      flaggedForReview: false,
+      timeTaken: null
+    };
+    this.questionResponses.set(id, response);
+    return response;
+  }
+
+  async completeQuizAttempt(id: string, endTime: Date, score: number, pointsEarned: number, passed: boolean): Promise<QuizAttempt | undefined> {
+    const attempt = this.quizAttempts.get(id);
+    if (!attempt) return undefined;
+
+    // Update attempt with provided values
+    const updatedAttempt: QuizAttempt = {
+      ...attempt,
+      status: 'completed',
+      endTime,
+      score,
+      pointsEarned,
+      passed,
+      updatedAt: new Date()
+    };
+    this.quizAttempts.set(id, updatedAttempt);
+
+    return updatedAttempt;
+  }
+
+  async abandonQuizAttempt(id: string): Promise<QuizAttempt | undefined> {
+    const attempt = this.quizAttempts.get(id);
+    if (!attempt) return undefined;
+
+    const updatedAttempt: QuizAttempt = {
+      ...attempt,
+      status: 'abandoned',
+      endTime: new Date(),
+      updatedAt: new Date()
+    };
+    this.quizAttempts.set(id, updatedAttempt);
+    return updatedAttempt;
+  }
+
+  async autoSaveQuizProgress(attemptId: string, responses: any): Promise<void> {
+    // This would typically save progress to allow resuming later
+    // For now, we'll just update the attempt timestamp
+    const attempt = this.quizAttempts.get(attemptId);
+    if (attempt) {
+      this.quizAttempts.set(attemptId, { 
+        ...attempt, 
+        updatedAt: new Date() 
+      });
+    }
+  }
+
+  // Missing Certificate Methods
+  async generateCertificate(insertCertificate: InsertCertificate): Promise<Certificate> {
+    const id = randomUUID();
+    const certificate: Certificate = {
+      ...insertCertificate,
+      id,
+      verificationCode: randomUUID().replace(/-/g, '').substring(0, 16).toUpperCase(),
+      downloadCount: 0,
+      shareCount: 0,
+      isValid: true,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.certificates.set(id, certificate);
+    return certificate;
+  }
+
+  async getCertificate(id: string): Promise<Certificate | undefined> {
+    return this.certificates.get(id);
+  }
+
+  async getUserCertificates(userId: string): Promise<(Certificate & { course: Course; quiz: Quiz })[]> {
+    const certificates = Array.from(this.certificates.values())
+      .filter(cert => cert.userId === userId);
+
+    return certificates.map(cert => ({
+      ...cert,
+      course: this.courses.get(cert.courseId)!,
+      quiz: this.quizzes.get(cert.quizId)!
+    })).filter(cert => cert.course && cert.quiz);
+  }
+
+  async verifyCertificate(verificationCode: string): Promise<boolean> {
+    const certificate = Array.from(this.certificates.values())
+      .find(cert => cert.verificationCode === verificationCode);
+    return certificate ? certificate.isValid : false;
+  }
+
+  // Missing Course Completion Methods  
+  async markCourseComplete(userId: string, courseId: string): Promise<CourseEnrollment> {
+    const enrollmentKey = `${userId}-${courseId}`;
+    const enrollment = this.enrollments.get(enrollmentKey);
+    if (!enrollment) throw new Error('Enrollment not found');
+
+    const updatedEnrollment: CourseEnrollment = {
+      ...enrollment,
+      completed: true,
+      progress: 100,
+      completionDate: new Date()
+    };
+    this.enrollments.set(enrollmentKey, updatedEnrollment);
+    return updatedEnrollment;
+  }
+
+  async checkCourseCompletion(userId: string, courseId: string): Promise<boolean> {
+    const enrollmentKey = `${userId}-${courseId}`;
+    const enrollment = this.enrollments.get(enrollmentKey);
+    return enrollment ? enrollment.completed : false;
+  }
+
+  // Missing completeCourse method that's called in routes.ts
+  async completeCourse(userId: string, courseId: string): Promise<void> {
+    const enrollmentKey = `${userId}-${courseId}`;
+    const enrollment = this.enrollments.get(enrollmentKey);
+    if (enrollment) {
+      const updatedEnrollment: CourseEnrollment = {
+        ...enrollment,
+        completed: true,
+        progress: 100,
+        completionDate: new Date(),
+        lastAccessedAt: new Date()
+      };
+      this.enrollments.set(enrollmentKey, updatedEnrollment);
+    }
+  }
+
+  // Missing Question Option Methods
+  async getQuestionOptions(questionId: string): Promise<QuestionOption[]> {
+    return Array.from(this.questionOptions.values())
+      .filter(opt => opt.questionId === questionId)
+      .sort((a, b) => a.order - b.order);
+  }
+
+  async createQuestionOption(insertOption: InsertQuestionOption): Promise<QuestionOption> {
+    const id = randomUUID();
+    const option: QuestionOption = {
+      ...insertOption,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.questionOptions.set(id, option);
+    return option;
+  }
+
+  async updateQuestionOption(id: string, updates: Partial<QuestionOption>): Promise<QuestionOption | undefined> {
+    const option = this.questionOptions.get(id);
+    if (!option) return undefined;
+
+    const updatedOption = { ...option, ...updates, updatedAt: new Date() };
+    this.questionOptions.set(id, updatedOption);
+    return updatedOption;
+  }
+
+  async deleteQuestionOption(id: string): Promise<boolean> {
+    return this.questionOptions.delete(id);
+  }
+
+  // Missing Quiz Attempt Methods  
+  async getQuizAttempt(id: string): Promise<(QuizAttempt & { quiz: Quiz; responses: QuestionResponse[] }) | undefined> {
+    const attempt = this.quizAttempts.get(id);
+    if (!attempt) return undefined;
+
+    const quiz = this.quizzes.get(attempt.quizId);
+    if (!quiz) return undefined;
+
+    const responses = Array.from(this.questionResponses.values())
+      .filter(r => r.attemptId === id);
+
+    return { ...attempt, quiz, responses };
+  }
+
+  async getAttemptResponses(attemptId: string): Promise<(QuestionResponse & { question: Question; selectedOption?: QuestionOption })[]> {
+    const responses = Array.from(this.questionResponses.values())
+      .filter(r => r.attemptId === attemptId);
+
+    return responses.map(response => {
+      const question = this.questions.get(response.questionId)!;
+      const selectedOption = response.selectedOptionId ? 
+        this.questionOptions.get(response.selectedOptionId) : undefined;
+      return { ...response, question, selectedOption };
+    }).filter(r => r.question);
+  }
+
+  // Missing Lesson Quiz Methods
+  async getLessonQuizzes(lessonId: string): Promise<Quiz[]> {
+    return Array.from(this.quizzes.values())
+      .filter(quiz => quiz.lessonId === lessonId);
+  }
+
+  async getQuestion(id: string): Promise<(Question & { options: QuestionOption[] }) | undefined> {
+    const question = this.questions.get(id);
+    if (!question) return undefined;
+
+    const options = Array.from(this.questionOptions.values())
+      .filter(opt => opt.questionId === id)
+      .sort((a, b) => a.order - b.order);
+
+    return { ...question, options };
+  }
+
+  // Missing Grading Methods
+  async getResponsesNeedingGrading(quizId?: string): Promise<(QuestionResponse & { attempt: QuizAttempt & { user: User }; question: Question })[]> {
+    const responses = Array.from(this.questionResponses.values())
+      .filter(response => {
+        const question = this.questions.get(response.questionId);
+        if (quizId && question?.quizId !== quizId) return false;
+        // Return responses that need manual grading (essays, short answers)
+        return question?.type === 'essay' || question?.type === 'short_answer';
+      });
+
+    return responses.map(response => {
+      const attempt = this.quizAttempts.get(response.attemptId)!;
+      const user = this.users.get(attempt.userId)!;
+      const question = this.questions.get(response.questionId)!;
+      return { ...response, attempt: { ...attempt, user }, question };
+    }).filter(r => r.attempt && r.question);
+  }
+
+  async gradeResponse(responseId: string, grade: number, feedback: string, gradedBy: string): Promise<QuestionResponse | undefined> {
+    const response = this.questionResponses.get(responseId);
+    if (!response) return undefined;
+
+    const updatedResponse: QuestionResponse = {
+      ...response,
+      grade,
+      feedback,
+      gradedBy,
+      gradedAt: new Date()
+    };
+    this.questionResponses.set(responseId, updatedResponse);
+    return updatedResponse;
+  }
+
+  async bulkGradeResponses(grades: { responseId: string; grade: number; feedback: string }[], gradedBy: string): Promise<number> {
+    let gradedCount = 0;
+    for (const grade of grades) {
+      const response = await this.gradeResponse(grade.responseId, grade.grade, grade.feedback, gradedBy);
+      if (response) gradedCount++;
+    }
+    return gradedCount;
+  }
+
+  async updateAttemptScoreAfterGrading(attemptId: string): Promise<QuizAttempt | undefined> {
+    const attempt = this.quizAttempts.get(attemptId);
+    if (!attempt) return undefined;
+
+    // Recalculate score based on all responses including graded ones
+    const responses = Array.from(this.questionResponses.values())
+      .filter(r => r.attemptId === attemptId);
+
+    let totalPoints = 0;
+    let earnedPoints = 0;
+
+    for (const response of responses) {
+      const question = this.questions.get(response.questionId);
+      if (question) {
+        totalPoints += question.points || 0;
+        if (response.isCorrect || (response.grade && response.grade > 0)) {
+          earnedPoints += response.grade || question.points || 0;
+        }
+      }
+    }
+
+    const score = totalPoints > 0 ? Math.round((earnedPoints / totalPoints) * 100) : 0;
+    const quiz = this.quizzes.get(attempt.quizId);
+    const passed = quiz ? score >= quiz.passingScore : false;
+
+    const updatedAttempt: QuizAttempt = {
+      ...attempt,
+      score,
+      pointsEarned: earnedPoints,
+      passed,
+      updatedAt: new Date()
+    };
+    this.quizAttempts.set(attemptId, updatedAttempt);
+    return updatedAttempt;
+  }
+
+  // Missing Certificate Methods  
+  async downloadCertificate(id: string, userId: string): Promise<{ url: string; filename: string } | undefined> {
+    const certificate = this.certificates.get(id);
+    if (!certificate || certificate.userId !== userId) return undefined;
+
+    // Increment download count
+    this.certificates.set(id, { 
+      ...certificate, 
+      downloadCount: certificate.downloadCount + 1 
+    });
+
+    return {
+      url: `/api/certificates/${id}/download`,
+      filename: `certificate-${certificate.verificationCode}.pdf`
+    };
+  }
+
+  async incrementCertificateDownload(id: string): Promise<void> {
+    const certificate = this.certificates.get(id);
+    if (certificate) {
+      this.certificates.set(id, { 
+        ...certificate, 
+        downloadCount: certificate.downloadCount + 1 
+      });
+    }
+  }
+
+  // Missing Quiz Analytics Methods
+  async getQuizAnalytics(quizId: string): Promise<{
+    totalAttempts: number;
+    averageScore: number;
+    passRate: number;
+    averageCompletionTime: number;
+    questionAnalytics: Array<{
+      questionId: string;
+      correctRate: number;
+      averageTime: number;
+      skipRate: number;
+    }>;
+    difficultyDistribution: Record<string, number>;
+  }> {
+    const attempts = Array.from(this.quizAttempts.values())
+      .filter(attempt => attempt.quizId === quizId && attempt.status === 'completed');
+
+    const totalAttempts = attempts.length;
+    const averageScore = totalAttempts > 0 ? 
+      attempts.reduce((sum, attempt) => sum + (attempt.score || 0), 0) / totalAttempts : 0;
+    const passedAttempts = attempts.filter(attempt => attempt.passed).length;
+    const passRate = totalAttempts > 0 ? (passedAttempts / totalAttempts) * 100 : 0;
+    
+    const totalTime = attempts.reduce((sum, attempt) => {
+      const duration = attempt.endTime && attempt.startTime ? 
+        attempt.endTime.getTime() - attempt.startTime.getTime() : 0;
+      return sum + duration;
+    }, 0);
+    const averageCompletionTime = totalAttempts > 0 ? totalTime / totalAttempts / 1000 : 0; // Convert to seconds
+
+    return {
+      totalAttempts,
+      averageScore,
+      passRate,
+      averageCompletionTime,
+      questionAnalytics: [],
+      difficultyDistribution: {}
+    };
+  }
+
+  async getCourseQuizAnalytics(courseId: string): Promise<{
+    totalQuizzes: number;
+    totalAttempts: number;
+    averagePassRate: number;
+    studentProgress: Array<{
+      userId: string;
+      userName: string;
+      completedQuizzes: number;
+      averageScore: number;
+    }>;
+  }> {
+    const quizzes = Array.from(this.quizzes.values()).filter(q => q.courseId === courseId);
+    const totalQuizzes = quizzes.length;
+    
+    const attempts = Array.from(this.quizAttempts.values())
+      .filter(attempt => quizzes.some(q => q.id === attempt.quizId));
+    
+    return {
+      totalQuizzes,
+      totalAttempts: attempts.length,
+      averagePassRate: 0,
+      studentProgress: []
+    };
+  }
+
+  async getUserQuizPerformance(userId: string): Promise<{
+    totalAttempts: number;
+    completedQuizzes: number;
+    averageScore: number;
+    certificatesEarned: number;
+    recentAttempts: (QuizAttempt & { quiz: Quiz; course: Course })[];
+  }> {
+    const attempts = Array.from(this.quizAttempts.values()).filter(a => a.userId === userId);
+    const completedAttempts = attempts.filter(a => a.status === 'completed');
+    const averageScore = completedAttempts.length > 0 ? 
+      completedAttempts.reduce((sum, a) => sum + (a.score || 0), 0) / completedAttempts.length : 0;
+    
+    const certificates = Array.from(this.certificates.values()).filter(c => c.userId === userId);
+    
+    return {
+      totalAttempts: attempts.length,
+      completedQuizzes: completedAttempts.length,
+      averageScore,
+      certificatesEarned: certificates.length,
+      recentAttempts: []
+    };
+  }
+
+  async getSystemQuizMetrics(): Promise<{
+    totalQuizzes: number;
+    totalAttempts: number;
+    totalCertificates: number;
+    averagePassRate: number;
+    popularQuizzes: (Quiz & { attemptCount: number; averageScore: number })[];
+  }> {
+    const totalQuizzes = this.quizzes.size;
+    const totalAttempts = this.quizAttempts.size;
+    const totalCertificates = this.certificates.size;
+    
+    return {
+      totalQuizzes,
+      totalAttempts,
+      totalCertificates,
+      averagePassRate: 0,
+      popularQuizzes: []
+    };
+  }
+
+  // Missing Quiz Integration Methods
+  async updateCourseProgressFromQuiz(userId: string, courseId: string, quizPassed: boolean): Promise<void> {
+    const enrollmentKey = `${userId}-${courseId}`;
+    const enrollment = this.enrollments.get(enrollmentKey);
+    if (enrollment && quizPassed) {
+      // Update course progress when quiz is passed
+      const updatedEnrollment = { 
+        ...enrollment, 
+        progress: Math.min(100, (enrollment.progress || 0) + 10),
+        lastAccessedAt: new Date()
+      };
+      this.enrollments.set(enrollmentKey, updatedEnrollment);
+    }
+  }
+
+  async getRequiredQuizzesForCourse(courseId: string): Promise<Quiz[]> {
+    return Array.from(this.quizzes.values())
+      .filter(quiz => quiz.courseId === courseId && quiz.isRequired);
+  }
+
+  async getUserCourseQuizProgress(userId: string, courseId: string): Promise<{
+    totalQuizzes: number;
+    completedQuizzes: number;
+    passedQuizzes: number;
+    averageScore: number;
+    blockedByQuiz?: Quiz;
+  }> {
+    const courseQuizzes = Array.from(this.quizzes.values()).filter(q => q.courseId === courseId);
+    const userAttempts = Array.from(this.quizAttempts.values())
+      .filter(attempt => attempt.userId === userId && courseQuizzes.some(q => q.id === attempt.quizId));
+    
+    const completedAttempts = userAttempts.filter(a => a.status === 'completed');
+    const passedAttempts = completedAttempts.filter(a => a.passed);
+    
+    return {
+      totalQuizzes: courseQuizzes.length,
+      completedQuizzes: completedAttempts.length,
+      passedQuizzes: passedAttempts.length,
+      averageScore: completedAttempts.length > 0 ? 
+        completedAttempts.reduce((sum, a) => sum + (a.score || 0), 0) / completedAttempts.length : 0
+    };
+  }
+
+  async checkQuizCompletionRequirements(userId: string, lessonId: string): Promise<{ canProceed: boolean; blockedBy?: Quiz; }> {
+    const lessonQuizzes = Array.from(this.quizzes.values())
+      .filter(quiz => quiz.lessonId === lessonId && quiz.isRequired);
+    
+    for (const quiz of lessonQuizzes) {
+      const userAttempts = Array.from(this.quizAttempts.values())
+        .filter(attempt => attempt.userId === userId && attempt.quizId === quiz.id && attempt.passed);
+      
+      if (userAttempts.length === 0) {
+        return { canProceed: false, blockedBy: quiz };
+      }
+    }
+    
+    return { canProceed: true };
   }
 
   // Support

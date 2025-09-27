@@ -1257,6 +1257,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get real learning statistics for user
+  app.get("/api/users/:userId/learning-stats", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.params.userId;
+      
+      // Verify user can access their own stats or is admin
+      if (req.user.claims.sub !== userId && req.user.claims.role !== 'admin') {
+        return res.status(403).json({ error: "Unauthorized to access these learning stats" });
+      }
+      
+      const learningStats = await storage.getUserLearningStats(userId);
+      res.json(learningStats);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Complete course and generate certificate
+  app.post("/api/courses/:courseId/complete", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const courseId = req.params.courseId;
+      
+      // Check if course completion criteria are met
+      const completionCheck = await storage.checkCourseCompletion(userId, courseId);
+      
+      if (!completionCheck.canComplete) {
+        return res.status(400).json({ 
+          error: "Course completion criteria not met",
+          details: {
+            allLessonsComplete: completionCheck.allLessonsComplete,
+            allRequiredQuizzesComplete: completionCheck.allRequiredQuizzesComplete,
+            completedLessons: completionCheck.completedLessons,
+            totalLessons: completionCheck.totalLessons
+          }
+        });
+      }
+      
+      // Mark course as completed
+      const enrollment = await storage.markCourseComplete(userId, courseId);
+      
+      if (!enrollment) {
+        return res.status(404).json({ error: "Enrollment not found" });
+      }
+      
+      // TODO: Generate certificate automatically here
+      // For now, return success with completion details
+      
+      res.json({
+        enrollment,
+        completed: true,
+        certificateGenerated: false, // Will be true when certificate generation is implemented
+        completionDetails: completionCheck
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Check if course can be completed
+  app.get("/api/courses/:courseId/completion-status", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const courseId = req.params.courseId;
+      
+      const completionStatus = await storage.checkCourseCompletion(userId, courseId);
+      res.json(completionStatus);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // ===================
   // COMPREHENSIVE QUIZ SYSTEM API ENDPOINTS
   // ===================
