@@ -1,16 +1,22 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { Course } from "@shared/schema";
+import { Progress } from "@/components/ui/progress";
+import type { Course, CourseEnrollment } from "@shared/schema";
+import { CheckCircle, Crown, CreditCard, PlayCircle } from "lucide-react";
 
 interface CourseCardProps {
   course: Course;
   onEnroll?: (courseId: string) => void;
+  onPurchase?: (courseId: string) => void;
   showProgress?: boolean;
   progress?: number;
+  enrollment?: CourseEnrollment;
+  isAdmin?: boolean;
+  userEmail?: string;
 }
 
-export default function CourseCard({ course, onEnroll, showProgress, progress }: CourseCardProps) {
+export default function CourseCard({ course, onEnroll, onPurchase, showProgress, progress, enrollment, isAdmin, userEmail }: CourseCardProps) {
   const getLevelColor = (level: string) => {
     switch (level) {
       case 'beginner': return 'default';
@@ -19,6 +25,14 @@ export default function CourseCard({ course, onEnroll, showProgress, progress }:
       default: return 'default';
     }
   };
+
+  const formatPrice = (priceInCents: number) => {
+    return (priceInCents / 100).toFixed(2);
+  };
+
+  const isEnrolled = !!enrollment;
+  const isUserAdmin = isAdmin || userEmail === 'tamzid257@gmail.com';
+  const hasAccess = isEnrolled || isUserAdmin;
 
   return (
     <Card className="course-card overflow-hidden hover:shadow-lg" data-testid={`card-course-${course.id}`}>
@@ -56,17 +70,39 @@ export default function CourseCard({ course, onEnroll, showProgress, progress }:
           {course.description}
         </p>
         
-        {showProgress && progress !== undefined && (
+        {showProgress && progress !== undefined && hasAccess && (
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-muted-foreground">Progress</span>
               <span className="text-sm text-muted-foreground">{progress}%</span>
             </div>
-            <div className="w-full bg-secondary rounded-full h-2">
-              <div 
-                className="bg-primary h-2 rounded-full transition-all duration-200"
-                style={{ width: `${progress}%` }}
-              ></div>
+            <Progress 
+              value={progress} 
+              className="h-2"
+              data-testid={`progress-course-${course.id}`}
+            />
+          </div>
+        )}
+        
+        {/* Enrollment Status Indicator */}
+        {hasAccess && (
+          <div className="mb-4 p-3 bg-green-50 dark:bg-green-950 rounded-lg border border-green-200 dark:border-green-800">
+            <div className="flex items-center gap-2">
+              {isUserAdmin && !isEnrolled ? (
+                <>
+                  <Crown className="h-4 w-4 text-yellow-500" />
+                  <span className="text-sm font-medium text-yellow-700 dark:text-yellow-300">
+                    Admin Access
+                  </span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span className="text-sm font-medium text-green-700 dark:text-green-300">
+                    Enrolled
+                  </span>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -76,15 +112,28 @@ export default function CourseCard({ course, onEnroll, showProgress, progress }:
             className="text-foreground font-semibold"
             data-testid={`text-price-${course.id}`}
           >
-            ${course.price}
+            ${formatPrice(course.price || 0)}
           </span>
-          <Button 
-            onClick={() => onEnroll?.(course.id)}
-            className="hover:bg-primary/90"
-            data-testid={`button-enroll-${course.id}`}
-          >
-            {showProgress ? "Continue" : "Enroll Now"}
-          </Button>
+          
+          {hasAccess ? (
+            <Button 
+              onClick={() => onEnroll?.(course.id)}
+              className="hover:bg-primary/90 min-h-[44px]"
+              data-testid={`button-continue-${course.id}`}
+            >
+              <PlayCircle className="h-4 w-4 mr-2" />
+              {showProgress ? "Continue" : "Start Course"}
+            </Button>
+          ) : (
+            <Button 
+              onClick={() => onPurchase?.(course.id)}
+              className="hover:bg-primary/90 min-h-[44px]"
+              data-testid={`button-purchase-${course.id}`}
+            >
+              <CreditCard className="h-4 w-4 mr-2" />
+              Purchase
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>

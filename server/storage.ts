@@ -1143,6 +1143,12 @@ export class MemStorage implements IStorage {
     return enrollment;
   }
 
+  async getEnrollment(userId: string, courseId: string): Promise<CourseEnrollment | undefined> {
+    return Array.from(this.enrollments.values()).find(
+      e => e.userId === userId && e.courseId === courseId
+    );
+  }
+
   async updateEnrollmentProgress(userId: string, courseId: string, progress: number): Promise<void> {
     const enrollment = Array.from(this.enrollments.values()).find(
       e => e.userId === userId && e.courseId === courseId

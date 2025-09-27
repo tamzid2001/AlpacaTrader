@@ -10,7 +10,10 @@ import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbSeparator, BreadcrumbPage } from "@/components/ui/breadcrumb";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import VideoPlayer from "@/components/courses/video-player";
+import StripePaymentForm from "@/components/courses/stripe-payment-form";
 import type { Course, Lesson, CourseEnrollment, UserProgress } from "@shared/schema";
 import { 
   BookOpen, 
@@ -29,7 +32,10 @@ import {
   Award,
   Globe,
   Heart,
-  Download
+  Download,
+  CreditCard,
+  ShoppingCart,
+  Crown
 } from "lucide-react";
 
 export default function CourseViewer() {
@@ -37,6 +43,7 @@ export default function CourseViewer() {
   const [, params] = useRoute("/courses/:courseId");
   const [, setLocation] = useLocation();
   const [currentLessonIndex, setCurrentLessonIndex] = useState(0);
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   
   const courseId = params?.courseId;
 
@@ -72,7 +79,27 @@ export default function CourseViewer() {
 
   const currentLesson = lessons?.[currentLessonIndex];
   const isEnrolled = !!enrollment;
+  const isAdmin = user?.email === 'tamzid257@gmail.com';
+  const shouldShowPayment = !isEnrolled && !isAdmin && user;
   const sortedLessons = lessons?.sort((a, b) => a.order - b.order) || [];
+
+  // Admin gets free access - automatically "enroll" them
+  const effectiveEnrollment = isEnrolled || isAdmin;
+
+  const handlePaymentSuccess = () => {
+    setShowPaymentDialog(false);
+    // The enrollment will be automatically created via webhook
+    // Just refresh the page or queries to show updated enrollment status
+    window.location.reload();
+  };
+
+  const handlePurchaseCourse = () => {
+    if (!user) {
+      setLocation("/");
+      return;
+    }
+    setShowPaymentDialog(true);
+  };
 
   // Auto-advance to first incomplete lesson
   useEffect(() => {
@@ -101,7 +128,7 @@ export default function CourseViewer() {
   };
 
   const canAccessLesson = (lessonIndex: number) => {
-    if (!isEnrolled) return false;
+    if (!effectiveEnrollment) return false;
     if (lessonIndex === 0) return true; // First lesson always accessible
     
     // Check if previous lesson is completed
@@ -206,8 +233,16 @@ export default function CourseViewer() {
                 </Badge>
               </div>
 
-              {isEnrolled && (
+              {(isEnrolled || isAdmin) && (
                 <div className="mb-6">
+                  {isAdmin && !isEnrolled && (
+                    <Alert className="mb-4">
+                      <Crown className="h-4 w-4" />
+                      <AlertDescription>
+                        Admin Access: You have free access to all courses
+                      </AlertDescription>
+                    </Alert>
+                  )}
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-medium">Course Progress</span>
                     <span className="text-sm text-muted-foreground">
@@ -246,50 +281,79 @@ export default function CourseViewer() {
             <div>
               <Card>
                 <CardContent className="p-6">
-                  {!isEnrolled ? (
-                    <>
-                      <div className="text-center mb-6">
-                        <div className="text-3xl font-bold mb-2" data-testid="course-price">
-                          ${formatPrice(course.price)}
+                  {!effectiveEnrollment ? (
+                    shouldShowPayment ? (
+                      <>
+                        <div className="text-center mb-6">
+                          <div className="text-3xl font-bold mb-2" data-testid="course-price">
+                            ${formatPrice(course.price || 0)}
+                          </div>
+                          <p className="text-sm text-muted-foreground">One-time payment</p>
                         </div>
-                        <p className="text-sm text-muted-foreground">One-time payment</p>
-                      </div>
-                      
-                      <Button 
-                        className="w-full mb-4" 
-                        size="lg"
-                        data-testid="enroll-button"
-                        onClick={() => {
-                          // TODO: Integrate with Stripe payment
-                          console.log('Enroll in course:', courseId);
-                        }}
-                      >
-                        Enroll Now
-                      </Button>
-                      
-                      <div className="flex items-center justify-center gap-2 mb-4">
-                        <Button variant="outline" size="sm" className="flex-1">
-                          <Heart className="h-4 w-4 mr-1" />
-                          Save
+                        
+                        <Button 
+                          className="w-full mb-4 min-h-[44px]" 
+                          size="lg"
+                          data-testid="button-purchase-course"
+                          onClick={handlePurchaseCourse}
+                        >
+                          <CreditCard className="h-4 w-4 mr-2" />
+                          Purchase Course
                         </Button>
-                        <Button variant="outline" size="sm" className="flex-1">
-                          <FileText className="h-4 w-4 mr-1" />
-                          Preview
+                        
+                        <div className="flex items-center justify-center gap-2 mb-4">
+                          <Button variant="outline" size="sm" className="flex-1 min-h-[44px]">
+                            <Heart className="h-4 w-4 mr-1" />
+                            Save
+                          </Button>
+                          <Button variant="outline" size="sm" className="flex-1 min-h-[44px]">
+                            <FileText className="h-4 w-4 mr-1" />
+                            Preview
+                          </Button>
+                        </div>
+                        
+                        <div className="space-y-2 text-xs text-muted-foreground text-center">
+                          <div>✓ Lifetime access</div>
+                          <div>✓ Certificate of completion</div>
+                          <div>✓ 30-day money-back guarantee</div>
+                        </div>
+                      </>
+                    ) : !user ? (
+                      <div className="text-center">
+                        <Lock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                        <h3 className="font-semibold mb-2">Login Required</h3>
+                        <p className="text-sm text-muted-foreground mb-4">
+                          Please login to access this course
+                        </p>
+                        <Button 
+                          className="w-full min-h-[44px]" 
+                          onClick={() => setLocation("/")}
+                          data-testid="button-login"
+                        >
+                          Login to Continue
                         </Button>
                       </div>
-                      
-                      <div className="text-xs text-muted-foreground text-center">
-                        30-day money-back guarantee
-                      </div>
-                    </>
+                    ) : null
                   ) : (
                     <div className="text-center">
-                      <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
-                      <h3 className="font-semibold mb-2">You're Enrolled!</h3>
-                      <p className="text-sm text-muted-foreground mb-4">
-                        Continue your learning journey
-                      </p>
-                      {enrollment.completed && (
+                      {isAdmin && !isEnrolled ? (
+                        <>
+                          <Crown className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
+                          <h3 className="font-semibold mb-2">Admin Access</h3>
+                          <p className="text-sm text-muted-foreground mb-4">
+                            You have full access to this course
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
+                          <h3 className="font-semibold mb-2">You're Enrolled!</h3>
+                          <p className="text-sm text-muted-foreground mb-4">
+                            Continue your learning journey
+                          </p>
+                        </>
+                      )}
+                      {enrollment?.completed && (
                         <Badge className="bg-green-100 text-green-800">
                           Course Completed
                         </Badge>
@@ -520,7 +584,7 @@ export default function CourseViewer() {
                               </div>
                             )}
                             
-                            {progress && progress.progressPercentage > 0 && (
+                            {progress && progress.progressPercentage != null && progress.progressPercentage > 0 && (
                               <Progress 
                                 value={progress.progressPercentage} 
                                 className="h-1"
@@ -581,6 +645,22 @@ export default function CourseViewer() {
           </div>
         )}
       </div>
+      
+      {/* Payment Dialog */}
+      <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
+        <DialogContent className="max-w-md p-0">
+          <DialogHeader className="p-6 pb-0">
+            <DialogTitle className="text-center">Purchase Course</DialogTitle>
+          </DialogHeader>
+          {course && (
+            <StripePaymentForm
+              course={course}
+              onPaymentSuccess={handlePaymentSuccess}
+              onCancel={() => setShowPaymentDialog(false)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
