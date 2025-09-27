@@ -2933,6 +2933,197 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ===================
+  // AI CHAT SYSTEM API ROUTES
+  // ===================
+
+  // Import AI Chat Service
+  const { aiChatService } = require("./services/ai-chat-service");
+
+  // Send message and get AI response
+  app.post("/api/chat/message", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { message, conversationId, userContext } = req.body;
+      
+      if (!message || typeof message !== 'string') {
+        return res.status(400).json({ error: "Message is required" });
+      }
+
+      const ipAddress = req.ip || req.connection.remoteAddress;
+      const userAgent = req.get('User-Agent');
+
+      const response = await aiChatService.processMessage(
+        userId,
+        message,
+        conversationId,
+        userContext,
+        ipAddress,
+        userAgent
+      );
+
+      res.json(response);
+    } catch (error: any) {
+      console.error('Chat message error:', error);
+      res.status(500).json({ error: "Failed to process message: " + error.message });
+    }
+  });
+
+  // Get user's chat conversations
+  app.get("/api/chat/conversations", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+      
+      const conversations = await storage.getUserChatConversations(userId, limit);
+      res.json(conversations);
+    } catch (error: any) {
+      console.error('Get conversations error:', error);
+      res.status(500).json({ error: "Failed to get conversations: " + error.message });
+    }
+  });
+
+  // Get messages in a conversation
+  app.get("/api/chat/conversations/:id/messages", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const conversationId = req.params.id;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+
+      // Verify user owns the conversation
+      const conversation = await storage.getChatConversation(conversationId);
+      if (!conversation || conversation.userId !== userId) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+
+      const messages = await storage.getConversationMessages(conversationId, limit);
+      res.json(messages);
+    } catch (error: any) {
+      console.error('Get conversation messages error:', error);
+      res.status(500).json({ error: "Failed to get messages: " + error.message });
+    }
+  });
+
+  // Rate AI response quality
+  app.post("/api/chat/feedback", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { messageId, rating, feedback, wasHelpful, feedbackCategory } = req.body;
+      
+      if (!messageId) {
+        return res.status(400).json({ error: "Message ID is required" });
+      }
+
+      // Verify the message exists and user has access
+      const message = await storage.getChatMessage(messageId);
+      if (!message) {
+        return res.status(404).json({ error: "Message not found" });
+      }
+
+      // Verify user owns the conversation
+      const conversation = await storage.getChatConversation(message.conversationId);
+      if (!conversation || conversation.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const feedbackData = {
+        userId,
+        messageId,
+        rating,
+        feedback,
+        wasHelpful,
+        feedbackCategory,
+      };
+
+      const savedFeedback = await storage.createMessageFeedback(feedbackData);
+      res.json(savedFeedback);
+    } catch (error: any) {
+      console.error('Chat feedback error:', error);
+      res.status(500).json({ error: "Failed to save feedback: " + error.message });
+    }
+  });
+
+  // Streaming chat responses
+  app.post("/api/chat/stream", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { message, conversationId, userContext } = req.body;
+      
+      if (!message || typeof message !== 'string') {
+        return res.status(400).json({ error: "Message is required" });
+      }
+
+      const ipAddress = req.ip || req.connection.remoteAddress;
+      const userAgent = req.get('User-Agent');
+
+      // Set headers for server-sent events
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Headers', 'Cache-Control');
+
+      const streamIterator = await aiChatService.processMessageStream(
+        userId,
+        message,
+        conversationId,
+        userContext,
+        ipAddress,
+        userAgent
+      );
+
+      for await (const chunk of streamIterator) {
+        res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
+      }
+
+      res.write('data: [DONE]\n\n');
+      res.end();
+    } catch (error: any) {
+      console.error('Chat stream error:', error);
+      res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+      res.end();
+    }
+  });
+
+  // Get chat analytics (admin only)
+  app.get("/api/admin/chat/analytics", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.user.claims.sub);
+      if (!user || !['admin', 'superadmin'].includes(user.role)) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const userId = req.query.userId as string;
+      const timeframe = req.query.timeframe ? JSON.parse(req.query.timeframe as string) : undefined;
+
+      const analytics = await storage.getChatAnalytics(userId, timeframe);
+      res.json(analytics);
+    } catch (error: any) {
+      console.error('Chat analytics error:', error);
+      res.status(500).json({ error: "Failed to get analytics: " + error.message });
+    }
+  });
+
+  // Deactivate conversation
+  app.delete("/api/chat/conversations/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const conversationId = req.params.id;
+
+      // Verify user owns the conversation
+      const conversation = await storage.getChatConversation(conversationId);
+      if (!conversation || conversation.userId !== userId) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+
+      await storage.deactivateChatConversation(conversationId);
+      res.json({ message: "Conversation deactivated successfully" });
+    } catch (error: any) {
+      console.error('Deactivate conversation error:', error);
+      res.status(500).json({ error: "Failed to deactivate conversation: " + error.message });
+    }
+  });
+
+  // ===================
   // GDPR COMPLIANCE API ROUTES
   // ===================
 

@@ -898,6 +898,41 @@ export interface IStorage {
     failedJobs: number;
     averageCompletionTime: number;
   }>;
+
+  // =====================================
+  // AI CHAT SYSTEM METHODS
+  // =====================================
+
+  // Chat Conversations
+  createChatConversation(conversationData: InsertChatConversation): Promise<ChatConversation>;
+  getChatConversation(conversationId: string): Promise<ChatConversation | undefined>;
+  updateChatConversation(conversationId: string, updates: Partial<ChatConversation>): Promise<ChatConversation | undefined>;
+  getUserChatConversations(userId: string, limit?: number): Promise<ChatConversation[]>;
+  getActiveChatConversations(userId: string): Promise<ChatConversation[]>;
+  deactivateChatConversation(conversationId: string): Promise<void>;
+
+  // Chat Messages  
+  createChatMessage(messageData: InsertChatMessage): Promise<ChatMessage>;
+  getChatMessage(messageId: string): Promise<ChatMessage | undefined>;
+  getConversationMessages(conversationId: string, limit?: number): Promise<ChatMessage[]>;
+  updateChatMessage(messageId: string, updates: Partial<ChatMessage>): Promise<ChatMessage | undefined>;
+  deleteChatMessage(messageId: string): Promise<boolean>;
+
+  // Message Feedback
+  createMessageFeedback(feedbackData: InsertMessageFeedback): Promise<MessageFeedback>;
+  getMessageFeedback(messageId: string): Promise<MessageFeedback | undefined>;
+  updateMessageFeedback(messageId: string, updates: Partial<MessageFeedback>): Promise<MessageFeedback | undefined>;
+  getUserMessageFeedback(userId: string, limit?: number): Promise<MessageFeedback[]>;
+
+  // Chat Analytics & Insights
+  getChatAnalytics(userId?: string, timeframe?: { start: Date; end: Date }): Promise<{
+    totalConversations: number;
+    totalMessages: number;
+    avgMessagesPerConversation: number;
+    avgResponseTime: number;
+    mostCommonIntents: { intent: string; count: number }[];
+    userSatisfactionRating: number;
+  }>;
 }
 
 export class MemStorage implements IStorage {
@@ -955,6 +990,11 @@ export class MemStorage implements IStorage {
 
   // Background Jobs System Storage
   private backgroundJobs: Map<string, BackgroundJob> = new Map();
+
+  // AI Chat System Storage
+  private chatConversations: Map<string, ChatConversation> = new Map();
+  private chatMessages: Map<string, ChatMessage> = new Map();
+  private messageFeedback: Map<string, MessageFeedback> = new Map();
 
   constructor() {
     this.initializeData();
@@ -5234,6 +5274,226 @@ export class MemStorage implements IStorage {
       completedJobs: completedJobs.length,
       failedJobs: jobs.filter(job => job.status === 'failed').length,
       averageCompletionTime,
+    };
+  }
+
+  // =====================================
+  // AI CHAT SYSTEM METHOD IMPLEMENTATIONS
+  // =====================================
+
+  // Chat Conversations
+  async createChatConversation(conversationData: InsertChatConversation): Promise<ChatConversation> {
+    const now = new Date();
+    const conversation: ChatConversation = {
+      ...conversationData,
+      id: conversationData.id || randomUUID(),
+      messageCount: 0,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    
+    this.chatConversations.set(conversation.id, conversation);
+    return conversation;
+  }
+
+  async getChatConversation(conversationId: string): Promise<ChatConversation | undefined> {
+    return this.chatConversations.get(conversationId);
+  }
+
+  async updateChatConversation(conversationId: string, updates: Partial<ChatConversation>): Promise<ChatConversation | undefined> {
+    const conversation = this.chatConversations.get(conversationId);
+    if (!conversation) return undefined;
+
+    const updated: ChatConversation = {
+      ...conversation,
+      ...updates,
+      updatedAt: new Date(),
+    };
+    
+    this.chatConversations.set(conversationId, updated);
+    return updated;
+  }
+
+  async getUserChatConversations(userId: string, limit?: number): Promise<ChatConversation[]> {
+    const conversations = Array.from(this.chatConversations.values())
+      .filter(conv => conv.userId === userId)
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    
+    return limit ? conversations.slice(0, limit) : conversations;
+  }
+
+  async getActiveChatConversations(userId: string): Promise<ChatConversation[]> {
+    return Array.from(this.chatConversations.values())
+      .filter(conv => conv.userId === userId && conv.isActive)
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  }
+
+  async deactivateChatConversation(conversationId: string): Promise<void> {
+    const conversation = this.chatConversations.get(conversationId);
+    if (conversation) {
+      const updated = {
+        ...conversation,
+        isActive: false,
+        updatedAt: new Date(),
+      };
+      this.chatConversations.set(conversationId, updated);
+    }
+  }
+
+  // Chat Messages
+  async createChatMessage(messageData: InsertChatMessage): Promise<ChatMessage> {
+    const now = new Date();
+    const message: ChatMessage = {
+      ...messageData,
+      id: messageData.id || randomUUID(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    
+    this.chatMessages.set(message.id, message);
+    return message;
+  }
+
+  async getChatMessage(messageId: string): Promise<ChatMessage | undefined> {
+    return this.chatMessages.get(messageId);
+  }
+
+  async getConversationMessages(conversationId: string, limit?: number): Promise<ChatMessage[]> {
+    const messages = Array.from(this.chatMessages.values())
+      .filter(msg => msg.conversationId === conversationId)
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    
+    return limit ? messages.slice(-limit) : messages;
+  }
+
+  async updateChatMessage(messageId: string, updates: Partial<ChatMessage>): Promise<ChatMessage | undefined> {
+    const message = this.chatMessages.get(messageId);
+    if (!message) return undefined;
+
+    const updated: ChatMessage = {
+      ...message,
+      ...updates,
+      updatedAt: new Date(),
+    };
+    
+    this.chatMessages.set(messageId, updated);
+    return updated;
+  }
+
+  async deleteChatMessage(messageId: string): Promise<boolean> {
+    return this.chatMessages.delete(messageId);
+  }
+
+  // Message Feedback
+  async createMessageFeedback(feedbackData: InsertMessageFeedback): Promise<MessageFeedback> {
+    const now = new Date();
+    const feedback: MessageFeedback = {
+      ...feedbackData,
+      id: feedbackData.id || randomUUID(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    
+    this.messageFeedback.set(feedback.id, feedback);
+    return feedback;
+  }
+
+  async getMessageFeedback(messageId: string): Promise<MessageFeedback | undefined> {
+    return Array.from(this.messageFeedback.values())
+      .find(feedback => feedback.messageId === messageId);
+  }
+
+  async updateMessageFeedback(messageId: string, updates: Partial<MessageFeedback>): Promise<MessageFeedback | undefined> {
+    const feedback = Array.from(this.messageFeedback.values())
+      .find(f => f.messageId === messageId);
+    
+    if (!feedback) return undefined;
+
+    const updated: MessageFeedback = {
+      ...feedback,
+      ...updates,
+      updatedAt: new Date(),
+    };
+    
+    this.messageFeedback.set(updated.id, updated);
+    return updated;
+  }
+
+  async getUserMessageFeedback(userId: string, limit?: number): Promise<MessageFeedback[]> {
+    const feedbacks = Array.from(this.messageFeedback.values())
+      .filter(feedback => feedback.userId === userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    
+    return limit ? feedbacks.slice(0, limit) : feedbacks;
+  }
+
+  // Chat Analytics & Insights
+  async getChatAnalytics(userId?: string, timeframe?: { start: Date; end: Date }): Promise<{
+    totalConversations: number;
+    totalMessages: number;
+    avgMessagesPerConversation: number;
+    avgResponseTime: number;
+    mostCommonIntents: { intent: string; count: number }[];
+    userSatisfactionRating: number;
+  }> {
+    let conversations = Array.from(this.chatConversations.values());
+    let messages = Array.from(this.chatMessages.values());
+
+    // Filter by user if specified
+    if (userId) {
+      conversations = conversations.filter(conv => conv.userId === userId);
+      const conversationIds = conversations.map(conv => conv.id);
+      messages = messages.filter(msg => conversationIds.includes(msg.conversationId));
+    }
+
+    // Filter by timeframe if specified
+    if (timeframe) {
+      conversations = conversations.filter(conv => 
+        new Date(conv.createdAt) >= timeframe.start && 
+        new Date(conv.createdAt) <= timeframe.end
+      );
+      messages = messages.filter(msg => 
+        new Date(msg.createdAt) >= timeframe.start && 
+        new Date(msg.createdAt) <= timeframe.end
+      );
+    }
+
+    // Calculate metrics
+    const totalConversations = conversations.length;
+    const totalMessages = messages.length;
+    const avgMessagesPerConversation = totalConversations > 0 ? totalMessages / totalConversations : 0;
+
+    // Calculate average response time from AI messages
+    const aiMessages = messages.filter(msg => msg.messageType === 'ai' && msg.responseTime);
+    const totalResponseTime = aiMessages.reduce((sum, msg) => sum + (msg.responseTime || 0), 0);
+    const avgResponseTime = aiMessages.length > 0 ? totalResponseTime / aiMessages.length : 0;
+
+    // Count intents
+    const intentCounts: Record<string, number> = {};
+    messages.forEach(msg => {
+      if (msg.detectedIntent) {
+        intentCounts[msg.detectedIntent] = (intentCounts[msg.detectedIntent] || 0) + 1;
+      }
+    });
+
+    const mostCommonIntents = Object.entries(intentCounts)
+      .map(([intent, count]) => ({ intent, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    // Calculate user satisfaction from feedback
+    const feedbacks = Array.from(this.messageFeedback.values());
+    const ratingsSum = feedbacks.reduce((sum, feedback) => sum + (feedback.rating || 0), 0);
+    const userSatisfactionRating = feedbacks.length > 0 ? ratingsSum / feedbacks.length : 0;
+
+    return {
+      totalConversations,
+      totalMessages,
+      avgMessagesPerConversation: Math.round(avgMessagesPerConversation * 100) / 100,
+      avgResponseTime: Math.round(avgResponseTime),
+      mostCommonIntents,
+      userSatisfactionRating: Math.round(userSatisfactionRating * 100) / 100,
     };
   }
 }

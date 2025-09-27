@@ -1546,109 +1546,6 @@ export const inAppNotifications = pgTable("in_app_notifications", {
   index("IDX_in_app_notifications_user_type").on(table.userId, table.type),
 ]);
 
-// ===========================================
-// COMPREHENSIVE AI CHAT SYSTEM TABLES
-// ===========================================
-
-// Chat Sessions - Manage conversation sessions with context awareness
-export const chatSessions = pgTable("chat_sessions", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
-  title: text("title").notNull().default("New Chat"),
-  contextType: text("context_type").notNull().default("general"), // course, quiz, lesson, general
-  contextId: varchar("context_id"), // courseId, lessonId, quizId when contextType is not general
-  isActive: boolean("is_active").notNull().default(true),
-  messageCount: integer("message_count").default(0),
-  lastMessageAt: timestamp("last_message_at"),
-  metadata: json("metadata"), // Additional context data, user preferences, etc.
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => [
-  index("IDX_chat_sessions_user_id").on(table.userId),
-  index("IDX_chat_sessions_context_type").on(table.contextType),
-  index("IDX_chat_sessions_context_id").on(table.contextId),
-  index("IDX_chat_sessions_is_active").on(table.isActive),
-  index("IDX_chat_sessions_created_at").on(table.createdAt),
-  index("IDX_chat_sessions_last_message_at").on(table.lastMessageAt),
-]);
-
-// Chat Messages - Individual messages within chat sessions
-export const chatMessages = pgTable("chat_messages", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  sessionId: varchar("session_id").notNull().references(() => chatSessions.id, { onDelete: 'cascade' }),
-  role: text("role").notNull(), // user, assistant, system
-  content: text("content").notNull(),
-  contentType: text("content_type").default("text"), // text, markdown, code, image_url
-  timestamp: timestamp("timestamp").defaultNow().notNull(),
-  // Context and learning assistance metadata
-  courseContext: json("course_context"), // Course info, lesson details, quiz context
-  aiModelUsed: varchar("ai_model_used"), // Track which AI model generated the response
-  promptTokens: integer("prompt_tokens"), // For usage tracking and optimization
-  completionTokens: integer("completion_tokens"),
-  responseTime: integer("response_time"), // Response generation time in milliseconds
-  qualityScore: real("quality_score"), // AI response quality rating (0-1)
-  userFeedback: integer("user_feedback"), // User feedback: -1 (negative), 0 (neutral), 1 (positive)
-  metadata: json("metadata"), // Additional context, citations, suggested follow-ups
-  editedAt: timestamp("edited_at"), // Track message edits
-  isEdited: boolean("is_edited").default(false),
-}, (table) => [
-  index("IDX_chat_messages_session_id").on(table.sessionId),
-  index("IDX_chat_messages_role").on(table.role),
-  index("IDX_chat_messages_timestamp").on(table.timestamp),
-  index("IDX_chat_messages_content_type").on(table.contentType),
-  index("IDX_chat_messages_user_feedback").on(table.userFeedback),
-  index("IDX_chat_messages_quality_score").on(table.qualityScore),
-]);
-
-// Chat Contexts - Store and manage contextual information for intelligent responses
-export const chatContexts = pgTable("chat_contexts", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  sessionId: varchar("session_id").notNull().references(() => chatSessions.id, { onDelete: 'cascade' }),
-  contextType: text("context_type").notNull(), // course, lesson, quiz, user_progress, learning_path
-  contextId: varchar("context_id").notNull(), // The ID of the referenced entity
-  priority: integer("priority").default(1), // Context priority for response generation (1-10)
-  relevanceScore: real("relevance_score"), // How relevant this context is (0-1)
-  lastUsedAt: timestamp("last_used_at"), // Track when context was last referenced
-  // Rich contextual metadata for intelligent assistance
-  metadata: json("metadata"), // Detailed context info: course content, progress, preferences
-  isActive: boolean("is_active").default(true),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => [
-  index("IDX_chat_contexts_session_id").on(table.sessionId),
-  index("IDX_chat_contexts_type").on(table.contextType),
-  index("IDX_chat_contexts_context_id").on(table.contextId),
-  index("IDX_chat_contexts_priority").on(table.priority),
-  index("IDX_chat_contexts_relevance_score").on(table.relevanceScore),
-  index("IDX_chat_contexts_is_active").on(table.isActive),
-  index("IDX_chat_contexts_last_used_at").on(table.lastUsedAt),
-]);
-
-// Chat Analytics - Track usage patterns and AI performance for optimization
-export const chatAnalytics = pgTable("chat_analytics", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").references(() => users.id, { onDelete: 'cascade' }),
-  sessionId: varchar("session_id").references(() => chatSessions.id, { onDelete: 'cascade' }),
-  messageId: varchar("message_id").references(() => chatMessages.id, { onDelete: 'cascade' }),
-  eventType: text("event_type").notNull(), // session_start, message_sent, feedback_given, export_request, etc.
-  contextType: text("context_type"), // course, lesson, quiz, general
-  contextId: varchar("context_id"),
-  // Performance and usage metrics
-  responseTime: integer("response_time"), // AI response time in milliseconds
-  tokenUsage: integer("token_usage"), // Total tokens used
-  successfulResponse: boolean("successful_response").default(true),
-  errorType: text("error_type"), // Track error patterns
-  userSatisfaction: integer("user_satisfaction"), // User rating (1-5)
-  metadata: json("metadata"), // Additional analytics data
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => [
-  index("IDX_chat_analytics_user_id").on(table.userId),
-  index("IDX_chat_analytics_session_id").on(table.sessionId),
-  index("IDX_chat_analytics_event_type").on(table.eventType),
-  index("IDX_chat_analytics_context_type").on(table.contextType),
-  index("IDX_chat_analytics_created_at").on(table.createdAt),
-  index("IDX_chat_analytics_successful_response").on(table.successfulResponse),
-  index("IDX_chat_analytics_user_satisfaction").on(table.userSatisfaction),
-]);
 
 // ===========================================
 // COMPREHENSIVE NOTIFICATION SYSTEM SCHEMAS & TYPES
@@ -1710,52 +1607,6 @@ export const insertInAppNotificationSchema = createInsertSchema(inAppNotificatio
   createdAt: true,
 });
 
-// ===========================================
-// COMPREHENSIVE AI CHAT SYSTEM SCHEMAS & TYPES
-// ===========================================
-
-// Chat System Insert Schemas
-export const insertChatSessionSchema = createInsertSchema(chatSessions).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
-export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({
-  id: true,
-  timestamp: true,
-});
-
-export const insertChatContextSchema = createInsertSchema(chatContexts).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const insertChatAnalyticsSchema = createInsertSchema(chatAnalytics).omit({
-  id: true,
-  createdAt: true,
-});
-
-// Chat System Type Exports
-export type InsertChatSession = z.infer<typeof insertChatSessionSchema>;
-export type ChatSession = typeof chatSessions.$inferSelect;
-export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
-export type ChatMessage = typeof chatMessages.$inferSelect;
-export type InsertChatContext = z.infer<typeof insertChatContextSchema>;
-export type ChatContext = typeof chatContexts.$inferSelect;
-export type InsertChatAnalytics = z.infer<typeof insertChatAnalyticsSchema>;
-export type ChatAnalytics = typeof chatAnalytics.$inferSelect;
-
-// Chat System Constants
-export const CHAT_ROLES = ["user", "assistant", "system"] as const;
-export const CHAT_CONTEXT_TYPES = ["course", "lesson", "quiz", "user_progress", "learning_path", "general"] as const;
-export const CHAT_CONTENT_TYPES = ["text", "markdown", "code", "image_url"] as const;
-export const CHAT_EVENT_TYPES = ["session_start", "session_end", "message_sent", "feedback_given", "export_request", "context_switch"] as const;
-
-export type ChatRole = typeof CHAT_ROLES[number];
-export type ChatContextType = typeof CHAT_CONTEXT_TYPES[number];
-export type ChatContentType = typeof CHAT_CONTENT_TYPES[number];
-export type ChatEventType = typeof CHAT_EVENT_TYPES[number];
 
 // Comprehensive Notification Type Exports
 export type InsertNotificationTemplate = z.infer<typeof insertNotificationTemplateSchema>;
@@ -2305,3 +2156,151 @@ export const insertBackgroundJobSchema = createInsertSchema(backgroundJobs).omit
 export const updateBackgroundJobSchema = insertBackgroundJobSchema.partial();
 
 export type UpdateBackgroundJob = z.infer<typeof updateBackgroundJobSchema>;
+
+// ===================
+// AI-POWERED CHAT SYSTEM
+// ===================
+
+// Chat Conversations - Track conversation sessions
+export const chatConversations = pgTable("chat_conversations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  title: text("title"), // Auto-generated or user-set conversation title
+  
+  // Conversation Context
+  currentCourseId: varchar("current_course_id").references(() => courses.id), // Course user was in when chat started
+  contextSnapshot: json("context_snapshot"), // User context at conversation start
+  tags: text("tags").array(), // Conversation topics/categories
+  
+  // Conversation Metadata
+  isActive: boolean("is_active").default(true),
+  lastMessageAt: timestamp("last_message_at"),
+  messageCount: integer("message_count").default(0),
+  avgResponseTime: integer("avg_response_time_ms"),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_chat_conversations_user_id").on(table.userId),
+  index("IDX_chat_conversations_current_course_id").on(table.currentCourseId),
+  index("IDX_chat_conversations_is_active").on(table.isActive),
+  index("IDX_chat_conversations_last_message_at").on(table.lastMessageAt),
+  index("IDX_chat_conversations_created_at").on(table.createdAt),
+]);
+
+// Message types and intent types
+export const MESSAGE_TYPES = ["user", "ai", "system"] as const;
+export const INTENT_TYPES = ["learning_help", "technical_support", "general_inquiry", "course_question", "platform_navigation"] as const;
+export const URGENCY_LEVELS = ["low", "medium", "high"] as const;
+
+export type MessageType = typeof MESSAGE_TYPES[number];
+export type IntentType = typeof INTENT_TYPES[number];
+export type UrgencyLevel = typeof URGENCY_LEVELS[number];
+
+// Chat Messages - Individual messages in conversations
+export const chatMessages = pgTable("chat_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  conversationId: varchar("conversation_id").notNull().references(() => chatConversations.id, { onDelete: 'cascade' }),
+  
+  // Message Content
+  content: text("content").notNull(),
+  messageType: varchar("message_type").notNull(), // 'user' | 'ai' | 'system'
+  
+  // AI Processing Details
+  aiModel: varchar("ai_model"), // 'gpt-5-nano' | 'gpt-3.5-turbo'
+  systemPrompt: text("system_prompt"), // System prompt used for AI response
+  temperature: real("temperature"), // AI temperature setting used
+  tokens: integer("tokens"), // Token count for the response
+  
+  // Intent Analysis
+  detectedIntent: varchar("detected_intent"), // learning_help, technical_support, etc.
+  intentConfidence: real("intent_confidence"), // 0.0 - 1.0 confidence score
+  extractedTopic: text("extracted_topic"), // Key topic/subject extracted from message
+  urgency: varchar("urgency"), // low, medium, high
+  
+  // Context & Response Quality
+  contextUsed: json("context_used"), // User context used for this message
+  responseTime: integer("response_time_ms"), // Time to generate response
+  streamingChunks: integer("streaming_chunks"), // Number of streaming chunks
+  
+  // User Feedback
+  userRating: integer("user_rating"), // 1-5 stars rating
+  userFeedback: text("user_feedback"), // Detailed user feedback
+  wasHelpful: boolean("was_helpful"), // Simple helpful/not helpful
+  
+  // Metadata
+  ipAddress: varchar("ip_address"), // For security and analytics
+  userAgent: text("user_agent"), // Browser info
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_chat_messages_conversation_id").on(table.conversationId),
+  index("IDX_chat_messages_message_type").on(table.messageType),
+  index("IDX_chat_messages_detected_intent").on(table.detectedIntent),
+  index("IDX_chat_messages_user_rating").on(table.userRating),
+  index("IDX_chat_messages_was_helpful").on(table.wasHelpful),
+  index("IDX_chat_messages_created_at").on(table.createdAt),
+]);
+
+// Message Feedback - Detailed feedback on AI responses
+export const messageFeedback = pgTable("message_feedback", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  messageId: varchar("message_id").notNull().references(() => chatMessages.id, { onDelete: 'cascade' }),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  
+  // Feedback Details
+  rating: integer("rating").notNull(), // 1-5 stars
+  feedbackText: text("feedback_text"), // Detailed written feedback
+  wasAccurate: boolean("was_accurate"), // Was the information accurate?
+  wasRelevant: boolean("was_relevant"), // Was the response relevant?
+  wasHelpful: boolean("was_helpful"), // Did it help solve the problem?
+  
+  // Improvement Suggestions
+  suggestedImprovement: text("suggested_improvement"), // User's suggestion for improvement
+  reportedIssue: text("reported_issue"), // Any issues with the response
+  
+  // Categorization
+  feedbackCategory: varchar("feedback_category"), // 'accuracy', 'relevance', 'tone', 'completeness'
+  severity: varchar("severity"), // 'minor', 'moderate', 'major' for issues
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_message_feedback_message_id").on(table.messageId),
+  index("IDX_message_feedback_user_id").on(table.userId),
+  index("IDX_message_feedback_rating").on(table.rating),
+  index("IDX_message_feedback_was_helpful").on(table.wasHelpful),
+  index("IDX_message_feedback_created_at").on(table.createdAt),
+]);
+
+// Chat System Types
+export type ChatConversation = typeof chatConversations.$inferSelect;
+export type InsertChatConversation = typeof chatConversations.$inferInsert;
+
+export type ChatMessage = typeof chatMessages.$inferSelect;
+export type InsertChatMessage = typeof chatMessages.$inferInsert;
+
+export type MessageFeedback = typeof messageFeedback.$inferSelect;
+export type InsertMessageFeedback = typeof messageFeedback.$inferInsert;
+
+// Chat System Schemas
+export const insertChatConversationSchema = createInsertSchema(chatConversations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertMessageFeedbackSchema = createInsertSchema(messageFeedback).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertChatConversationType = z.infer<typeof insertChatConversationSchema>;
+export type InsertChatMessageType = z.infer<typeof insertChatMessageSchema>;
+export type InsertMessageFeedbackType = z.infer<typeof insertMessageFeedbackSchema>;
