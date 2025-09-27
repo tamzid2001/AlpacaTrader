@@ -5,16 +5,44 @@ import { useEffect } from "react";
 import { useUserEnrollments } from "@/hooks/use-courses";
 import VideoPlayer from "@/components/courses/video-player";
 import SupportChat from "@/components/support/support-chat";
+import { CertificatesSection } from "@/components/dashboard/certificates-section";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { EnhancedIcon } from "@/components/icons/enhanced-icon";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import type { Certificate } from "@shared/schema";
 
 export default function Dashboard() {
   const { user, isAuthenticated, isLoading } = useAuth();
   
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const { data: enrollments } = useUserEnrollments(user?.id || "");
+
+  // Fetch user certificates for real certificate count
+  const { data: certificates } = useQuery({
+    queryKey: ["/api/users", user?.id, "certificates"],
+    enabled: isAuthenticated && !!user?.id,
+    queryFn: async (): Promise<Certificate[]> => {
+      const response = await apiRequest("GET", `/api/users/${user?.id}/certificates`);
+      return response.json();
+    }
+  });
+
+  // Calculate real learning hours based on enrollment data
+  const calculateLearningHours = () => {
+    if (!enrollments) return 0;
+    return enrollments.reduce((total, enrollment) => {
+      // Estimate hours based on progress - assuming each course is about 20 hours
+      const estimatedCourseHours = 20;
+      return total + (estimatedCourseHours * (enrollment.progress || 0) / 100);
+    }, 0);
+  };
+
   // Keyboard shortcuts for dashboard
   useKeyboardShortcuts({
     shortcuts: [
@@ -36,11 +64,17 @@ export default function Dashboard() {
         },
         description: 'Jump to statistics section',
       },
+      {
+        key: 'r',
+        altKey: true,
+        action: () => {
+          const certificatesSection = document.querySelector('[data-testid="certificates-section"]');
+          certificatesSection?.scrollIntoView({ behavior: 'smooth' });
+        },
+        description: 'Jump to certificates section',
+      },
     ],
   });
-  const [, setLocation] = useLocation();
-  const { toast } = useToast();
-  const { data: enrollments } = useUserEnrollments(user?.id || "");
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -173,7 +207,7 @@ export default function Dashboard() {
                 <div>
                   <p className="text-muted-foreground text-sm" id="hours-heading">Learning Hours</p>
                   <p className="text-2xl font-bold text-foreground" data-testid="text-hours">
-                    {Math.floor(Math.random() * 200) + 50}
+                    {Math.round(calculateLearningHours())}
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
@@ -193,7 +227,7 @@ export default function Dashboard() {
                 <div>
                   <p className="text-muted-foreground text-sm" id="certificates-heading">Certificates</p>
                   <p className="text-2xl font-bold text-foreground" data-testid="text-certificates">
-                    {enrollments?.filter(e => e.completed).length || 0}
+                    {certificates?.length || 0}
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-lg flex items-center justify-center">
@@ -208,6 +242,9 @@ export default function Dashboard() {
             </CardContent>
           </Card>
       </div>
+
+      {/* Certificates Section */}
+      <CertificatesSection className="mt-8" maxCertificates={4} />
 
       {/* Current Courses */}
       <div role="region" aria-labelledby="current-courses-heading">
