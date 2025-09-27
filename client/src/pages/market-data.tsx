@@ -9,6 +9,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { StockChart } from '@/components/ui/stock-chart';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { 
   TrendingUp, 
   Download, 
@@ -64,13 +66,16 @@ interface PopularSymbol {
 }
 
 export default function MarketDataPage() {
-  const [symbol, setSymbol] = useState('');
+  const [symbol, setSymbol] = useState('AAPL');
   const [startDate, setStartDate] = useState(format(subDays(new Date(), 30), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [interval, setInterval] = useState('1d');
   const [multipleSymbols, setMultipleSymbols] = useState('');
   const [isDownloading, setIsDownloading] = useState(false);
   const [validatingSymbol, setValidatingSymbol] = useState('');
+  
+  // Debounced symbol for chart updates (500ms delay)
+  const debouncedSymbol = useDebouncedValue(symbol, 500);
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -250,6 +255,11 @@ export default function MarketDataPage() {
     });
   };
 
+  // Handle symbol selection from chart or popular symbols
+  const handleSymbolSelect = (selectedSymbol: string) => {
+    setSymbol(selectedSymbol.toUpperCase());
+  };
+
   const handleQuickPeriod = (period: any) => {
     setStartDate(period.startDate);
     setEndDate(period.endDate);
@@ -291,6 +301,14 @@ export default function MarketDataPage() {
       </div>
 
       <div className="grid gap-6">
+        {/* Real-Time Stock Chart */}
+        <StockChart 
+          symbol={debouncedSymbol} 
+          onSymbolChange={handleSymbolSelect}
+          height={500}
+          className="mb-2"
+        />
+        
         {/* Main Download Interface */}
         <Card>
           <CardHeader>
@@ -449,16 +467,28 @@ export default function MarketDataPage() {
             ) : (
               <div className="flex flex-wrap gap-2">
                 {(options?.popularSymbols || []).map((stock) => (
-                  <Button
-                    key={stock.symbol}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleQuickDownload(stock.symbol)}
-                    data-testid={`button-popular-${stock.symbol.toLowerCase()}`}
-                  >
-                    <DollarSign className="h-4 w-4 mr-1" />
-                    {stock.symbol}
-                  </Button>
+                  <div key={stock.symbol} className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleSymbolSelect(stock.symbol)}
+                      data-testid={`button-popular-${stock.symbol.toLowerCase()}`}
+                      className="flex-1"
+                    >
+                      <DollarSign className="h-4 w-4 mr-1" />
+                      {stock.symbol}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleQuickDownload(stock.symbol)}
+                      data-testid={`button-download-${stock.symbol.toLowerCase()}`}
+                      className="px-2"
+                      title={`Download ${stock.symbol} data`}
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                  </div>
                 ))}
               </div>
             )}
