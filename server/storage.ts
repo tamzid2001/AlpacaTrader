@@ -48,7 +48,12 @@ import {
   type PrincipalType,
   type Permission,
   type TeamRole,
-  type InviteStatus
+  type InviteStatus,
+  // Market Data Types
+  type MarketDataDownload,
+  type InsertMarketDataDownload,
+  type PopularSymbol,
+  type InsertPopularSymbol
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -293,6 +298,19 @@ export interface IStorage {
       improvement: number;
     };
   }>;
+  
+  // Market Data Management
+  createMarketDataDownload(download: InsertMarketDataDownload): Promise<MarketDataDownload>;
+  getMarketDataDownload(id: string): Promise<MarketDataDownload | undefined>;
+  getUserMarketDataDownloads(userId: string): Promise<MarketDataDownload[]>;
+  updateMarketDataDownload(id: string, updates: Partial<MarketDataDownload>): Promise<MarketDataDownload | undefined>;
+  deleteMarketDataDownload(id: string): Promise<boolean>;
+  
+  // Popular Symbols Management
+  upsertPopularSymbol(symbol: InsertPopularSymbol): Promise<PopularSymbol>;
+  getPopularSymbol(symbol: string): Promise<PopularSymbol | undefined>;
+  getPopularSymbols(limit?: number): Promise<PopularSymbol[]>;
+  updatePopularSymbolStats(symbol: string, fileSize?: number): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -318,6 +336,10 @@ export class MemStorage implements IStorage {
   private teamMembers: Map<string, TeamMember> = new Map();
   private shareInvites: Map<string, ShareInvite> = new Map();
   private shareLinks: Map<string, ShareLink> = new Map();
+  
+  // Market Data Storage
+  private marketDataDownloads: Map<string, MarketDataDownload> = new Map();
+  private marketDataPopularSymbols: Map<string, PopularSymbol> = new Map();
   // User content storage
   public userNotes: Map<string, any> = new Map();
   public userAchievements: Map<string, any> = new Map();
@@ -2363,6 +2385,111 @@ export class MemStorage implements IStorage {
         improvement: Math.round(((before - after) / before) * 100),
       },
     };
+  }
+  
+  // Market Data Implementation
+  async createMarketDataDownload(download: InsertMarketDataDownload): Promise<MarketDataDownload> {
+    const id = randomUUID();
+    const newDownload: MarketDataDownload = {
+      id,
+      ...download,
+      downloadedAt: new Date(),
+    };
+    this.marketDataDownloads.set(id, newDownload);
+    
+    // Update popular symbols stats
+    await this.updatePopularSymbolStats(download.symbol, download.fileSize);
+    
+    return newDownload;
+  }
+
+  async getMarketDataDownload(id: string): Promise<MarketDataDownload | undefined> {
+    return this.marketDataDownloads.get(id);
+  }
+
+  async getUserMarketDataDownloads(userId: string): Promise<MarketDataDownload[]> {
+    return Array.from(this.marketDataDownloads.values())
+      .filter(download => download.userId === userId)
+      .sort((a, b) => b.downloadedAt.getTime() - a.downloadedAt.getTime());
+  }
+
+  async updateMarketDataDownload(id: string, updates: Partial<MarketDataDownload>): Promise<MarketDataDownload | undefined> {
+    const download = this.marketDataDownloads.get(id);
+    if (!download) return undefined;
+    
+    const updated = { ...download, ...updates };
+    this.marketDataDownloads.set(id, updated);
+    return updated;
+  }
+
+  async deleteMarketDataDownload(id: string): Promise<boolean> {
+    return this.marketDataDownloads.delete(id);
+  }
+
+  async upsertPopularSymbol(symbolData: InsertPopularSymbol): Promise<PopularSymbol> {
+    const existing = this.marketDataPopularSymbols.get(symbolData.symbol);
+    
+    if (existing) {
+      const updated: PopularSymbol = {
+        ...existing,
+        downloadCount: existing.downloadCount + (symbolData.downloadCount || 1),
+        lastDownloaded: new Date(),
+        companyName: symbolData.companyName || existing.companyName,
+        sector: symbolData.sector || existing.sector,
+        marketCap: symbolData.marketCap || existing.marketCap,
+        avgFileSize: symbolData.avgFileSize || existing.avgFileSize,
+      };
+      this.marketDataPopularSymbols.set(symbolData.symbol, updated);
+      return updated;
+    } else {
+      const newSymbol: PopularSymbol = {
+        ...symbolData,
+        downloadCount: symbolData.downloadCount || 1,
+        lastDownloaded: new Date(),
+        isActive: true,
+      };
+      this.marketDataPopularSymbols.set(symbolData.symbol, newSymbol);
+      return newSymbol;
+    }
+  }
+
+  async getPopularSymbol(symbol: string): Promise<PopularSymbol | undefined> {
+    return this.marketDataPopularSymbols.get(symbol);
+  }
+
+  async getPopularSymbols(limit: number = 10): Promise<PopularSymbol[]> {
+    return Array.from(this.marketDataPopularSymbols.values())
+      .filter(symbol => symbol.isActive)
+      .sort((a, b) => b.downloadCount - a.downloadCount)
+      .slice(0, limit);
+  }
+
+  async updatePopularSymbolStats(symbol: string, fileSize?: number): Promise<void> {
+    const existing = this.marketDataPopularSymbols.get(symbol);
+    
+    if (existing) {
+      const updated: PopularSymbol = {
+        ...existing,
+        downloadCount: existing.downloadCount + 1,
+        lastDownloaded: new Date(),
+        avgFileSize: fileSize && existing.avgFileSize 
+          ? Math.round((existing.avgFileSize + fileSize) / 2)
+          : fileSize || existing.avgFileSize,
+      };
+      this.marketDataPopularSymbols.set(symbol, updated);
+    } else {
+      const newSymbol: PopularSymbol = {
+        symbol: symbol.toUpperCase(),
+        downloadCount: 1,
+        lastDownloaded: new Date(),
+        avgFileSize: fileSize,
+        isActive: true,
+        companyName: undefined,
+        sector: undefined,
+        marketCap: undefined,
+      };
+      this.marketDataPopularSymbols.set(symbol, newSymbol);
+    }
   }
 }
 

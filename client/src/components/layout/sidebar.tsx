@@ -11,7 +11,8 @@ export default function Sidebar() {
   const navItems = [
     { href: "/dashboard", icon: "LayoutDashboard", label: "Dashboard" },
     { href: "/courses", icon: "Play", label: "My Courses" },
-    { href: "/anomaly-detection", icon: "TrendingUp", label: "Anomaly Detection" },
+    { href: "/market-data", icon: "TrendingUp", label: "Market Data" },
+    { href: "/anomaly-detection", icon: "BarChart3", label: "Anomaly Detection" },
     { href: "/icon-generator", icon: "Palette", label: "Icon Generator" },
     { href: "/my-shared-results", icon: "Share2", label: "My Shared Results" },
     { href: "/downloads", icon: "Download", label: "Downloads" },

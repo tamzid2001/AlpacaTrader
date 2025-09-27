@@ -10,6 +10,7 @@ import LandingPage from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import AdminDashboard from "@/pages/admin";
 import AnomalyDetection from "@/pages/anomaly-detection";
+import MarketDataPage from "@/pages/market-data";
 import SharedResultsViewer from "@/pages/shared-results";
 import MySharedResults from "@/pages/my-shared-results";
 import PrivacyPage from "@/pages/privacy";
@@ -38,6 +39,7 @@ function Router() {
           <Route path="/dashboard" component={Dashboard} />
           <Route path="/admin" component={AdminDashboard} />
           <Route path="/icon-generator" component={IconGeneratorPage} />
+          <Route path="/market-data" component={MarketDataPage} />
           <Route path="/anomaly-detection" component={AnomalyDetection} />
           <Route path="/my-shared-results" component={MySharedResults} />
           <Route path="/shared/:token" component={SharedResultsViewer} />

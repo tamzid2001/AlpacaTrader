@@ -503,6 +503,50 @@ export const fileProcessingQueue = pgTable("file_processing_queue", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// ===================
+// MARKET DATA TABLES
+// ===================
+
+// Track market data downloads for user analytics and caching
+export const marketDataDownloads = pgTable("market_data_downloads", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  symbol: varchar("symbol").notNull(),
+  startDate: varchar("start_date").notNull(), // YYYY-MM-DD format
+  endDate: varchar("end_date").notNull(), // YYYY-MM-DD format
+  interval: varchar("interval").notNull().default("1d"), // 1d, 1w, 1mo
+  downloadedAt: timestamp("downloaded_at").defaultNow().notNull(),
+  filePath: varchar("file_path"), // Object storage path
+  fileName: varchar("file_name").notNull(), // Original filename for download
+  fileSize: integer("file_size"), // File size in bytes
+  recordCount: integer("record_count"), // Number of data records
+  downloadType: varchar("download_type").notNull().default("single"), // single, batch
+  status: varchar("status").notNull().default("completed"), // pending, completed, error
+  errorMessage: text("error_message"), // Error details if download failed
+}, (table) => [
+  index("IDX_market_data_downloads_user_id").on(table.userId),
+  index("IDX_market_data_downloads_symbol").on(table.symbol),
+  index("IDX_market_data_downloads_downloaded_at").on(table.downloadedAt),
+  index("IDX_market_data_downloads_status").on(table.status),
+]);
+
+// Track popular symbols for caching and suggestions
+export const popularSymbols = pgTable("popular_symbols", {
+  symbol: varchar("symbol").primaryKey(),
+  companyName: varchar("company_name"), // Company name for display
+  downloadCount: integer("download_count").notNull().default(1),
+  lastDownloaded: timestamp("last_downloaded").defaultNow().notNull(),
+  avgFileSize: integer("avg_file_size"), // Average file size for this symbol
+  isActive: boolean("is_active").notNull().default(true), // For symbol availability tracking
+  sector: varchar("sector"), // Market sector for categorization
+  marketCap: varchar("market_cap"), // Market cap category (large, mid, small)
+}, (table) => [
+  index("IDX_popular_symbols_download_count").on(table.downloadCount),
+  index("IDX_popular_symbols_last_downloaded").on(table.lastDownloaded),
+  index("IDX_popular_symbols_is_active").on(table.isActive),
+  index("IDX_popular_symbols_sector").on(table.sector),
+]);
+
 // Permission Management Insert Schemas
 export const insertAccessGrantSchema = createInsertSchema(accessGrants).omit({
   id: true,
@@ -674,6 +718,23 @@ export const insertFileProcessingQueueSchema = createInsertSchema(fileProcessing
   priority: z.number().min(1).max(10).default(5),
 });
 
+// Market Data Insert Schemas
+export const insertMarketDataDownloadSchema = createInsertSchema(marketDataDownloads).omit({
+  id: true,
+  downloadedAt: true,
+}).extend({
+  interval: z.enum(["1d", "1w", "1mo"]).default("1d"),
+  downloadType: z.enum(["single", "batch"]).default("single"),
+  status: z.enum(["pending", "completed", "error"]).default("completed"),
+});
+
+export const insertPopularSymbolSchema = createInsertSchema(popularSymbols).omit({
+  lastDownloaded: true,
+}).extend({
+  downloadCount: z.number().min(1).default(1),
+  marketCap: z.enum(["large", "mid", "small"]).optional(),
+});
+
 export const insertAnomalySchema = createInsertSchema(anomalies).omit({
   id: true,
   createdAt: true,
@@ -781,6 +842,12 @@ export type InsertSystemAsset = z.infer<typeof insertSystemAssetSchema>;
 export type SystemAsset = typeof systemAssets.$inferSelect;
 export type InsertFileProcessingQueue = z.infer<typeof insertFileProcessingQueueSchema>;
 export type FileProcessingQueue = typeof fileProcessingQueue.$inferSelect;
+
+// Market Data Type Exports
+export type InsertMarketDataDownload = z.infer<typeof insertMarketDataDownloadSchema>;
+export type MarketDataDownload = typeof marketDataDownloads.$inferSelect;
+export type InsertPopularSymbol = z.infer<typeof insertPopularSymbolSchema>;
+export type PopularSymbol = typeof popularSymbols.$inferSelect;
 
 // Permission Management Enums for type safety
 export const RESOURCE_TYPES = ["csv", "course", "report", "user_content"] as const;

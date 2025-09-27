@@ -31,6 +31,7 @@ import {
   verifyAndRefreshFirebaseToken 
 } from "./firebase-admin";
 import { objectStorage } from "./lib/object-storage";
+import { marketDataService } from "./lib/market-data";
 import { 
   requirePermission,
   requireOwnership,
@@ -40,6 +41,7 @@ import {
   requireSelfAccess,
   requireAdmin
 } from "./middleware/permissions";
+import { insertMarketDataDownloadSchema } from "@shared/schema";
 
 // Initialize OpenAI with error handling for missing API key
 let openai: OpenAI | null = null;
@@ -794,6 +796,171 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('Error fetching audit logs:', error);
       res.status(500).json({ error: 'Failed to fetch audit logs' });
+    }
+  });
+
+  // ===================
+  // MARKET DATA API ENDPOINTS
+  // ===================
+  
+  // Get historical stock data as JSON
+  app.get('/api/market-data/historical/:symbol', isAuthenticated, async (req: any, res) => {
+    try {
+      const { symbol } = req.params;
+      const { startDate, endDate, interval = '1d' } = req.query;
+      const userId = req.user.claims.sub;
+      
+      if (!symbol || !startDate || !endDate) {
+        return res.status(400).json({ error: 'symbol, startDate, and endDate are required' });
+      }
+
+      const data = await marketDataService.getHistoricalData(symbol, startDate, endDate, interval);
+      
+      // Track the download in database
+      await storage.createMarketDataDownload({
+        userId,
+        symbol: symbol.toUpperCase(),
+        startDate,
+        endDate,
+        interval,
+        fileName: `${symbol}_${startDate}_${endDate}.json`,
+        fileSize: JSON.stringify(data).length,
+        recordCount: data.data.length,
+        downloadType: 'single',
+        status: 'completed'
+      });
+
+      res.json(data);
+    } catch (error: any) {
+      console.error('Market data historical error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Download historical data as CSV
+  app.get('/api/market-data/download/:symbol', isAuthenticated, async (req: any, res) => {
+    try {
+      const { symbol } = req.params;
+      const { startDate, endDate, interval = '1d' } = req.query;
+      const userId = req.user.claims.sub;
+      
+      if (!symbol || !startDate || !endDate) {
+        return res.status(400).json({ error: 'symbol, startDate, and endDate are required' });
+      }
+
+      const data = await marketDataService.getHistoricalData(symbol, startDate, endDate, interval);
+      const { csv, filename } = await marketDataService.exportToCSV(data.data, `${symbol}_${startDate}_${endDate}.csv`);
+      
+      // Track the download in database
+      await storage.createMarketDataDownload({
+        userId,
+        symbol: symbol.toUpperCase(),
+        startDate,
+        endDate,
+        interval,
+        fileName: filename,
+        fileSize: Buffer.byteLength(csv, 'utf8'),
+        recordCount: data.data.length,
+        downloadType: 'single',
+        status: 'completed'
+      });
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(csv);
+    } catch (error: any) {
+      console.error('Market data CSV download error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get current stock quote
+  app.get('/api/market-data/quote/:symbol', isAuthenticated, async (req: any, res) => {
+    try {
+      const { symbol } = req.params;
+      
+      if (!symbol) {
+        return res.status(400).json({ error: 'symbol is required' });
+      }
+
+      const quote = await marketDataService.getCurrentQuote(symbol);
+      res.json(quote);
+    } catch (error: any) {
+      console.error('Market data quote error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Batch download multiple symbols
+  app.post('/api/market-data/batch-download', isAuthenticated, async (req: any, res) => {
+    try {
+      const { symbols, startDate, endDate, interval = '1d' } = req.body;
+      const userId = req.user.claims.sub;
+      
+      if (!symbols || !Array.isArray(symbols) || !startDate || !endDate) {
+        return res.status(400).json({ error: 'symbols (array), startDate, and endDate are required' });
+      }
+
+      if (symbols.length > 50) {
+        return res.status(400).json({ error: 'Maximum 50 symbols allowed per batch' });
+      }
+
+      const { results, errors } = await marketDataService.getMultipleHistoricalData(symbols, startDate, endDate, interval);
+      
+      if (results.length === 0) {
+        return res.status(400).json({ error: 'No valid data retrieved', details: errors });
+      }
+
+      const batchResult = await marketDataService.createBatchZip(results);
+      
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="${batchResult.filename}"`);
+      res.send(batchResult.zipBuffer);
+    } catch (error: any) {
+      console.error('Market data batch download error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get supported intervals and periods  
+  app.get('/api/market-data/options', async (req, res) => {
+    try {
+      const intervals = marketDataService.getSupportedIntervals();
+      const periods = marketDataService.getSupportedPeriods();
+      const popularSymbols = marketDataService.getPopularSymbols();
+      
+      res.json({
+        intervals: intervals.map(interval => ({
+          value: interval,
+          label: interval === '1d' ? 'Daily' : interval === '1w' ? 'Weekly' : 'Monthly'
+        })),
+        periods,
+        popularSymbols
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get user's market data download history
+  app.get('/api/market-data/downloads', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const downloads = await storage.getUserMarketDataDownloads(userId);
+      res.json(downloads);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get popular symbols statistics
+  app.get('/api/market-data/popular-symbols', async (req, res) => {
+    try {
+      const { limit = 10 } = req.query;
+      const symbols = await storage.getPopularSymbols(Number(limit));
+      res.json(symbols);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
     }
   });
 
