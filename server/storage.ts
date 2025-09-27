@@ -229,6 +229,70 @@ export interface IStorage {
   incrementShareLinkAccess(linkId: string): Promise<void>;
   updateShareLink(linkId: string, updates: Partial<ShareLink>): Promise<ShareLink | undefined>;
   deleteShareLink(linkId: string): Promise<boolean>;
+  
+  // Database Management and Monitoring
+  getDatabaseStatistics(): Promise<{
+    totalUsers: number;
+    totalCsvUploads: number;
+    totalStorageUsed: number;
+    totalQueries: number;
+    avgQueryTime: number;
+    activeConnections: number;
+    tableStats: Array<{
+      tableName: string;
+      rowCount: number;
+      sizeBytes: number;
+    }>;
+    recentActivity: Array<{
+      timestamp: Date;
+      action: string;
+      count: number;
+    }>;
+  }>;
+  
+  getDatabasePerformanceMetrics(): Promise<{
+    slowQueries: Array<{
+      query: string;
+      duration: number;
+      timestamp: Date;
+    }>;
+    queryStats: {
+      totalQueries: number;
+      avgDuration: number;
+      p95Duration: number;
+      p99Duration: number;
+    };
+    connectionStats: {
+      totalConnections: number;
+      activeConnections: number;
+      idleConnections: number;
+      waitingConnections: number;
+    };
+    indexUsage: Array<{
+      tableName: string;
+      indexName: string;
+      usage: number;
+    }>;
+  }>;
+  
+  // Database maintenance operations
+  analyzeTablePerformance(tableName?: string): Promise<Array<{
+    tableName: string;
+    indexScans: number;
+    seqScans: number;
+    rowsRead: number;
+    rowsReturned: number;
+  }>>;
+  
+  optimizeDatabase(): Promise<{
+    tablesOptimized: string[];
+    indexesCreated: string[];
+    performance: {
+      before: number;
+      after: number;
+      improvement: number;
+    };
+  }>;
 }
 
 export class MemStorage implements IStorage {
@@ -2151,6 +2215,154 @@ export class MemStorage implements IStorage {
     link.isActive = false;
     this.shareLinks.set(linkId, link);
     return true;
+  }
+
+  // Database Management and Monitoring Implementation
+  async getDatabaseStatistics(): Promise<{
+    totalUsers: number;
+    totalCsvUploads: number;
+    totalStorageUsed: number;
+    totalQueries: number;
+    avgQueryTime: number;
+    activeConnections: number;
+    tableStats: Array<{
+      tableName: string;
+      rowCount: number;
+      sizeBytes: number;
+    }>;
+    recentActivity: Array<{
+      timestamp: Date;
+      action: string;
+      count: number;
+    }>;
+  }> {
+    // Mock implementation for in-memory storage
+    const totalStorageUsed = Array.from(this.csvUploads.values())
+      .reduce((sum, upload) => sum + (upload.fileSize || 0), 0);
+
+    const recentActivity = [
+      { timestamp: new Date(Date.now() - 3600000), action: 'csv_upload', count: 5 },
+      { timestamp: new Date(Date.now() - 1800000), action: 'user_login', count: 12 },
+      { timestamp: new Date(Date.now() - 900000), action: 'shared_result', count: 3 },
+    ];
+
+    return {
+      totalUsers: this.users.size,
+      totalCsvUploads: this.csvUploads.size,
+      totalStorageUsed,
+      totalQueries: 1250, // Mock value
+      avgQueryTime: 45, // Mock value in ms
+      activeConnections: 2, // Mock value
+      tableStats: [
+        { tableName: 'users', rowCount: this.users.size, sizeBytes: this.users.size * 512 },
+        { tableName: 'csv_uploads', rowCount: this.csvUploads.size, sizeBytes: totalStorageUsed },
+        { tableName: 'courses', rowCount: this.courses.size, sizeBytes: this.courses.size * 1024 },
+        { tableName: 'shared_results', rowCount: this.sharedResults.size, sizeBytes: this.sharedResults.size * 256 },
+      ],
+      recentActivity,
+    };
+  }
+
+  async getDatabasePerformanceMetrics(): Promise<{
+    slowQueries: Array<{
+      query: string;
+      duration: number;
+      timestamp: Date;
+    }>;
+    queryStats: {
+      totalQueries: number;
+      avgDuration: number;
+      p95Duration: number;
+      p99Duration: number;
+    };
+    connectionStats: {
+      totalConnections: number;
+      activeConnections: number;
+      idleConnections: number;
+      waitingConnections: number;
+    };
+    indexUsage: Array<{
+      tableName: string;
+      indexName: string;
+      usage: number;
+    }>;
+  }> {
+    // Mock implementation for in-memory storage
+    return {
+      slowQueries: [
+        {
+          query: 'SELECT * FROM csv_uploads WHERE status = ? ORDER BY uploaded_at DESC',
+          duration: 145,
+          timestamp: new Date(Date.now() - 600000),
+        },
+        {
+          query: 'SELECT u.*, COUNT(c.id) FROM users u LEFT JOIN csv_uploads c ON u.id = c.user_id GROUP BY u.id',
+          duration: 89,
+          timestamp: new Date(Date.now() - 1200000),
+        },
+      ],
+      queryStats: {
+        totalQueries: 1250,
+        avgDuration: 23,
+        p95Duration: 67,
+        p99Duration: 145,
+      },
+      connectionStats: {
+        totalConnections: 5,
+        activeConnections: 2,
+        idleConnections: 2,
+        waitingConnections: 0,
+      },
+      indexUsage: [
+        { tableName: 'users', indexName: 'IDX_users_email', usage: 89 },
+        { tableName: 'csv_uploads', indexName: 'IDX_csv_uploads_user_id', usage: 95 },
+        { tableName: 'csv_uploads', indexName: 'IDX_csv_uploads_status', usage: 78 },
+        { tableName: 'shared_results', indexName: 'IDX_shared_results_user_id', usage: 65 },
+      ],
+    };
+  }
+
+  async analyzeTablePerformance(tableName?: string): Promise<Array<{
+    tableName: string;
+    indexScans: number;
+    seqScans: number;
+    rowsRead: number;
+    rowsReturned: number;
+  }>> {
+    // Mock implementation for in-memory storage
+    const tables = tableName ? [tableName] : ['users', 'csv_uploads', 'courses', 'shared_results'];
+    
+    return tables.map(table => ({
+      tableName: table,
+      indexScans: Math.floor(Math.random() * 1000) + 500,
+      seqScans: Math.floor(Math.random() * 100) + 10,
+      rowsRead: Math.floor(Math.random() * 10000) + 1000,
+      rowsReturned: Math.floor(Math.random() * 5000) + 500,
+    }));
+  }
+
+  async optimizeDatabase(): Promise<{
+    tablesOptimized: string[];
+    indexesCreated: string[];
+    performance: {
+      before: number;
+      after: number;
+      improvement: number;
+    };
+  }> {
+    // Mock implementation for in-memory storage
+    const before = 156;
+    const after = 89;
+    
+    return {
+      tablesOptimized: ['users', 'csv_uploads', 'shared_results'],
+      indexesCreated: ['IDX_users_created_at', 'IDX_csv_uploads_processed_at'],
+      performance: {
+        before,
+        after,
+        improvement: Math.round(((before - after) / before) * 100),
+      },
+    };
   }
 }
 

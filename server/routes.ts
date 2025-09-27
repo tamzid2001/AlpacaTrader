@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { checkDatabaseHealth, getPoolStatus } from "./db";
 import { 
   insertSupportMessageSchema, 
   insertQuizResultSchema, 
@@ -61,6 +62,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register icon routes
   app.use('/api/icons', iconRoutes);
+  
+  // Database health and monitoring endpoints
+  app.get('/api/health/database', async (req, res) => {
+    try {
+      const health = await checkDatabaseHealth();
+      const poolStatus = getPoolStatus();
+      
+      res.json({
+        database: health,
+        connectionPool: poolStatus,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        database: { healthy: false, error: error.message },
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+  
+  // Database statistics endpoint for admin dashboard
+  app.get('/api/admin/database/stats', isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const stats = await storage.getDatabaseStatistics();
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Database performance metrics endpoint for admin dashboard
+  app.get('/api/admin/database/performance', isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const performance = await storage.getDatabasePerformanceMetrics();
+      res.json(performance);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Database optimization endpoint for admin dashboard
+  app.post('/api/admin/database/optimize', isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const result = await storage.optimizeDatabase();
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Database table analysis endpoint for admin dashboard
+  app.get('/api/admin/database/analyze/:tableName?', isAuthenticated, requireAdmin, async (req: any, res) => {
+    try {
+      const tableName = req.params.tableName;
+      const analysis = await storage.analyzeTablePerformance(tableName);
+      res.json(analysis);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
   
   // Configure multer for file uploads (memory storage for processing)
   const upload = multer({
@@ -151,6 +212,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Database performance monitoring endpoint
+  app.get('/api/admin/database/performance', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser || currentUser.role !== "admin") {
+        return res.status(403).json({ message: "Access denied. Admin role required." });
+      }
+      
+      const performance = await storage.getDatabasePerformanceMetrics();
+      res.json(performance);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
   // Admin routes (protected)
   app.get("/api/admin/users", isAuthenticated, async (req: any, res) => {
     try {

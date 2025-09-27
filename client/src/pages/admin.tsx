@@ -8,12 +8,36 @@ import type { User } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Shield, Users, BarChart, BookOpen, Settings } from "lucide-react";
+import { Shield, Users, BarChart, BookOpen, Settings, Database, Activity, HardDrive, Zap } from "lucide-react";
 
 export default function AdminDashboard() {
   const { user, isAuthenticated, isLoading } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Fetch database statistics
+  const { data: dbStats } = useQuery({
+    queryKey: ['/api/admin/database/stats'],
+    enabled: user?.role === "admin",
+    retry: false,
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+
+  // Fetch database performance metrics
+  const { data: dbPerformance } = useQuery({
+    queryKey: ['/api/admin/database/performance'],
+    enabled: user?.role === "admin",
+    retry: false,
+    refetchInterval: 60000, // Refresh every minute
+  });
+
+  // Fetch database health
+  const { data: dbHealth } = useQuery({
+    queryKey: ['/api/health/database'],
+    enabled: user?.role === "admin",
+    retry: false,
+    refetchInterval: 10000, // Refresh every 10 seconds
+  });
 
   // Fetch pending users
   const { data: pendingUsers, isLoading: isLoadingUsers } = useQuery<User[]>({
@@ -147,6 +171,16 @@ export default function AdminDashboard() {
               <a 
                 href="#" 
                 className="flex items-center space-x-3 p-3 rounded-lg text-muted-foreground hover:bg-gradient-to-r hover:from-red-50 hover:to-orange-50 dark:hover:from-red-950/50 dark:hover:to-orange-950/50 hover:text-red-700 dark:hover:text-red-300 transition-colors"
+                data-testid="link-database-management"
+              >
+                <Database className="h-5 w-5" aria-hidden="true" />
+                <span>Database Management</span>
+              </a>
+            </li>
+            <li>
+              <a 
+                href="#" 
+                className="flex items-center space-x-3 p-3 rounded-lg text-muted-foreground hover:bg-gradient-to-r hover:from-red-50 hover:to-orange-50 dark:hover:from-red-950/50 dark:hover:to-orange-950/50 hover:text-red-700 dark:hover:text-red-300 transition-colors"
                 data-testid="link-analytics"
               >
                 <BarChart className="h-5 w-5" aria-hidden="true" />
@@ -166,6 +200,133 @@ export default function AdminDashboard() {
           <h1 className="text-3xl font-bold" data-testid="text-admin-dashboard-title">
             Admin Dashboard
           </h1>
+        </div>
+        
+        {/* Database Health Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 bg-green-100 dark:bg-green-900/50 rounded-lg flex items-center justify-center">
+                  <Activity className="h-4 w-4 text-green-600 dark:text-green-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Database Health</p>
+                  <p className="text-2xl font-bold" data-testid="text-db-health">
+                    {dbHealth?.database?.healthy ? (
+                      <span className="text-green-600">Healthy</span>
+                    ) : (
+                      <span className="text-red-600">Unhealthy</span>
+                    )}
+                  </p>
+                  {dbHealth?.database?.latency && (
+                    <p className="text-xs text-muted-foreground">
+                      {dbHealth.database.latency}ms latency
+                    </p>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/50 rounded-lg flex items-center justify-center">
+                  <Users className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Total Users</p>
+                  <p className="text-2xl font-bold" data-testid="text-total-users">
+                    {dbStats?.totalUsers || 0}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 bg-purple-100 dark:bg-purple-900/50 rounded-lg flex items-center justify-center">
+                  <HardDrive className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Storage Used</p>
+                  <p className="text-2xl font-bold" data-testid="text-storage-used">
+                    {dbStats?.totalStorageUsed ? `${Math.round(dbStats.totalStorageUsed / 1024 / 1024)}MB` : '0MB'}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 bg-orange-100 dark:bg-orange-900/50 rounded-lg flex items-center justify-center">
+                  <Zap className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Avg Query Time</p>
+                  <p className="text-2xl font-bold" data-testid="text-avg-query-time">
+                    {dbStats?.avgQueryTime || 0}ms
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        
+        {/* Database Performance Metrics */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          <Card>
+            <CardHeader>
+              <CardTitle>Table Statistics</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {dbStats?.tableStats?.map((table, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                    <div>
+                      <p className="font-medium">{table.tableName}</p>
+                      <p className="text-sm text-muted-foreground">{table.rowCount} rows</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-muted-foreground">
+                        {Math.round(table.sizeBytes / 1024)}KB
+                      </p>
+                    </div>
+                  </div>
+                )) || (
+                  <p className="text-muted-foreground">Loading table statistics...</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader>
+              <CardTitle>Index Usage</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {dbPerformance?.indexUsage?.map((index, i) => (
+                  <div key={i} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                    <div>
+                      <p className="font-medium">{index.indexName}</p>
+                      <p className="text-sm text-muted-foreground">{index.tableName}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-medium">{index.usage}%</p>
+                    </div>
+                  </div>
+                )) || (
+                  <p className="text-muted-foreground">Loading index usage...</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </div>
         
         {/* Pending Approvals */}

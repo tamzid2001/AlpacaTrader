@@ -31,7 +31,12 @@ export const users = pgTable("users", {
   lastConsentUpdate: timestamp("last_consent_update"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("IDX_users_role").on(table.role),
+  index("IDX_users_is_approved").on(table.isApproved),
+  index("IDX_users_created_at").on(table.createdAt),
+  index("IDX_users_data_retention_until").on(table.dataRetentionUntil),
+]);
 
 export const courses = pgTable("courses", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -47,7 +52,11 @@ export const courses = pgTable("courses", {
   codeUrl: text("code_url"),
   ownerId: varchar("owner_id").references(() => users.id), // Track course ownership for permissions
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("IDX_courses_owner_id").on(table.ownerId),
+  index("IDX_courses_level").on(table.level),
+  index("IDX_courses_created_at").on(table.createdAt),
+]);
 
 export const courseEnrollments = pgTable("course_enrollments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -56,7 +65,12 @@ export const courseEnrollments = pgTable("course_enrollments", {
   progress: integer("progress").default(0),
   completed: boolean("completed").default(false),
   enrolledAt: timestamp("enrolled_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("IDX_course_enrollments_user_id").on(table.userId),
+  index("IDX_course_enrollments_course_id").on(table.courseId),
+  index("IDX_course_enrollments_completed").on(table.completed),
+  index("IDX_course_enrollments_enrolled_at").on(table.enrolledAt),
+]);
 
 export const quizzes = pgTable("quizzes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -64,7 +78,10 @@ export const quizzes = pgTable("quizzes", {
   title: text("title").notNull(),
   questions: json("questions").notNull(), // Array of question objects
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("IDX_quizzes_course_id").on(table.courseId),
+  index("IDX_quizzes_created_at").on(table.createdAt),
+]);
 
 export const quizResults = pgTable("quiz_results", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -74,7 +91,11 @@ export const quizResults = pgTable("quiz_results", {
   totalQuestions: integer("total_questions").notNull(),
   answers: json("answers").notNull(),
   completedAt: timestamp("completed_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("IDX_quiz_results_user_id").on(table.userId),
+  index("IDX_quiz_results_quiz_id").on(table.quizId),
+  index("IDX_quiz_results_completed_at").on(table.completedAt),
+]);
 
 export const supportMessages = pgTable("support_messages", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -85,7 +106,11 @@ export const supportMessages = pgTable("support_messages", {
   message: text("message").notNull(),
   status: text("status").default("pending"), // pending, resolved
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("IDX_support_messages_user_id").on(table.userId),
+  index("IDX_support_messages_status").on(table.status),
+  index("IDX_support_messages_created_at").on(table.createdAt),
+]);
 
 export const csvUploads = pgTable("csv_uploads", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -104,7 +129,12 @@ export const csvUploads = pgTable("csv_uploads", {
   // Legacy Firebase fields for migration compatibility
   firebaseStorageUrl: text("firebase_storage_url"), // Firebase Storage download URL (legacy)
   firebaseStoragePath: text("firebase_storage_path"), // Firebase Storage full path (legacy)
-});
+}, (table) => [
+  index("IDX_csv_uploads_user_id").on(table.userId),
+  index("IDX_csv_uploads_status").on(table.status),
+  index("IDX_csv_uploads_uploaded_at").on(table.uploadedAt),
+  index("IDX_csv_uploads_file_size").on(table.fileSize),
+]);
 
 export const anomalies = pgTable("anomalies", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -116,7 +146,12 @@ export const anomalies = pgTable("anomalies", {
   description: text("description").notNull(),
   openaiAnalysis: text("openai_analysis"), // OpenAI analysis of the anomaly
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("IDX_anomalies_upload_id").on(table.uploadId),
+  index("IDX_anomalies_anomaly_type").on(table.anomalyType),
+  index("IDX_anomalies_detected_date").on(table.detectedDate),
+  index("IDX_anomalies_created_at").on(table.createdAt),
+]);
 
 export const sharedResults = pgTable("shared_results", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -131,7 +166,12 @@ export const sharedResults = pgTable("shared_results", {
   description: text("description"), // Optional description for the shared result
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("IDX_shared_results_csv_upload_id").on(table.csvUploadId),
+  index("IDX_shared_results_user_id").on(table.userId),
+  index("IDX_shared_results_expires_at").on(table.expiresAt),
+  index("IDX_shared_results_created_at").on(table.createdAt),
+]);
 
 // ===================
 // PERMISSION MANAGEMENT TABLES
@@ -149,7 +189,13 @@ export const accessGrants = pgTable("access_grants", {
   grantedAt: timestamp("granted_at").defaultNow(),
   expiresAt: timestamp("expires_at"), // For temporary access
   isActive: boolean("is_active").default(true),
-});
+}, (table) => [
+  index("IDX_access_grants_resource_type_id").on(table.resourceType, table.resourceId),
+  index("IDX_access_grants_principal_type_id").on(table.principalType, table.principalId),
+  index("IDX_access_grants_granted_by").on(table.grantedBy),
+  index("IDX_access_grants_expires_at").on(table.expiresAt),
+  index("IDX_access_grants_is_active").on(table.isActive),
+]);
 
 // Teams/Groups for bulk sharing
 export const teams = pgTable("teams", {
@@ -159,7 +205,11 @@ export const teams = pgTable("teams", {
   ownerId: varchar("owner_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
   isActive: boolean("is_active").default(true),
-});
+}, (table) => [
+  index("IDX_teams_owner_id").on(table.ownerId),
+  index("IDX_teams_is_active").on(table.isActive),
+  index("IDX_teams_created_at").on(table.createdAt),
+]);
 
 // Team Members
 export const teamMembers = pgTable("team_members", {
@@ -168,7 +218,11 @@ export const teamMembers = pgTable("team_members", {
   userId: varchar("user_id").references(() => users.id, { onDelete: 'cascade' }),
   role: varchar("role").default('member'), // 'owner', 'admin', 'member'
   joinedAt: timestamp("joined_at").defaultNow(),
-});
+}, (table) => [
+  index("IDX_team_members_team_id").on(table.teamId),
+  index("IDX_team_members_user_id").on(table.userId),
+  index("IDX_team_members_role").on(table.role),
+]);
 
 // Share Invitations
 export const shareInvites = pgTable("share_invites", {
@@ -182,7 +236,13 @@ export const shareInvites = pgTable("share_invites", {
   status: varchar("status").default('pending'), // 'pending', 'accepted', 'declined', 'expired'
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("IDX_share_invites_resource_type_id").on(table.resourceType, table.resourceId),
+  index("IDX_share_invites_inviter_user_id").on(table.inviterUserId),
+  index("IDX_share_invites_invitee_email").on(table.inviteeEmail),
+  index("IDX_share_invites_status").on(table.status),
+  index("IDX_share_invites_expires_at").on(table.expiresAt),
+]);
 
 // Share Links for public/link-based sharing
 export const shareLinks = pgTable("share_links", {
@@ -215,7 +275,12 @@ export const userConsent = pgTable("user_consent", {
   legalBasis: varchar("legal_basis"), // contract, consent, legitimate_interest, vital_interests, public_task, legal_obligation
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("IDX_user_consent_user_id").on(table.userId),
+  index("IDX_user_consent_consent_type").on(table.consentType),
+  index("IDX_user_consent_consent_date").on(table.consentDate),
+  index("IDX_user_consent_withdrawn_at").on(table.withdrawnAt),
+]);
 
 // Anonymous consent table for unauthenticated users (GDPR compliance)
 export const anonymousConsent = pgTable("anonymous_consent", {
@@ -233,7 +298,11 @@ export const anonymousConsent = pgTable("anonymous_consent", {
   linkedUserId: varchar("linked_user_id").references(() => users.id), // Link to user account when they register later
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("IDX_anonymous_consent_email").on(table.email),
+  index("IDX_anonymous_consent_consent_type").on(table.consentType),
+  index("IDX_anonymous_consent_linked_user_id").on(table.linkedUserId),
+]);
 
 export const dataProcessingLog = pgTable("data_processing_log", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -249,7 +318,13 @@ export const dataProcessingLog = pgTable("data_processing_log", {
   processingPurpose: varchar("processing_purpose"), // service_provision, analytics, marketing, support
   dataSubjects: json("data_subjects"), // Array of affected data subjects (for bulk operations)
   retentionPeriod: varchar("retention_period"), // How long this log should be kept
-});
+}, (table) => [
+  index("IDX_data_processing_log_user_id").on(table.userId),
+  index("IDX_data_processing_log_action").on(table.action),
+  index("IDX_data_processing_log_data_type").on(table.dataType),
+  index("IDX_data_processing_log_timestamp").on(table.timestamp),
+  index("IDX_data_processing_log_record_id").on(table.recordId),
+]);
 
 // Authentication Audit Log table for OWASP ASVS V1/V2 compliance
 export const authAuditLog = pgTable("auth_audit_log", {
@@ -264,7 +339,14 @@ export const authAuditLog = pgTable("auth_audit_log", {
   sessionId: varchar("session_id"),
   riskScore: integer("risk_score").default(0),
   metadata: json("metadata"), // Additional security metadata
-});
+}, (table) => [
+  index("IDX_auth_audit_log_user_id").on(table.userId),
+  index("IDX_auth_audit_log_action").on(table.action),
+  index("IDX_auth_audit_log_ip_address").on(table.ipAddress),
+  index("IDX_auth_audit_log_success").on(table.success),
+  index("IDX_auth_audit_log_timestamp").on(table.timestamp),
+  index("IDX_auth_audit_log_risk_score").on(table.riskScore),
+]);
 
 // Enhanced Sessions table with security features
 export const userSessions = pgTable("user_sessions", {
@@ -279,7 +361,12 @@ export const userSessions = pgTable("user_sessions", {
   expiresAt: timestamp("expires_at").notNull(),
   revokedAt: timestamp("revoked_at"),
   revokedReason: varchar("revoked_reason"),
-});
+}, (table) => [
+  index("IDX_user_sessions_user_id").on(table.userId),
+  index("IDX_user_sessions_is_active").on(table.isActive),
+  index("IDX_user_sessions_expires_at").on(table.expiresAt),
+  index("IDX_user_sessions_last_activity").on(table.lastActivity),
+]);
 
 // ===================
 // OBJECT STORAGE TABLES
@@ -303,7 +390,13 @@ export const objectStorageFiles = pgTable("object_storage_files", {
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   deletedAt: timestamp("deleted_at"), // Soft delete for GDPR compliance
-});
+}, (table) => [
+  index("IDX_object_storage_files_user_id").on(table.userId),
+  index("IDX_object_storage_files_file_type").on(table.fileType),
+  index("IDX_object_storage_files_status").on(table.status),
+  index("IDX_object_storage_files_uploaded_at").on(table.uploadedAt),
+  index("IDX_object_storage_files_is_public").on(table.isPublic),
+]);
 
 // User Storage Quotas and Usage Tracking
 export const userStorageQuotas = pgTable("user_storage_quotas", {
