@@ -1,0 +1,54 @@
+{
+  "name": "mobile",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "expo": "~54.0.10",
+    "expo-status-bar": "~3.0.8",
+    "react": "19.1.0",
+    "react-native": "0.81.4",
+    
+    "expo-router": "~4.0.15",
+    "@react-navigation/native": "^7.0.19",
+    "react-native-safe-area-context": "~5.0.9",
+    "react-native-screens": "~5.0.10",
+    
+    "nativewind": "^4.1.23",
+    "react-native-vector-icons": "^10.2.0",
+    "expo-linear-gradient": "~14.0.2",
+    "@expo/vector-icons": "^15.0.2",
+    
+    "@tanstack/react-query": "^5.60.5",
+    "@react-native-async-storage/async-storage": "~2.1.1",
+    
+    "expo-secure-store": "~14.0.0",
+    "expo-local-authentication": "~15.0.2",
+    
+    "expo-av": "~15.0.3",
+    "expo-file-system": "~18.0.4",
+    "react-native-pdf": "^6.7.5",
+    
+    "expo-device": "~7.0.2",
+    "expo-notifications": "~0.29.12",
+    "expo-camera": "~16.0.6",
+    
+    "victory-native": "^37.4.0",
+    "react-native-svg": "~15.9.0",
+    
+    "@stripe/stripe-react-native": "^0.40.0",
+    
+    "@lms/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.0",
+    "typescript": "~5.9.2",
+    "tailwindcss": "^3.4.17"
+  },
+  "private": true
+}

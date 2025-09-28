@@ -64,3 +64,12 @@ Key entities include Users, Courses, Enrollments, Quizzes, Support Messages, CSV
 - **TypeScript**: Strict type checking with path mapping
 - **Linting**: ESBuild for production bundling
 - **Development**: Hot module replacement and error overlay
+
+## Mobile Application
+- **Framework:** Expo React Native
+- **Location:** `apps/mobile/`
+- **Start Command:** `cd apps/mobile && npx expo start`
+- **Dependencies:** Expo Router, NativeWind, Victory Native, Stripe RN
+- **Features:** Tab navigation, device detection, shared business logic
+- **Configuration:** Metro bundler configured for monorepo support
+- **Shared Code:** Uses @lms/shared package for business logic and schemas

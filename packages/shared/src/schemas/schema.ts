@@ -1756,7 +1756,7 @@ export const productivityItems = pgTable("productivity_items", {
   actualHours: real("actual_hours"), // Actual time spent
   tags: text("tags").array(), // Tags for categorization and filtering
   position: real("position").notNull().default(0), // Position for ordering items
-  parentItemId: varchar("parent_item_id").references(() => productivityItems.id), // For sub-items
+  parentItemId: varchar("parent_item_id"), // For sub-items - self reference added later
   sourceType: varchar("source_type"), // anomaly, pattern, manual, import
   sourceId: varchar("source_id"), // ID of source (e.g., anomaly ID, CSV upload ID)
   metadata: json("metadata"), // Additional item-specific data
@@ -2045,8 +2045,8 @@ export interface QuizResult {
   score: number;
   passed: boolean;
   completedAt: Date;
-  answers: any; // JSON object with question answers
-  metadata?: any;
+  answers: Record<string, string | string[]>; // JSON object with question answers
+  metadata?: Record<string, unknown>;
 }
 
 // Insert type for QuizResult
@@ -2057,8 +2057,8 @@ export interface InsertQuizResult {
   score: number;
   passed: boolean;
   completedAt: Date;
-  answers: any;
-  metadata?: any;
+  answers: Record<string, string | string[]>;
+  metadata?: Record<string, unknown>;
 }
 
 // ===================
