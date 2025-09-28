@@ -158,6 +158,40 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
+  // DEVELOPMENT BYPASS: Allow testing without full OAuth authentication
+  if (process.env.NODE_ENV === 'development') {
+    // If already authenticated normally, proceed
+    if (req.isAuthenticated() && req.user) {
+      const user = req.user as any;
+      if (user.expires_at) {
+        const now = Math.floor(Date.now() / 1000);
+        if (now <= user.expires_at) {
+          return next();
+        }
+      }
+    }
+
+    // Development bypass: Simulate authenticated dev user
+    console.log('🧪 Development authentication bypass activated');
+    const devUser = {
+      claims: {
+        sub: "dev-test-admin-id",
+        email: "dev.test@example.com",
+        first_name: "Dev",
+        last_name: "Tester",
+        exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60), // 24 hours
+      },
+      access_token: 'dev-test-token',
+      refresh_token: 'dev-test-refresh',
+      expires_at: Math.floor(Date.now() / 1000) + (24 * 60 * 60), // 24 hours
+    };
+
+    // Simulate authenticated request
+    (req as any).user = devUser;
+    return next();
+  }
+
+  // PRODUCTION AUTHENTICATION: Standard OAuth flow
   const user = req.user as any;
 
   if (!req.isAuthenticated() || !user.expires_at) {

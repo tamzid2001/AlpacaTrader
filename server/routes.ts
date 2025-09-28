@@ -370,6 +370,119 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
   });
+
+  // ===========================================
+  // DEVELOPMENT AUTHENTICATION BYPASS
+  // ===========================================
+  // Development-only endpoint to simulate user authentication for testing
+  app.post('/api/dev/login', express.json(), async (req, res) => {
+    if (process.env.NODE_ENV !== 'development') {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    console.log('🧪 Development login requested');
+    
+    try {
+      // Create or get test admin user
+      const testUser = {
+        id: "dev-test-admin-id", 
+        email: "dev.test@example.com",
+        firstName: "Dev",
+        lastName: "Tester",
+        profileImageUrl: null,
+        role: "admin",
+        isApproved: true
+      };
+
+      // Ensure user exists in database
+      await storage.upsertUser(testUser);
+      console.log('✅ Test user upserted:', testUser.email);
+
+      // Create mock session user
+      const sessionUser = {
+        claims: {
+          sub: testUser.id,
+          email: testUser.email,
+          first_name: testUser.firstName,
+          last_name: testUser.lastName,
+          exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60), // 24 hours
+        },
+        access_token: 'dev-test-token',
+        refresh_token: 'dev-test-refresh',
+        expires_at: Math.floor(Date.now() / 1000) + (24 * 60 * 60), // 24 hours
+      };
+
+      // Set up session
+      (req as any).user = sessionUser;
+      req.session.passport = { user: sessionUser };
+      req.session.save((err: any) => {
+        if (err) {
+          console.error('Session save error:', err);
+          return res.status(500).json({ error: 'Session creation failed' });
+        }
+        
+        console.log('✅ Development session created for:', testUser.email);
+        res.json({ 
+          success: true, 
+          message: 'Development authentication successful',
+          user: testUser
+        });
+      });
+      
+    } catch (error: any) {
+      console.error('❌ Development login failed:', error);
+      res.status(500).json({ 
+        error: 'Development login failed', 
+        details: error.message 
+      });
+    }
+  });
+
+  // Development-only endpoint to get current user (bypass auth check)
+  app.get('/api/auth/user', async (req: any, res) => {
+    // First check if user is already authenticated
+    if (req.isAuthenticated() && req.user) {
+      try {
+        const userId = req.user.claims.sub;
+        const user = await storage.getUser(userId);
+        if (user) {
+          return res.json(user);
+        }
+      } catch (error) {
+        // Fall through to development bypass
+      }
+    }
+
+    // Development bypass - return test user if in development mode
+    if (process.env.NODE_ENV === 'development') {
+      try {
+        const testUser = await storage.getUser("dev-test-admin-id");
+        if (testUser) {
+          console.log('🧪 Returning development test user');
+          return res.json(testUser);
+        } else {
+          // Create test user if it doesn't exist
+          const newTestUser = {
+            id: "dev-test-admin-id", 
+            email: "dev.test@example.com",
+            firstName: "Dev",
+            lastName: "Tester",
+            role: "admin",
+            isApproved: true
+          };
+          await storage.upsertUser(newTestUser);
+          const createdUser = await storage.getUser("dev-test-admin-id");
+          console.log('🧪 Created and returning development test user');
+          return res.json(createdUser);
+        }
+      } catch (error) {
+        console.error('Development user creation error:', error);
+      }
+    }
+
+    // Default unauthorized response
+    res.status(401).json({ message: "Unauthorized" });
+  });
   
   // Database statistics endpoint for admin dashboard
   app.get('/api/admin/database/stats', isAuthenticated, requireAdmin, async (req: any, res) => {
