@@ -203,8 +203,8 @@ async function handlePaymentSuccess(paymentIntent: any) {
       if (user) {
         // Update user subscription status
         await storage.updateUserStripeInfo(userId, {
-          customerId: user.stripeCustomerId,
-          subscriptionId: user.stripeSubscriptionId
+          customerId: user.stripeCustomerId || undefined,
+          subscriptionId: user.stripeSubscriptionId || undefined
         });
         console.log('✅ Subscription payment processed for user:', userId);
       } else {
@@ -315,7 +315,7 @@ let stripe: Stripe | null = null;
 try {
   if (process.env.STRIPE_SECRET_KEY) {
     stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: "2023-10-16",
+      apiVersion: "2024-11-20.acacia",
     });
   }
 } catch (error) {
@@ -506,12 +506,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const extension = fileName.split('.').pop() || '';
         
         // Check if extension is supported
-        if (!supportedTypes[extension]) {
+        if (!(extension in supportedTypes)) {
           return cb(new Error(`File type .${extension} is not supported. Please check the supported file types list.`));
         }
         
         // Check if MIME type matches the extension
-        const allowedMimeTypes = supportedTypes[extension];
+        const allowedMimeTypes = (supportedTypes as Record<string, string[]>)[extension];
         if (!allowedMimeTypes.includes(mimeType)) {
           return cb(new Error(`MIME type ${mimeType} does not match expected types for .${extension} files.`));
         }
@@ -7042,6 +7042,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('Delete share link error:', error);
       res.status(500).json({ error: 'Failed to delete share link' });
+    }
+  });
+
+  // Get all share links created by the authenticated user
+  app.get('/api/share/links', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      
+      const shareLinks = await storage.getUserShareLinks(userId);
+      res.json(shareLinks);
+    } catch (error: any) {
+      console.error('Get user share links error:', error);
+      res.status(500).json({ error: 'Failed to get share links' });
     }
   });
 

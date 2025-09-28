@@ -1,6 +1,7 @@
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getStorage } from "firebase-admin/storage";
 import { getAuth } from "firebase-admin/auth";
+import { getMessaging, type Message, type BatchResponse } from "firebase-admin/messaging";
 
 // Firebase configuration for server-side uploads
 const firebaseConfig = {
@@ -34,9 +35,10 @@ if (getApps().length === 0) {
   adminApp = getApps()[0];
 }
 
-// Get storage and auth instances
+// Get storage, auth, and messaging instances
 export const adminStorage = adminApp ? getStorage(adminApp) : null;
 export const adminAuth = adminApp ? getAuth(adminApp) : null;
+export const adminMessaging = adminApp ? getMessaging(adminApp) : null;
 
 export interface ServerUploadResult {
   downloadURL: string;

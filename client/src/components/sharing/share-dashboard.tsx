@@ -107,7 +107,7 @@ const RESOURCE_TYPE_LABELS = {
 
 const STATUS_VARIANTS = {
   pending: { variant: 'default' as const, icon: Clock, color: 'text-blue-600' },
-  accepted: { variant: 'success' as const, icon: CheckCircle2, color: 'text-green-600' },
+  accepted: { variant: 'default' as const, icon: CheckCircle2, color: 'text-green-600' },
   declined: { variant: 'destructive' as const, icon: XCircle, color: 'text-red-600' },
   expired: { variant: 'secondary' as const, icon: AlertTriangle, color: 'text-gray-600' },
 };
@@ -119,12 +119,18 @@ export function ShareDashboard() {
 
   const { data: sentInvites, isLoading: isLoadingInvites, error: invitesError } = useQuery({
     queryKey: ['/api/share/sent-invites'],
-    queryFn: () => apiRequest('/api/share/sent-invites'),
+    queryFn: async () => {
+      const response = await apiRequest('GET', '/api/share/sent-invites');
+      return response.json();
+    },
   });
 
   const { data: shareLinks, isLoading: isLoadingLinks, error: linksError } = useQuery({
     queryKey: ['/api/share/links'],
-    queryFn: () => apiRequest('/api/share/links'),
+    queryFn: async () => {
+      const response = await apiRequest('GET', '/api/share/links');
+      return response.json();
+    },
   });
 
   const copyLinkMutation = useMutation({
@@ -151,9 +157,8 @@ export function ShareDashboard() {
   const revokeLinkMutation = useMutation({
     mutationFn: async (linkId: string) => {
       setActionInProgress(linkId);
-      return apiRequest(`/api/share/link/${linkId}`, {
-        method: 'DELETE',
-      });
+      const response = await apiRequest('DELETE', `/api/share/link/${linkId}`);
+      return response.json();
     },
     onSuccess: () => {
       toast({
@@ -220,7 +225,7 @@ export function ShareDashboard() {
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="invites" data-testid="tab-invites">
             Email Invitations
-            {!isLoadingInvites && sentInvites && (
+            {!isLoadingInvites && Array.isArray(sentInvites) && (
               <Badge variant="secondary" className="ml-2">
                 {sentInvites.length}
               </Badge>
@@ -228,7 +233,7 @@ export function ShareDashboard() {
           </TabsTrigger>
           <TabsTrigger value="links" data-testid="tab-links">
             Share Links
-            {!isLoadingLinks && shareLinks && (
+            {!isLoadingLinks && Array.isArray(shareLinks) && (
               <Badge variant="secondary" className="ml-2">
                 {shareLinks.filter((link: ShareLink) => link.isActive).length}
               </Badge>
@@ -258,7 +263,7 @@ export function ShareDashboard() {
                     </div>
                   ))}
                 </>
-              ) : !sentInvites || sentInvites.length === 0 ? (
+              ) : !Array.isArray(sentInvites) || sentInvites.length === 0 ? (
                 <div className="text-center py-8" data-testid="empty-sent-invites">
                   <div className="p-4 bg-gray-50 rounded-full w-fit mx-auto mb-4">
                     <Mail className="h-6 w-6 text-gray-400" />
@@ -269,7 +274,7 @@ export function ShareDashboard() {
                   </p>
                 </div>
               ) : (
-                sentInvites.map((invite: ShareInvite, index: number) => {
+                (Array.isArray(sentInvites) ? sentInvites : []).map((invite: ShareInvite, index: number) => {
                   const ResourceIcon = RESOURCE_TYPE_ICONS[invite.resourceType as keyof typeof RESOURCE_TYPE_ICONS];
                   const resourceLabel = RESOURCE_TYPE_LABELS[invite.resourceType as keyof typeof RESOURCE_TYPE_LABELS];
                   const statusInfo = getInviteStatusInfo(invite);
@@ -343,7 +348,7 @@ export function ShareDashboard() {
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
-                      {index < sentInvites.length - 1 && <Separator />}
+                      {index < (Array.isArray(sentInvites) ? sentInvites.length : 0) - 1 && <Separator />}
                     </div>
                   );
                 })
@@ -374,7 +379,7 @@ export function ShareDashboard() {
                     </div>
                   ))}
                 </>
-              ) : !shareLinks || shareLinks.filter((link: ShareLink) => link.isActive).length === 0 ? (
+              ) : !Array.isArray(shareLinks) || shareLinks.filter((link: ShareLink) => link.isActive).length === 0 ? (
                 <div className="text-center py-8" data-testid="empty-share-links">
                   <div className="p-4 bg-gray-50 rounded-full w-fit mx-auto mb-4">
                     <LinkIcon className="h-6 w-6 text-gray-400" />
@@ -385,7 +390,7 @@ export function ShareDashboard() {
                   </p>
                 </div>
               ) : (
-                shareLinks
+                (Array.isArray(shareLinks) ? shareLinks : [])
                   .filter((link: ShareLink) => link.isActive)
                   .map((link: ShareLink, index: number) => {
                     const ResourceIcon = RESOURCE_TYPE_ICONS[link.resourceType as keyof typeof RESOURCE_TYPE_ICONS];
@@ -482,7 +487,7 @@ export function ShareDashboard() {
                             </Button>
                           </div>
                         </div>
-                        {index < shareLinks.filter((l: ShareLink) => l.isActive).length - 1 && <Separator />}
+                        {index < (Array.isArray(shareLinks) ? shareLinks.filter((l: ShareLink) => l.isActive).length : 0) - 1 && <Separator />}
                       </div>
                     );
                   })

@@ -81,7 +81,7 @@ const RESOURCE_TYPE_LABELS = {
 
 const STATUS_VARIANTS = {
   pending: { variant: 'default' as const, icon: Clock, color: 'text-blue-600' },
-  accepted: { variant: 'success' as const, icon: CheckCircle2, color: 'text-green-600' },
+  accepted: { variant: 'default' as const, icon: CheckCircle2, color: 'text-green-600' },
   declined: { variant: 'destructive' as const, icon: XCircle, color: 'text-red-600' },
   expired: { variant: 'secondary' as const, icon: AlertTriangle, color: 'text-gray-600' },
 };
@@ -93,15 +93,17 @@ export function InvitationInbox() {
 
   const { data: invitations, isLoading, error } = useQuery({
     queryKey: ['/api/share/invites'],
-    queryFn: () => apiRequest('/api/share/invites'),
+    queryFn: async () => {
+      const response = await apiRequest('GET', '/api/share/invites');
+      return response.json();
+    },
   });
 
   const acceptMutation = useMutation({
     mutationFn: async (token: string) => {
       setActionInProgress(token);
-      return apiRequest(`/api/share/accept/${token}`, {
-        method: 'POST',
-      });
+      const response = await apiRequest('POST', `/api/share/accept/${token}`);
+      return response.json();
     },
     onSuccess: (_, token) => {
       toast({
@@ -126,9 +128,8 @@ export function InvitationInbox() {
   const declineMutation = useMutation({
     mutationFn: async (token: string) => {
       setActionInProgress(token);
-      return apiRequest(`/api/share/decline/${token}`, {
-        method: 'POST',
-      });
+      const response = await apiRequest('POST', `/api/share/decline/${token}`);
+      return response.json();
     },
     onSuccess: () => {
       toast({
@@ -172,13 +173,13 @@ export function InvitationInbox() {
     );
   }
 
-  const pendingInvitations = invitations?.filter((inv: ShareInvite) => 
+  const pendingInvitations = Array.isArray(invitations) ? invitations.filter((inv: ShareInvite) => 
     inv.status === 'pending' && !isExpired(inv.expiresAt)
-  ) || [];
+  ) : [];
   
-  const processedInvitations = invitations?.filter((inv: ShareInvite) => 
+  const processedInvitations = Array.isArray(invitations) ? invitations.filter((inv: ShareInvite) => 
     inv.status !== 'pending' || isExpired(inv.expiresAt)
-  ) || [];
+  ) : [];
 
   return (
     <div className="space-y-6" data-testid="invitation-inbox">
@@ -188,7 +189,7 @@ export function InvitationInbox() {
         <h2 className="text-lg font-semibold" data-testid="text-inbox-title">
           Share Invitations
         </h2>
-        {!isLoading && invitations && (
+        {!isLoading && Array.isArray(invitations) && (
           <Badge variant="secondary" data-testid="badge-total-invitations">
             {invitations.length} total
           </Badge>
@@ -396,7 +397,7 @@ export function InvitationInbox() {
       )}
 
       {/* Empty State */}
-      {!isLoading && (!invitations || invitations.length === 0) && (
+      {!isLoading && (!Array.isArray(invitations) || invitations.length === 0) && (
         <Card data-testid="card-empty-state">
           <CardContent className="py-12">
             <div className="text-center space-y-4">
