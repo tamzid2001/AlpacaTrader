@@ -2223,7 +2223,7 @@ export const chatMessages = pgTable("chat_messages", {
   
   // Context & Response Quality
   contextUsed: json("context_used"), // User context used for this message
-  responseTime: integer("response_time_ms"), // Time to generate response
+  responseTime: integer("response_time"), // Time to generate response
   streamingChunks: integer("streaming_chunks"), // Number of streaming chunks
   
   // User Feedback
