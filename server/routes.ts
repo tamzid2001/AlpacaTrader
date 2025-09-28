@@ -3724,26 +3724,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===================
 
   // Get ALL comprehensive Yahoo Finance data for a ticker
+  // Now supports Python yfinance-style historical data with query parameters: start, end, interval
   app.get('/api/yahoo-finance/:ticker', isAuthenticated, async (req: any, res) => {
     try {
       const { ticker } = req.params;
+      const { start, end, interval } = req.query;
       const userId = req.user.claims.sub;
       
       if (!ticker) {
         return res.status(400).json({ error: 'Ticker symbol is required' });
       }
 
-      console.log(`📊 Fetching comprehensive Yahoo Finance data for ${ticker} (user: ${userId})`);
-      
-      const comprehensiveData = await comprehensiveYahooFinanceService.getComprehensiveTickerData(ticker);
-      
-      console.log(`✅ Successfully fetched comprehensive data for ${ticker}`);
-      res.json(comprehensiveData);
+      // Check if Python-style historical data is requested
+      if (start && end) {
+        console.log(`📊 Fetching Python-style historical data for ${ticker} (user: ${userId})`);
+        console.log(`🔍 Parameters: start=${start}, end=${end}, interval=${interval || '1d'}`);
+        
+        // Validate interval parameter
+        const validIntervals = ['1d', '1wk', '1mo'];
+        const requestedInterval = (interval as string) || '1d';
+        
+        if (!validIntervals.includes(requestedInterval)) {
+          return res.status(400).json({ 
+            error: `Invalid interval. Supported intervals: ${validIntervals.join(', ')}`,
+            supportedIntervals: validIntervals
+          });
+        }
+        
+        const pythonStyleData = await comprehensiveYahooFinanceService.getPythonStyleHistoricalData(
+          ticker,
+          start as string,
+          end as string,
+          requestedInterval as '1d' | '1wk' | '1mo'
+        );
+        
+        console.log(`✅ Successfully fetched Python-style data for ${ticker} (${pythonStyleData.data.length} records)`);
+        res.json(pythonStyleData);
+        
+      } else {
+        // Default behavior: return comprehensive data
+        console.log(`📊 Fetching comprehensive Yahoo Finance data for ${ticker} (user: ${userId})`);
+        
+        const comprehensiveData = await comprehensiveYahooFinanceService.getComprehensiveTickerData(ticker);
+        
+        console.log(`✅ Successfully fetched comprehensive data for ${ticker}`);
+        res.json(comprehensiveData);
+      }
     } catch (error: any) {
-      console.error(`❌ Error fetching comprehensive data for ${req.params.ticker}:`, error.message);
+      console.error(`❌ Error fetching data for ${req.params.ticker}:`, error.message);
       res.status(500).json({ 
         error: error.message,
-        ticker: req.params.ticker 
+        ticker: req.params.ticker,
+        queryParams: req.query
       });
     }
   });

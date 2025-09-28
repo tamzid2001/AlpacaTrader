@@ -1,4 +1,23 @@
 import yahooFinance from 'yahoo-finance2';
+import { format } from 'date-fns';
+
+// Python yfinance-style data interfaces
+export interface PythonYFinanceRecord {
+  Item_Id: string;
+  Date: string;
+  Price: number;
+}
+
+export interface PythonYFinanceResponse {
+  data: PythonYFinanceRecord[];
+  meta: {
+    symbol: string;
+    interval: string;
+    startDate: string;
+    endDate: string;
+    recordCount: number;
+  };
+}
 
 // Comprehensive Yahoo Finance data interfaces
 export interface ComprehensiveTickerData {
@@ -852,6 +871,77 @@ export class ComprehensiveYahooFinanceService {
 
   private getEmptyCalendarData(): CalendarData {
     return { earnings: [], dividends: [], splits: [], events: [] };
+  }
+
+  /**
+   * Get historical price data in Python yfinance format (Item_Id, Date, Price)
+   * Equivalent to: colab_download_price_csv(ticker, start, end, interval)
+   */
+  async getPythonStyleHistoricalData(
+    symbol: string,
+    startDate: string,
+    endDate: string,
+    interval: '1d' | '1wk' | '1mo' = '1d'
+  ): Promise<PythonYFinanceResponse> {
+    try {
+      const upperSymbol = symbol.toUpperCase();
+      
+      // Validate inputs
+      if (!symbol || typeof symbol !== 'string') {
+        throw new Error('Symbol is required');
+      }
+      
+      if (!startDate || !endDate) {
+        throw new Error('Start date and end date are required');
+      }
+
+      // Validate date format and range
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        throw new Error('Invalid date format. Use YYYY-MM-DD format');
+      }
+      
+      if (start >= end) {
+        throw new Error('Start date must be before end date');
+      }
+      
+      if (start > new Date()) {
+        throw new Error('Start date cannot be in the future');
+      }
+
+      // Fetch historical data from Yahoo Finance
+      const result = await yahooFinance.historical(upperSymbol, {
+        period1: startDate,
+        period2: endDate,
+        interval: interval,
+      });
+      
+      if (!result || result.length === 0) {
+        throw new Error(`No data found for symbol ${symbol} in the specified date range`);
+      }
+
+      // Transform data to Python yfinance format: Item_Id, Date, Price
+      const data: PythonYFinanceRecord[] = result.map((record: any) => ({
+        Item_Id: symbol.toLowerCase(),  // ticker.lower() as in Python
+        Date: format(record.date, 'yyyy-MM-dd'),  // Format date as YYYY-MM-DD
+        Price: Number(record.close.toFixed(2))  // Use Close price, formatted to 2 decimals
+      }));
+
+      return {
+        data,
+        meta: {
+          symbol: upperSymbol,
+          interval,
+          startDate,
+          endDate,
+          recordCount: data.length,
+        }
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to fetch Python-style data for ${symbol}: ${error.message}`);
+    }
   }
 }
 

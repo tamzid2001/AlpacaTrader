@@ -14,6 +14,7 @@ import Dashboard from "@/pages/dashboard";
 import AdminDashboard from "@/pages/admin";
 import AnomalyDetection from "@/pages/anomaly-detection";
 import MarketDataPage from "@/pages/market-data";
+import SageMakerCanvasPage from "@/pages/sagemaker-canvas";
 import SharedResultsViewer from "@/pages/shared-results";
 import MySharedResults from "@/pages/my-shared-results";
 import { ProductivityDashboard } from "@/pages/productivity-dashboard";
@@ -111,6 +112,9 @@ function Router() {
             </Route>
             <Route path="/anomaly-detection">
               {() => <ErrorBoundary><AuthenticatedLayout><AnomalyDetection /></AuthenticatedLayout></ErrorBoundary>}
+            </Route>
+            <Route path="/sagemaker-canvas">
+              {() => <ErrorBoundary><AuthenticatedLayout><SageMakerCanvasPage /></AuthenticatedLayout></ErrorBoundary>}
             </Route>
             <Route path="/my-shared-results">
               {() => <ErrorBoundary><AuthenticatedLayout><MySharedResults /></AuthenticatedLayout></ErrorBoundary>}

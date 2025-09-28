@@ -1,0 +1,127 @@
+# --- Install deps (Colab) ---
+!pip -q install yfinance pandas matplotlib
+
+import os
+import sys
+from io import StringIO
+import pandas as pd
+import yfinance as yf
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+from google.colab import files
+from datetime import datetime
+
+# ---------- Helpers ----------
+def _norm(s: str) -> str:
+    return s.lower().replace(" ", "").replace("_", "")
+
+def _find_col(df: pd.DataFrame, candidates) -> str | None:
+    cols_norm = {_norm(c): c for c in df.columns}
+    for cand in candidates:
+        if cand in cols_norm:
+            return cols_norm[cand]
+    for c in df.columns:
+        cn = _norm(c)
+        if any(cand in cn for cand in candidates):
+            return c
+    return None
+
+def _force_remove_second_line(csv_text: str) -> str:
+    lines = csv_text.splitlines(True)
+    if len(lines) > 1:
+        del lines[1]
+    return "".join(lines)
+
+# ---------- Download prices → CSV (remove 2nd line) ----------
+def colab_download_price_csv(ticker: str, start: str, end: str, interval: str="1d", out_path: str|None=None) -> str:
+    df = yf.download(ticker, start=start, end=end, interval=interval, progress=False)
+    if df.empty:
+        raise RuntimeError("No data returned; check ticker/dates/interval.")
+    outdf = df[["Close"]].rename(columns={"Close": "Price"}).copy()
+    outdf.reset_index(inplace=True)
+    outdf.insert(0, "Item_Id", ticker.lower())
+    buf = StringIO()
+    outdf.to_csv(buf, index=False)
+    buf.seek(0)
+    csv_clean = _force_remove_second_line(buf.getvalue())
+    if not out_path:
+        out_path = f"{ticker.upper()}_{start}_{end}.csv"
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(csv_clean)
+    return out_path
+
+# ---------- Plot SageMaker CSV quantiles → SVG ----------
+def _plot_quantiles_svg_df(df: pd.DataFrame, out_svg: str) -> str:
+    date_col = _find_col(df, ["date", "ds", "timestamp", "time"])
+    p10_col  = _find_col(df, ["p10", "q10", "10"])
+    p50_col  = _find_col(df, ["p50", "q50", "50", "median"])
+    p90_col  = _find_col(df, ["p90", "q90", "90"])
+
+    missing = [name for name, col in [("P10", p10_col), ("P50", p50_col), ("P90", p90_col)] if col is None]
+    if missing:
+        raise ValueError(f"Required quantile columns missing: {', '.join(missing)}")
+
+    if date_col is not None:
+        df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+        x_label = "Date"
+    else:
+        date_col = "__row_index__"
+        df[date_col] = range(len(df))
+        x_label = "Index"
+
+    plot_df = df[[date_col, p10_col, p50_col, p90_col]].dropna().copy()
+    plot_df = plot_df.sort_values(by=date_col)
+
+    n = len(plot_df)
+    if n == 0:
+        raise ValueError("No valid rows to plot after cleaning.")
+
+    width = max(18, min(300, 0.40 * n))
+    height = 6
+
+    fig = plt.figure(figsize=(width, height), dpi=100)
+    ax = plt.gca()
+    ax.plot(plot_df[date_col], plot_df[p10_col], marker="o", linewidth=1, markersize=3, label=p10_col)
+    ax.plot(plot_df[date_col], plot_df[p50_col], marker="o", linewidth=1, markersize=3, label=p50_col)
+    ax.plot(plot_df[date_col], plot_df[p90_col], marker="o", linewidth=1, markersize=3, label=p90_col)
+    ax.set_title("P10 / P50 / P90 (All rows from CSV)")
+    ax.set_xlabel(x_label)
+    ax.set_ylabel("Value")
+    ax.grid(True, axis="y", alpha=0.3)
+    ax.legend()
+    for label in ax.get_xticklabels():
+        label.set_rotation(45)
+        label.set_ha("right")
+    plt.tight_layout()
+    fig.savefig(out_svg, format="svg", bbox_inches="tight")
+    plt.close(fig)
+    return out_svg
+
+def colab_plot_quantiles_svg(input_csv_path: str, output_svg_path: str|None=None) -> str:
+    df = pd.read_csv(input_csv_path)
+    base = os.path.splitext(os.path.basename(input_csv_path))[0]
+    out_svg = output_svg_path or f"{base}_p10_p50_p90.svg"
+    return _plot_quantiles_svg_df(df, out_svg)
+
+# ---------- Handy Colab helpers ----------
+def upload_file():
+    print("Choose a file to upload…")
+    uploaded = files.upload()  # opens a file chooser
+    return list(uploaded.keys())[0] if uploaded else None
+
+def download_file(path: str):
+    if os.path.isfile(path):
+        files.download(path)
+    else:
+        raise FileNotFoundError(path)
+
+print("✅ Ready. Examples:")
+print("csv_path = colab_download_price_csv('AAPL', '2024-01-01', '2024-06-30', '1d')")
+print("download_file(csv_path)")
+print("# For plotting:")
+print("# fname = upload_file()  # choose your SageMaker CSV")
+print("# svg = colab_plot_quantiles_svg(fname)")
+print("# download_file(svg)")

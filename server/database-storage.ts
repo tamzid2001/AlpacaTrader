@@ -511,6 +511,162 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(sharedResults.createdAt));
   }
 
+  async getSharedResultByToken(token: string): Promise<(SharedResult & { upload: CsvUpload; user: User }) | undefined> {
+    const result = await db.select({
+      // SharedResult fields
+      id: sharedResults.id,
+      csvUploadId: sharedResults.csvUploadId,
+      userId: sharedResults.userId,
+      shareToken: sharedResults.shareToken,
+      permissions: sharedResults.permissions,
+      expiresAt: sharedResults.expiresAt,
+      viewCount: sharedResults.viewCount,
+      accessLogs: sharedResults.accessLogs,
+      title: sharedResults.title,
+      description: sharedResults.description,
+      createdAt: sharedResults.createdAt,
+      updatedAt: sharedResults.updatedAt,
+      // Upload fields (prefixed with upload_)
+      upload_id: csvUploads.id,
+      upload_userId: csvUploads.userId,
+      upload_filename: csvUploads.filename,
+      upload_customFilename: csvUploads.customFilename,
+      upload_objectStoragePath: csvUploads.objectStoragePath,
+      upload_fileSize: csvUploads.fileSize,
+      upload_columnCount: csvUploads.columnCount,
+      upload_rowCount: csvUploads.rowCount,
+      upload_status: csvUploads.status,
+      upload_fileMetadata: csvUploads.fileMetadata,
+      upload_timeSeriesData: csvUploads.timeSeriesData,
+      upload_uploadedAt: csvUploads.uploadedAt,
+      upload_processedAt: csvUploads.processedAt,
+      upload_firebaseStorageUrl: csvUploads.firebaseStorageUrl,
+      upload_firebaseStoragePath: csvUploads.firebaseStoragePath,
+      // User fields (prefixed with user_)
+      user_id: users.id,
+      user_email: users.email,
+      user_firstName: users.firstName,
+      user_lastName: users.lastName,
+      user_profileImageUrl: users.profileImageUrl,
+      user_role: users.role,
+      user_isApproved: users.isApproved,
+      user_dataRetentionUntil: users.dataRetentionUntil,
+      user_marketingConsent: users.marketingConsent,
+      user_analyticsConsent: users.analyticsConsent,
+      user_dataProcessingBasis: users.dataProcessingBasis,
+      user_lastConsentUpdate: users.lastConsentUpdate,
+      user_stripeCustomerId: users.stripeCustomerId,
+      user_stripeSubscriptionId: users.stripeSubscriptionId,
+      user_subscriptionStatus: users.subscriptionStatus,
+      user_subscriptionPlan: users.subscriptionPlan,
+      user_subscriptionStartDate: users.subscriptionStartDate,
+      user_subscriptionEndDate: users.subscriptionEndDate,
+      user_automlCreditsRemaining: users.automlCreditsRemaining,
+      user_automlCreditsTotal: users.automlCreditsTotal,
+      user_monthlyUsageResetDate: users.monthlyUsageResetDate,
+      user_defaultPaymentMethodId: users.defaultPaymentMethodId,
+      user_isPremiumApproved: users.isPremiumApproved,
+      user_premiumApprovedAt: users.premiumApprovedAt,
+      user_premiumApprovedBy: users.premiumApprovedBy,
+      user_premiumTier: users.premiumTier,
+      user_premiumStatus: users.premiumStatus,
+      user_premiumRequestedAt: users.premiumRequestedAt,
+      user_premiumRequestJustification: users.premiumRequestJustification,
+      user_createdAt: users.createdAt,
+      user_updatedAt: users.updatedAt,
+    })
+    .from(sharedResults)
+    .innerJoin(csvUploads, eq(sharedResults.csvUploadId, csvUploads.id))
+    .innerJoin(users, eq(sharedResults.userId, users.id))
+    .where(eq(sharedResults.shareToken, token))
+    .limit(1);
+
+    if (result.length === 0) {
+      return undefined;
+    }
+
+    const row = result[0];
+    
+    // Check if expired
+    if (row.expiresAt && new Date() > row.expiresAt) {
+      return undefined;
+    }
+
+    // Reconstruct the objects from the flattened result
+    const sharedResult: SharedResult = {
+      id: row.id,
+      csvUploadId: row.csvUploadId,
+      userId: row.userId,
+      shareToken: row.shareToken,
+      permissions: row.permissions,
+      expiresAt: row.expiresAt,
+      viewCount: row.viewCount,
+      accessLogs: row.accessLogs,
+      title: row.title,
+      description: row.description,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+
+    const upload: CsvUpload = {
+      id: row.upload_id,
+      userId: row.upload_userId,
+      filename: row.upload_filename,
+      customFilename: row.upload_customFilename,
+      objectStoragePath: row.upload_objectStoragePath,
+      fileSize: row.upload_fileSize,
+      columnCount: row.upload_columnCount,
+      rowCount: row.upload_rowCount,
+      status: row.upload_status,
+      fileMetadata: row.upload_fileMetadata,
+      timeSeriesData: row.upload_timeSeriesData,
+      uploadedAt: row.upload_uploadedAt,
+      processedAt: row.upload_processedAt,
+      firebaseStorageUrl: row.upload_firebaseStorageUrl,
+      firebaseStoragePath: row.upload_firebaseStoragePath,
+    };
+
+    const user: User = {
+      id: row.user_id,
+      email: row.user_email,
+      firstName: row.user_firstName,
+      lastName: row.user_lastName,
+      profileImageUrl: row.user_profileImageUrl,
+      role: row.user_role,
+      isApproved: row.user_isApproved,
+      dataRetentionUntil: row.user_dataRetentionUntil,
+      marketingConsent: row.user_marketingConsent,
+      analyticsConsent: row.user_analyticsConsent,
+      dataProcessingBasis: row.user_dataProcessingBasis,
+      lastConsentUpdate: row.user_lastConsentUpdate,
+      stripeCustomerId: row.user_stripeCustomerId,
+      stripeSubscriptionId: row.user_stripeSubscriptionId,
+      subscriptionStatus: row.user_subscriptionStatus,
+      subscriptionPlan: row.user_subscriptionPlan,
+      subscriptionStartDate: row.user_subscriptionStartDate,
+      subscriptionEndDate: row.user_subscriptionEndDate,
+      automlCreditsRemaining: row.user_automlCreditsRemaining,
+      automlCreditsTotal: row.user_automlCreditsTotal,
+      monthlyUsageResetDate: row.user_monthlyUsageResetDate,
+      defaultPaymentMethodId: row.user_defaultPaymentMethodId,
+      isPremiumApproved: row.user_isPremiumApproved,
+      premiumApprovedAt: row.user_premiumApprovedAt,
+      premiumApprovedBy: row.user_premiumApprovedBy,
+      premiumTier: row.user_premiumTier,
+      premiumStatus: row.user_premiumStatus,
+      premiumRequestedAt: row.user_premiumRequestedAt,
+      premiumRequestJustification: row.user_premiumRequestJustification,
+      createdAt: row.user_createdAt,
+      updatedAt: row.user_updatedAt,
+    };
+
+    return {
+      ...sharedResult,
+      upload,
+      user,
+    };
+  }
+
   // ===================
   // QUIZ SYSTEM
   // ===================

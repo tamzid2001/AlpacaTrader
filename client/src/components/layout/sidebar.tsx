@@ -12,6 +12,7 @@ export default function Sidebar() {
     { href: "/dashboard", icon: "LayoutDashboard", label: "Dashboard" },
     { href: "/market-data", icon: "TrendingUp", label: "Market Data" },
     { href: "/anomaly-detection", icon: "BarChart3", label: "Anomaly Detection" },
+    { href: "/sagemaker-canvas", icon: "Activity", label: "SageMaker Canvas" },
     { href: "/productivity", icon: "CheckSquare", label: "Productivity" },
     { href: "/my-shared-results", icon: "Share2", label: "My Shared Results" },
   ];
