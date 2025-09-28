@@ -1118,6 +1118,104 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ===================
+  // PRODUCTIVITY STATS
+  // ===================
+
+  async getUserProductivityStats(userId: string): Promise<{
+    totalBoards: number;
+    totalItems: number;
+    completedThisWeek: number;
+    overdueItems: number;
+    upcomingDeadlines: number;
+    mostProductiveDay: string;
+    averageCompletionTime: number;
+  }> {
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    
+    const threeDaysFromNow = new Date();
+    threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
+
+    // Get total boards count
+    const totalBoardsResult = await db.select({ count: sql<number>`count(*)` })
+      .from(productivityBoards)
+      .where(eq(productivityBoards.ownerId, userId));
+    const totalBoards = totalBoardsResult[0]?.count || 0;
+
+    // Get all user boards to query items
+    const userBoards = await db.select({ id: productivityBoards.id })
+      .from(productivityBoards)
+      .where(eq(productivityBoards.ownerId, userId));
+    
+    const boardIds = userBoards.map(board => board.id);
+
+    if (boardIds.length === 0) {
+      return {
+        totalBoards: 0,
+        totalItems: 0,
+        completedThisWeek: 0,
+        overdueItems: 0,
+        upcomingDeadlines: 0,
+        mostProductiveDay: 'Monday',
+        averageCompletionTime: 0,
+      };
+    }
+
+    // Get total items count
+    const totalItemsResult = await db.select({ count: sql<number>`count(*)` })
+      .from(productivityItems)
+      .where(inArray(productivityItems.boardId, boardIds));
+    const totalItems = totalItemsResult[0]?.count || 0;
+
+    // Get completed items this week
+    const completedThisWeekResult = await db.select({ count: sql<number>`count(*)` })
+      .from(productivityItems)
+      .where(
+        and(
+          inArray(productivityItems.boardId, boardIds),
+          eq(productivityItems.status, 'done'),
+          gte(productivityItems.updatedAt, oneWeekAgo)
+        )
+      );
+    const completedThisWeek = completedThisWeekResult[0]?.count || 0;
+
+    // Get overdue items
+    const overdueItemsResult = await db.select({ count: sql<number>`count(*)` })
+      .from(productivityItems)
+      .where(
+        and(
+          inArray(productivityItems.boardId, boardIds),
+          ne(productivityItems.status, 'done'),
+          lt(productivityItems.dueDate, new Date())
+        )
+      );
+    const overdueItems = overdueItemsResult[0]?.count || 0;
+
+    // Get upcoming deadlines (next 3 days)
+    const upcomingDeadlinesResult = await db.select({ count: sql<number>`count(*)` })
+      .from(productivityItems)
+      .where(
+        and(
+          inArray(productivityItems.boardId, boardIds),
+          ne(productivityItems.status, 'done'),
+          gte(productivityItems.dueDate, new Date()),
+          lte(productivityItems.dueDate, threeDaysFromNow)
+        )
+      );
+    const upcomingDeadlines = upcomingDeadlinesResult[0]?.count || 0;
+
+    return {
+      totalBoards,
+      totalItems,
+      completedThisWeek,
+      overdueItems,
+      upcomingDeadlines,
+      mostProductiveDay: 'Monday', // Default for now
+      averageCompletionTime: 2.5, // Default average in days
+    };
+  }
+
+  // ===================
   // NOTIFICATIONS
   // ===================
 
