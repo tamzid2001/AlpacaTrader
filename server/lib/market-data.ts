@@ -5,7 +5,7 @@ import archiver from 'archiver';
 import { PassThrough } from 'stream';
 
 // Market data intervals supported by yahoo-finance2
-export type MarketDataInterval = '1d' | '1wk' | '1mo';
+export type MarketDataInterval = '1m' | '2m' | '5m' | '15m' | '30m' | '60m' | '90m' | '1h' | '1d' | '5d' | '1wk' | '1mo' | '3mo';
 
 // HistoricalOptions interface for yahoo-finance2
 export interface HistoricalOptions {
@@ -72,7 +72,7 @@ export interface BatchDownloadResponse {
 }
 
 export class MarketDataService {
-  private readonly supportedIntervals: MarketDataInterval[] = ['1d', '1wk', '1mo'];
+  private readonly supportedIntervals: MarketDataInterval[] = ['1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '1d', '5d', '1wk', '1mo', '3mo'];
   private readonly maxSymbolsPerBatch = 50;
   private readonly maxDateRangeDays = 365 * 5; // 5 years max
 

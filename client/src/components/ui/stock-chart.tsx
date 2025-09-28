@@ -7,7 +7,7 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   Legend
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery } from '@tanstack/react-query';
@@ -30,7 +31,13 @@ import {
   LineChart,
   AreaChart,
   Calendar as CalendarIcon,
-  RefreshCw
+  RefreshCw,
+  Clock,
+  BarChart3,
+  TrendingUpIcon,
+  ChevronLeft,
+  ChevronRight,
+  Info
 } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -81,7 +88,42 @@ interface StockChartProps {
 }
 
 type ChartType = 'line' | 'area';
-type IntervalType = '1d' | '1wk' | '1mo';
+type IntervalType = '1m' | '2m' | '5m' | '15m' | '30m' | '60m' | '90m' | '1h' | '1d' | '5d' | '1wk' | '1mo' | '3mo';
+
+// Frequency categories for better UX
+interface FrequencyOption {
+  value: IntervalType;
+  label: string;
+  description: string;
+  category: 'intraday' | 'daily' | 'long-term';
+  icon: any;
+}
+
+const frequencyOptions: FrequencyOption[] = [
+  // Intraday frequencies (for recent data)
+  { value: '1m', label: '1 Minute', description: 'Every minute (last 7 days only)', category: 'intraday', icon: Clock },
+  { value: '2m', label: '2 Minutes', description: 'Every 2 minutes (last 60 days)', category: 'intraday', icon: Clock },
+  { value: '5m', label: '5 Minutes', description: 'Every 5 minutes (last 60 days)', category: 'intraday', icon: Clock },
+  { value: '15m', label: '15 Minutes', description: 'Every 15 minutes (last 60 days)', category: 'intraday', icon: Clock },
+  { value: '30m', label: '30 Minutes', description: 'Every 30 minutes (last 60 days)', category: 'intraday', icon: Clock },
+  { value: '60m', label: '1 Hour', description: 'Every hour (last 730 days)', category: 'intraday', icon: Clock },
+  { value: '90m', label: '90 Minutes', description: 'Every 90 minutes (last 60 days)', category: 'intraday', icon: Clock },
+  
+  // Daily frequencies
+  { value: '1d', label: 'Daily', description: 'Daily closing prices', category: 'daily', icon: BarChart3 },
+  { value: '5d', label: '5 Days', description: 'Weekly business days', category: 'daily', icon: BarChart3 },
+  
+  // Long-term frequencies
+  { value: '1wk', label: 'Weekly', description: 'Weekly closing prices', category: 'long-term', icon: TrendingUpIcon },
+  { value: '1mo', label: 'Monthly', description: 'Monthly closing prices', category: 'long-term', icon: TrendingUpIcon },
+  { value: '3mo', label: 'Quarterly', description: 'Quarterly closing prices', category: 'long-term', icon: TrendingUpIcon }
+];
+
+const categoryLabels = {
+  intraday: 'Intraday (Minutes/Hours)',
+  daily: 'Daily',
+  'long-term': 'Long-term (Weeks/Months)'
+};
 
 // Professional color scheme
 const colors = {
@@ -101,6 +143,14 @@ export function StockChart({ symbol, onSymbolChange, className = '', height = 40
   const [interval, setInterval] = useState<IntervalType>('1d');
   const [chartType, setChartType] = useState<ChartType>('area');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // Enhanced date picker state
+  const [startDateOpen, setStartDateOpen] = useState(false);
+  const [endDateOpen, setEndDateOpen] = useState(false);
+  const [startYear, setStartYear] = useState(startDate.getFullYear());
+  const [startMonth, setStartMonth] = useState(startDate.getMonth());
+  const [endYear, setEndYear] = useState(endDate.getFullYear());
+  const [endMonth, setEndMonth] = useState(endDate.getMonth());
   
   const { toast } = useToast();
 
@@ -240,6 +290,39 @@ export function StockChart({ symbol, onSymbolChange, className = '', height = 40
     }
   }, [pythonData, symbol, startDate, endDate, interval, toast]);
 
+  // Enhanced date picker handlers
+  const handleYearChange = (year: number, isStartDate: boolean) => {
+    if (isStartDate) {
+      setStartYear(year);
+      const newDate = new Date(year, startMonth, 1);
+      setStartDate(newDate);
+    } else {
+      setEndYear(year);
+      const newDate = new Date(year, endMonth, 1);
+      setEndDate(newDate);
+    }
+  };
+
+  const handleMonthChange = (month: number, isStartDate: boolean) => {
+    if (isStartDate) {
+      setStartMonth(month);
+      const newDate = new Date(startYear, month, 1);
+      setStartDate(newDate);
+    } else {
+      setEndMonth(month);
+      const newDate = new Date(endYear, month, 1);
+      setEndDate(newDate);
+    }
+  };
+
+  // Generate year options (last 20 years to next 2 years)
+  const currentYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 22 }, (_, i) => currentYear - 19 + i);
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
   // Custom tooltip component
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -320,7 +403,7 @@ export function StockChart({ symbol, onSymbolChange, className = '', height = 40
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium" data-testid="label-start-date">Start Date</label>
-              <Popover>
+              <Popover open={startDateOpen} onOpenChange={setStartDateOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
@@ -332,10 +415,56 @@ export function StockChart({ symbol, onSymbolChange, className = '', height = 40
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
+                  <div className="flex items-center justify-between p-2 border-b">
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={startYear.toString()}
+                        onValueChange={(value) => handleYearChange(parseInt(value), true)}
+                      >
+                        <SelectTrigger className="w-24">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {yearOptions.map((year) => (
+                            <SelectItem key={year} value={year.toString()}>
+                              {year}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={startMonth.toString()}
+                        onValueChange={(value) => handleMonthChange(parseInt(value), true)}
+                      >
+                        <SelectTrigger className="w-32">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {monthNames.map((month, index) => (
+                            <SelectItem key={index} value={index.toString()}>
+                              {month}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
                   <Calendar
                     mode="single"
                     selected={startDate}
-                    onSelect={(date) => date && setStartDate(date)}
+                    onSelect={(date) => {
+                      if (date) {
+                        setStartDate(date);
+                        setStartYear(date.getFullYear());
+                        setStartMonth(date.getMonth());
+                        setStartDateOpen(false);
+                      }
+                    }}
+                    month={new Date(startYear, startMonth)}
+                    onMonthChange={(date) => {
+                      setStartYear(date.getFullYear());
+                      setStartMonth(date.getMonth());
+                    }}
                     initialFocus
                     data-testid="calendar-start-date"
                   />
@@ -345,7 +474,7 @@ export function StockChart({ symbol, onSymbolChange, className = '', height = 40
 
             <div className="space-y-2">
               <label className="text-sm font-medium" data-testid="label-end-date">End Date</label>
-              <Popover>
+              <Popover open={endDateOpen} onOpenChange={setEndDateOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
@@ -357,10 +486,56 @@ export function StockChart({ symbol, onSymbolChange, className = '', height = 40
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
+                  <div className="flex items-center justify-between p-2 border-b">
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={endYear.toString()}
+                        onValueChange={(value) => handleYearChange(parseInt(value), false)}
+                      >
+                        <SelectTrigger className="w-24">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {yearOptions.map((year) => (
+                            <SelectItem key={year} value={year.toString()}>
+                              {year}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={endMonth.toString()}
+                        onValueChange={(value) => handleMonthChange(parseInt(value), false)}
+                      >
+                        <SelectTrigger className="w-32">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {monthNames.map((month, index) => (
+                            <SelectItem key={index} value={index.toString()}>
+                              {month}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
                   <Calendar
                     mode="single"
                     selected={endDate}
-                    onSelect={(date) => date && setEndDate(date)}
+                    onSelect={(date) => {
+                      if (date) {
+                        setEndDate(date);
+                        setEndYear(date.getFullYear());
+                        setEndMonth(date.getMonth());
+                        setEndDateOpen(false);
+                      }
+                    }}
+                    month={new Date(endYear, endMonth)}
+                    onMonthChange={(date) => {
+                      setEndYear(date.getFullYear());
+                      setEndMonth(date.getMonth());
+                    }}
                     initialFocus
                     data-testid="calendar-end-date"
                   />
@@ -370,16 +545,86 @@ export function StockChart({ symbol, onSymbolChange, className = '', height = 40
 
             <div className="space-y-2">
               <label className="text-sm font-medium" data-testid="label-interval">Frequency</label>
-              <Select value={interval} onValueChange={(value: IntervalType) => setInterval(value)}>
-                <SelectTrigger data-testid="select-interval">
-                  <SelectValue placeholder="Select frequency" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1d" data-testid="option-1d">Daily (1d)</SelectItem>
-                  <SelectItem value="1wk" data-testid="option-1wk">Weekly (1wk)</SelectItem>
-                  <SelectItem value="1mo" data-testid="option-1mo">Monthly (1mo)</SelectItem>
-                </SelectContent>
-              </Select>
+              <TooltipProvider>
+                <Select value={interval} onValueChange={(value: IntervalType) => setInterval(value)}>
+                  <SelectTrigger data-testid="select-interval">
+                    <SelectValue placeholder="Select frequency" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-80">
+                    {/* Intraday frequencies */}
+                    <div className="px-2 py-1 text-xs font-medium text-muted-foreground border-b">
+                      {categoryLabels.intraday}
+                    </div>
+                    {frequencyOptions.filter(opt => opt.category === 'intraday').map((option) => (
+                      <Tooltip key={option.value} delayDuration={300}>
+                        <TooltipTrigger asChild>
+                          <SelectItem value={option.value} data-testid={`option-${option.value}`}>
+                            <div className="flex items-center gap-2 w-full">
+                              <option.icon className="h-4 w-4 text-muted-foreground" />
+                              <div className="flex flex-col items-start">
+                                <span className="font-medium">{option.label}</span>
+                                <span className="text-xs text-muted-foreground truncate max-w-[200px]">{option.description}</span>
+                              </div>
+                            </div>
+                          </SelectItem>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-xs">
+                          <p className="font-medium">{option.label}</p>
+                          <p className="text-xs text-muted-foreground mt-1">{option.description}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    ))}
+                    
+                    {/* Daily frequencies */}
+                    <div className="px-2 py-1 text-xs font-medium text-muted-foreground border-b mt-2">
+                      {categoryLabels.daily}
+                    </div>
+                    {frequencyOptions.filter(opt => opt.category === 'daily').map((option) => (
+                      <Tooltip key={option.value} delayDuration={300}>
+                        <TooltipTrigger asChild>
+                          <SelectItem value={option.value} data-testid={`option-${option.value}`}>
+                            <div className="flex items-center gap-2 w-full">
+                              <option.icon className="h-4 w-4 text-muted-foreground" />
+                              <div className="flex flex-col items-start">
+                                <span className="font-medium">{option.label}</span>
+                                <span className="text-xs text-muted-foreground truncate max-w-[200px]">{option.description}</span>
+                              </div>
+                            </div>
+                          </SelectItem>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-xs">
+                          <p className="font-medium">{option.label}</p>
+                          <p className="text-xs text-muted-foreground mt-1">{option.description}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    ))}
+                    
+                    {/* Long-term frequencies */}
+                    <div className="px-2 py-1 text-xs font-medium text-muted-foreground border-b mt-2">
+                      {categoryLabels['long-term']}
+                    </div>
+                    {frequencyOptions.filter(opt => opt.category === 'long-term').map((option) => (
+                      <Tooltip key={option.value} delayDuration={300}>
+                        <TooltipTrigger asChild>
+                          <SelectItem value={option.value} data-testid={`option-${option.value}`}>
+                            <div className="flex items-center gap-2 w-full">
+                              <option.icon className="h-4 w-4 text-muted-foreground" />
+                              <div className="flex flex-col items-start">
+                                <span className="font-medium">{option.label}</span>
+                                <span className="text-xs text-muted-foreground truncate max-w-[200px]">{option.description}</span>
+                              </div>
+                            </div>
+                          </SelectItem>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-xs">
+                          <p className="font-medium">{option.label}</p>
+                          <p className="text-xs text-muted-foreground mt-1">{option.description}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </TooltipProvider>
             </div>
 
             <div className="space-y-2">
@@ -407,47 +652,143 @@ export function StockChart({ symbol, onSymbolChange, className = '', height = 40
           </div>
 
           {/* Preset Date Range Buttons */}
-          <div className="flex flex-wrap gap-2">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => setPresetDateRange(7)}
-              data-testid="button-7d"
-            >
-              7D
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => setPresetDateRange(30)}
-              data-testid="button-30d"
-            >
-              30D
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => setPresetDateRange(90)}
-              data-testid="button-90d"
-            >
-              3M
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => setPresetDateRange(180)}
-              data-testid="button-180d"
-            >
-              6M
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => setPresetDateRange(365)}
-              data-testid="button-365d"
-            >
-              1Y
-            </Button>
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setPresetDateRange(7)}
+                data-testid="button-7d"
+              >
+                7D
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setPresetDateRange(30)}
+                data-testid="button-30d"
+              >
+                30D
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setPresetDateRange(90)}
+                data-testid="button-90d"
+              >
+                3M
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setPresetDateRange(180)}
+                data-testid="button-180d"
+              >
+                6M
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setPresetDateRange(365)}
+                data-testid="button-365d"
+              >
+                1Y
+              </Button>
+            </div>
+            
+            {/* Smart Preset Combinations */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Popular Combinations</label>
+              <div className="flex flex-wrap gap-2">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => {
+                          setPresetDateRange(1);
+                          setInterval('5m');
+                        }}
+                        data-testid="button-intraday"
+                      >
+                        <Clock className="h-3 w-3 mr-1" />
+                        Intraday
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Last 24 hours with 5-minute intervals</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => {
+                          setPresetDateRange(30);
+                          setInterval('1h');
+                        }}
+                        data-testid="button-hourly-month"
+                      >
+                        <BarChart3 className="h-3 w-3 mr-1" />
+                        Hourly Month
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Last 30 days with 1-hour intervals</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => {
+                          setPresetDateRange(365);
+                          setInterval('1wk');
+                        }}
+                        data-testid="button-weekly-year"
+                      >
+                        <TrendingUpIcon className="h-3 w-3 mr-1" />
+                        Weekly Year
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Last year with weekly intervals</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => {
+                          setPresetDateRange(365 * 5);
+                          setInterval('3mo');
+                        }}
+                        data-testid="button-quarterly-5years"
+                      >
+                        <TrendingUpIcon className="h-3 w-3 mr-1" />
+                        5Y Quarterly
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Last 5 years with quarterly intervals</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+            </div>
           </div>
 
           {/* Stock Info Display */}
@@ -541,7 +882,7 @@ export function StockChart({ symbol, onSymbolChange, className = '', height = 40
                     domain={['dataMin - 1', 'dataMax + 1']}
                     data-testid="chart-y-axis"
                   />
-                  <Tooltip content={<CustomTooltip />} />
+                  <RechartsTooltip content={<CustomTooltip />} />
                   <Legend />
                   
                   {chartType === 'area' ? (

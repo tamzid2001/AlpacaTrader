@@ -705,7 +705,7 @@ export class ComprehensiveYahooFinanceService {
       const historical = await yahooFinance.historical(symbol, {
         period1: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000), // 1 year ago
         period2: new Date(),
-        interval: '1d'
+        interval: '1d' as any // Use any to allow all Yahoo Finance intervals
       });
 
       if (!historical || historical.length === 0) {
