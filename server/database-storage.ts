@@ -305,13 +305,23 @@ export class DatabaseStorage implements IStorage {
       throw new Error("User ID is required for upsert operation");
     }
 
-    const existingUser = await this.getUser(userData.id);
+    // Check if user exists by ID or email
+    let existingUser = await this.getUser(userData.id);
+    
+    if (!existingUser && userData.email) {
+      // Also check by email in case user exists with different ID
+      const emailResult = await db.select().from(users).where(eq(users.email, userData.email)).limit(1);
+      existingUser = emailResult[0];
+    }
     
     if (existingUser) {
       // Update existing user
       const result = await db.update(users)
-        .set(userData)
-        .where(eq(users.id, userData.id))
+        .set({
+          ...userData,
+          lastConsentUpdate: new Date(),
+        })
+        .where(eq(users.id, existingUser.id))
         .returning();
       
       return result[0];

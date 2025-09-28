@@ -1,0 +1,54 @@
+Error upserting user: error: duplicate key value violates unique constraint "users_email_unique"
+    at file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1345:74
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async NeonPreparedQuery.execute (/home/runner/workspace/node_modules/src/neon-serverless/session.ts:102:18)
+    at async DatabaseStorageMinimal.upsertUser (/home/runner/workspace/server/database-storage.ts:352:22)
+    at async upsertUser (/home/runner/workspace/server/replitAuth.ts:78:5)
+    at async Strategy.verify (/home/runner/workspace/server/replitAuth.ts:100:5) {
+  length: 217,
+  severity: 'ERROR',
+  code: '23505',
+  detail: 'Key (email)=(tamzid257@gmail.com) already exists.',
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: 'public',
+  table: 'users',
+  column: undefined,
+  dataType: undefined,
+  constraint: 'users_email_unique',
+  file: 'nbtinsert.c',
+  line: '666',
+  routine: '_bt_check_unique'
+}
+node:internal/process/promises:391
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+error: duplicate key value violates unique constraint "users_email_unique"
+    at file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1345:74
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async NeonPreparedQuery.execute (/home/runner/workspace/node_modules/src/neon-serverless/session.ts:102:18)
+    at async DatabaseStorageMinimal.upsertUser (/home/runner/workspace/server/database-storage.ts:352:22)
+    at async upsertUser (/home/runner/workspace/server/replitAuth.ts:78:5)
+    at async Strategy.verify (/home/runner/workspace/server/replitAuth.ts:100:5) {
+  length: 217,
+  severity: 'ERROR',
+  code: '23505',
+  detail: 'Key (email)=(tamzid257@gmail.com) already exists.',
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: 'public',
+  table: 'users',
+  column: undefined,
+  dataType: undefined,
+  constraint: 'users_email_unique',
+  file: 'nbtinsert.c',
+  line: '666',
+  routine: '_bt_check_unique'
+}
