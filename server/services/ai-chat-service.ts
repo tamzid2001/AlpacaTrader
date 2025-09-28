@@ -45,7 +45,7 @@ export interface UserContext {
 }
 
 export class AIChatService {
-  private readonly PRIMARY_MODEL = 'gpt-5-nano'; // Use gpt-5-nano as requested
+  private readonly PRIMARY_MODEL = 'gpt-4o-mini'; // Use gpt-4o-mini as it's available and fast
   private readonly FALLBACK_MODEL = 'gpt-3.5-turbo';
   private readonly TEMPERATURE = 0.7;
   private readonly MAX_TOKENS = 1000;
@@ -109,7 +109,7 @@ export class AIChatService {
       // Build messages array with conversation history
       const messages = await this.buildMessagesArray(systemPrompt, message, recentMessages);
 
-      // Generate AI response using gpt-5-nano
+      // Generate AI response using gpt-4o-mini
       const response = await openai.chat.completions.create({
         model: this.PRIMARY_MODEL,
         messages,

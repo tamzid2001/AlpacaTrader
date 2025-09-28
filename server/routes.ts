@@ -3833,6 +3833,140 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ===================
+  // MISSING API ROUTE ALIASES
+  // ===================
+  
+  // Add missing /api/market-data/stocks/:symbol route (alias to quote endpoint)
+  app.get('/api/market-data/stocks/:symbol', isAuthenticated, async (req: any, res) => {
+    try {
+      const { symbol } = req.params;
+      
+      if (!symbol) {
+        return res.status(400).json({ error: 'symbol is required' });
+      }
+
+      const quote = await marketDataService.getCurrentQuote(symbol);
+      res.json(quote);
+    } catch (error: any) {
+      console.error('Market data stocks error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Add missing /api/csv-uploads routes (aliases to existing /api/csv routes)
+  app.post('/api/csv-uploads', isAuthenticated, upload.single('csvFile'), async (req: any, res) => {
+    // Redirect to existing CSV upload route
+    req.url = '/api/csv/upload';
+    return app._router.handle(req, res);
+  });
+
+  app.get('/api/csv-uploads', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const uploads = await storage.getCsvUploads(userId);
+      res.json(uploads);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/csv-uploads/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      
+      const upload = await storage.getCsvUpload(id);
+      if (!upload || upload.userId !== userId) {
+        return res.status(404).json({ error: 'CSV upload not found' });
+      }
+      
+      res.json(upload);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.delete('/api/csv-uploads/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      
+      const upload = await storage.getCsvUpload(id);
+      if (!upload || upload.userId !== userId) {
+        return res.status(404).json({ error: 'CSV upload not found' });
+      }
+      
+      await storage.deleteCsvUpload(id);
+      res.json({ message: 'CSV upload deleted successfully' });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Add missing /api/invitations routes (aliases to existing /api/share routes)
+  app.get('/api/invitations', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const invites = await storage.getUserShareInvites(userId);
+      res.json(invites);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/invitations/sent', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const sentInvites = await storage.getUserSentShareInvites(userId);
+      res.json(sentInvites);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/invitations/:token/accept', isAuthenticated, async (req: any, res) => {
+    try {
+      const { token } = req.params;
+      const userId = req.user.claims.sub;
+      
+      if (!token) {
+        return res.status(400).json({ error: 'Invalid invitation token' });
+      }
+
+      const result = await storage.acceptShareInvite(token, userId);
+      if (!result) {
+        return res.status(400).json({ error: 'Failed to accept invitation' });
+      }
+
+      res.json({ message: 'Invitation accepted successfully', result });
+    } catch (error: any) {
+      console.error('Accept invitation error:', error);
+      res.status(500).json({ error: 'Failed to accept invitation' });
+    }
+  });
+
+  app.post('/api/invitations/:token/decline', isAuthenticated, async (req: any, res) => {
+    try {
+      const { token } = req.params;
+      const userId = req.user.claims.sub;
+      
+      if (!token) {
+        return res.status(400).json({ error: 'Invalid invitation token' });
+      }
+
+      const result = await storage.declineShareInvite(token, userId);
+      if (!result) {
+        return res.status(400).json({ error: 'Failed to decline invitation' });
+      }
+
+      res.json({ message: 'Invitation declined successfully' });
+    } catch (error: any) {
+      console.error('Decline invitation error:', error);
+      res.status(500).json({ error: 'Failed to decline invitation' });
+    }
+  });
+
+  // ===================
   // COMPREHENSIVE YAHOO FINANCE API ENDPOINTS
   // ===================
 
