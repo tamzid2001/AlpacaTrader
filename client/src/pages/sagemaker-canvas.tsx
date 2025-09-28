@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +8,15 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { 
   Upload, 
   FileText, 
@@ -18,7 +27,10 @@ import {
   Info,
   FileSpreadsheet,
   TrendingUp,
-  Activity
+  Activity,
+  Eye,
+  TableIcon,
+  ChartArea
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
@@ -36,6 +48,8 @@ import {
   YAxis,
   CartesianGrid,
   ResponsiveContainer,
+  Tooltip,
+  Legend,
 } from 'recharts';
 
 // Types for SageMaker Canvas data
@@ -163,14 +177,55 @@ function processQuantileData(csvData: any[], detection: ColumnDetectionResult): 
 }
 
 function calculateChartDimensions(dataLength: number) {
-  // Replicate Python auto-sizing: width = max(18, min(300, 0.40 * n))
-  const width = Math.max(18, Math.min(300, 0.40 * dataLength));
-  const height = 6; // Fixed height as in Python
+  // Enhanced auto-sizing with better spacing
+  const baseWidth = Math.max(24, Math.min(400, 0.50 * dataLength));
+  const height = 8; // Increased height for better visibility
   
   return {
-    width: width * 20, // Convert to pixels (approximate)
-    height: height * 60 // Convert to pixels (approximate)
+    width: baseWidth * 25, // Increased multiplier for better spacing
+    height: height * 65, // Increased for better visibility
+    pointSpacing: Math.max(50, baseWidth * 25 / dataLength) // Dynamic point spacing
   };
+}
+
+function calculateSummaryStatistics(data: QuantileData[], detection: ColumnDetectionResult) {
+  const stats: any = {
+    p10: { min: Infinity, max: -Infinity, avg: 0, count: 0 },
+    p50: { min: Infinity, max: -Infinity, avg: 0, count: 0 },
+    p90: { min: Infinity, max: -Infinity, avg: 0, count: 0 },
+  };
+
+  data.forEach(row => {
+    if (detection.p10Col && row.p10 !== undefined && !isNaN(row.p10)) {
+      stats.p10.min = Math.min(stats.p10.min, row.p10);
+      stats.p10.max = Math.max(stats.p10.max, row.p10);
+      stats.p10.avg += row.p10;
+      stats.p10.count++;
+    }
+    if (detection.p50Col && row.p50 !== undefined && !isNaN(row.p50)) {
+      stats.p50.min = Math.min(stats.p50.min, row.p50);
+      stats.p50.max = Math.max(stats.p50.max, row.p50);
+      stats.p50.avg += row.p50;
+      stats.p50.count++;
+    }
+    if (detection.p90Col && row.p90 !== undefined && !isNaN(row.p90)) {
+      stats.p90.min = Math.min(stats.p90.min, row.p90);
+      stats.p90.max = Math.max(stats.p90.max, row.p90);
+      stats.p90.avg += row.p90;
+      stats.p90.count++;
+    }
+  });
+
+  // Calculate averages
+  Object.keys(stats).forEach(key => {
+    if (stats[key].count > 0) {
+      stats[key].avg /= stats[key].count;
+    } else {
+      stats[key] = null;
+    }
+  });
+
+  return stats;
 }
 
 function parseCsvContent(content: string): any[] {
@@ -202,6 +257,7 @@ export default function SageMakerCanvasPage() {
   const [processedData, setProcessedData] = useState<QuantileData[]>([]);
   const [uploadState, setUploadState] = useState<UploadState>({ step: 'select', progress: 0 });
   const [activeTab, setActiveTab] = useState('upload');
+  const [showDataPreview, setShowDataPreview] = useState(false);
   const chartRef = useRef<HTMLDivElement>(null);
   
   const { toast } = useToast();
@@ -319,22 +375,77 @@ export default function SageMakerCanvasPage() {
       // Clone and enhance the SVG
       const clonedSvg = svgElement.cloneNode(true) as SVGElement;
       
-      // Add title to match Python implementation
+      // Set proper dimensions and viewBox
+      const bbox = svgElement.getBBox();
+      const padding = 40;
+      clonedSvg.setAttribute('viewBox', `${bbox.x - padding} ${bbox.y - padding} ${bbox.width + 2 * padding} ${bbox.height + 2 * padding}`);
+      clonedSvg.setAttribute('width', String(bbox.width + 2 * padding));
+      clonedSvg.setAttribute('height', String(bbox.height + 2 * padding + 60)); // Extra space for title
+      
+      // Add professional title with better styling
+      const titleGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      titleGroup.setAttribute('transform', `translate(${bbox.x + bbox.width / 2}, ${bbox.y - 20})`);
+      
       const titleElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      titleElement.setAttribute('x', '50%');
-      titleElement.setAttribute('y', '30');
       titleElement.setAttribute('text-anchor', 'middle');
-      titleElement.setAttribute('font-size', '16');
+      titleElement.setAttribute('font-size', '18');
       titleElement.setAttribute('font-weight', 'bold');
-      titleElement.textContent = 'P10 / P50 / P90 (All rows from CSV)';
-      clonedSvg.insertBefore(titleElement, clonedSvg.firstChild);
+      titleElement.setAttribute('font-family', 'system-ui, -apple-system, sans-serif');
+      titleElement.setAttribute('fill', '#1a1a1a');
+      titleElement.textContent = 'P10 / P50 / P90 Quantile Analysis';
+      titleGroup.appendChild(titleElement);
+      
+      // Add subtitle with date range
+      const subtitleElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      subtitleElement.setAttribute('text-anchor', 'middle');
+      subtitleElement.setAttribute('y', '20');
+      subtitleElement.setAttribute('font-size', '14');
+      subtitleElement.setAttribute('font-family', 'system-ui, -apple-system, sans-serif');
+      subtitleElement.setAttribute('fill', '#666666');
+      const dateRange = processedData.length > 0 && columnDetection?.dateCol 
+        ? `${processedData[0].date} to ${processedData[processedData.length - 1].date}`
+        : `${processedData.length} data points`;
+      subtitleElement.textContent = dateRange;
+      titleGroup.appendChild(subtitleElement);
+      
+      clonedSvg.insertBefore(titleGroup, clonedSvg.firstChild);
+      
+      // Add CSS styles for better export quality
+      const styleElement = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+      styleElement.textContent = `
+        .recharts-cartesian-grid-horizontal line,
+        .recharts-cartesian-grid-vertical line {
+          stroke: #e5e5e5;
+          stroke-dasharray: 3 3;
+        }
+        .recharts-text {
+          font-family: system-ui, -apple-system, sans-serif;
+        }
+        .recharts-line {
+          stroke-width: 2;
+        }
+        .recharts-dot {
+          r: 4;
+        }
+      `;
+      clonedSvg.insertBefore(styleElement, clonedSvg.firstChild);
+      
+      // Add background
+      const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      background.setAttribute('width', '100%');
+      background.setAttribute('height', '100%');
+      background.setAttribute('fill', 'white');
+      clonedSvg.insertBefore(background, clonedSvg.firstChild);
 
-      // Serialize SVG
+      // Serialize SVG with proper XML declaration
       const serializer = new XMLSerializer();
-      const svgString = serializer.serializeToString(clonedSvg);
+      let svgString = serializer.serializeToString(clonedSvg);
+      
+      // Add XML declaration for better compatibility
+      svgString = '<?xml version="1.0" encoding="UTF-8"?>\n' + svgString;
       
       // Create and download file
-      const blob = new Blob([svgString], { type: 'image/svg+xml' });
+      const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -346,7 +457,7 @@ export default function SageMakerCanvasPage() {
 
       toast({
         title: "SVG exported successfully",
-        description: "Chart has been downloaded as SVG file.",
+        description: "High-quality chart has been downloaded as SVG file.",
       });
     } catch (error: any) {
       toast({
@@ -373,6 +484,12 @@ export default function SageMakerCanvasPage() {
   };
 
   const dimensions = calculateChartDimensions(processedData.length);
+  const summaryStats = useMemo(() => {
+    if (processedData.length > 0 && columnDetection) {
+      return calculateSummaryStatistics(processedData, columnDetection);
+    }
+    return null;
+  }, [processedData, columnDetection]);
 
   if (!user) {
     return (
@@ -436,10 +553,19 @@ export default function SageMakerCanvasPage() {
 
       {/* Main Interface */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="upload" className="flex items-center gap-2" data-testid="tab-upload">
             <Upload className="h-4 w-4" />
             Upload & Process
+          </TabsTrigger>
+          <TabsTrigger 
+            value="preview" 
+            className="flex items-center gap-2" 
+            disabled={!csvData}
+            data-testid="tab-preview"
+          >
+            <TableIcon className="h-4 w-4" />
+            Data Preview
           </TabsTrigger>
           <TabsTrigger 
             value="visualization" 
@@ -447,7 +573,7 @@ export default function SageMakerCanvasPage() {
             disabled={!columnDetection?.success}
             data-testid="tab-visualization"
           >
-            <BarChart3 className="h-4 w-4" />
+            <ChartArea className="h-4 w-4" />
             Visualization
           </TabsTrigger>
         </TabsList>
@@ -600,16 +726,218 @@ export default function SageMakerCanvasPage() {
                 >
                   Upload New File
                 </Button>
-                {columnDetection.success && (
-                  <Button
-                    onClick={() => setActiveTab('visualization')}
-                    data-testid="button-view-visualization"
-                  >
-                    View Visualization
-                  </Button>
-                )}
+                <div className="flex gap-2">
+                  {csvData && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setActiveTab('preview')}
+                      data-testid="button-view-preview"
+                    >
+                      <Eye className="h-4 w-4 mr-2" />
+                      View Data
+                    </Button>
+                  )}
+                  {columnDetection?.success && (
+                    <Button
+                      onClick={() => setActiveTab('visualization')}
+                      data-testid="button-view-visualization"
+                    >
+                      View Visualization
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="preview" className="space-y-6">
+          {csvData && columnDetection ? (
+            <>
+              {/* Data Preview Card */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <TableIcon className="h-5 w-5" />
+                      Data Preview
+                    </div>
+                    <Badge variant="outline">
+                      {csvData.length} rows × {columnDetection.allColumns.length} columns
+                    </Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ScrollArea className="h-[400px] w-full border rounded-md">
+                    <Table>
+                      <TableHeader className="sticky top-0 bg-background border-b">
+                        <TableRow>
+                          <TableHead className="w-[50px] font-bold">#</TableHead>
+                          {columnDetection.allColumns.map((col, index) => (
+                            <TableHead 
+                              key={index} 
+                              className={`min-w-[120px] font-bold ${
+                                col === columnDetection.dateCol ? 'bg-blue-50 dark:bg-blue-950' :
+                                col === columnDetection.p10Col ? 'bg-red-50 dark:bg-red-950' :
+                                col === columnDetection.p50Col ? 'bg-blue-50 dark:bg-blue-950' :
+                                col === columnDetection.p90Col ? 'bg-green-50 dark:bg-green-950' : ''
+                              }`}
+                            >
+                              <div className="flex flex-col gap-1">
+                                <span>{col}</span>
+                                {col === columnDetection.dateCol && <Badge variant="outline" className="text-xs">Date</Badge>}
+                                {col === columnDetection.p10Col && <Badge variant="outline" className="text-xs">P10</Badge>}
+                                {col === columnDetection.p50Col && <Badge variant="outline" className="text-xs">P50</Badge>}
+                                {col === columnDetection.p90Col && <Badge variant="outline" className="text-xs">P90</Badge>}
+                              </div>
+                            </TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {csvData.slice(0, 100).map((row, rowIndex) => (
+                          <TableRow key={rowIndex}>
+                            <TableCell className="font-mono text-xs text-muted-foreground">
+                              {rowIndex + 1}
+                            </TableCell>
+                            {columnDetection.allColumns.map((col, colIndex) => (
+                              <TableCell 
+                                key={colIndex}
+                                className={`font-mono text-sm ${
+                                  col === columnDetection.dateCol ? 'bg-blue-50/50 dark:bg-blue-950/50' :
+                                  col === columnDetection.p10Col ? 'bg-red-50/50 dark:bg-red-950/50' :
+                                  col === columnDetection.p50Col ? 'bg-blue-50/50 dark:bg-blue-950/50' :
+                                  col === columnDetection.p90Col ? 'bg-green-50/50 dark:bg-green-950/50' : ''
+                                }`}
+                              >
+                                {row[col] || '-'}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        ))}
+                        {csvData.length > 100 && (
+                          <TableRow>
+                            <TableCell 
+                              colSpan={columnDetection.allColumns.length + 1} 
+                              className="text-center text-muted-foreground py-4"
+                            >
+                              Showing first 100 rows of {csvData.length} total rows
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+
+              {/* Summary Statistics */}
+              {summaryStats && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <BarChart3 className="h-5 w-5" />
+                      Summary Statistics
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {summaryStats.p10 && (
+                        <div className="space-y-2">
+                          <h4 className="font-semibold flex items-center gap-2">
+                            <div className="w-3 h-3 bg-red-500 rounded-full" />
+                            P10 Statistics
+                          </h4>
+                          <div className="space-y-1 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Min:</span>
+                              <span className="font-mono">{summaryStats.p10.min.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Max:</span>
+                              <span className="font-mono">{summaryStats.p10.max.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Avg:</span>
+                              <span className="font-mono">{summaryStats.p10.avg.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Count:</span>
+                              <span className="font-mono">{summaryStats.p10.count}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {summaryStats.p50 && (
+                        <div className="space-y-2">
+                          <h4 className="font-semibold flex items-center gap-2">
+                            <div className="w-3 h-3 bg-blue-500 rounded-full" />
+                            P50 Statistics
+                          </h4>
+                          <div className="space-y-1 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Min:</span>
+                              <span className="font-mono">{summaryStats.p50.min.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Max:</span>
+                              <span className="font-mono">{summaryStats.p50.max.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Avg:</span>
+                              <span className="font-mono">{summaryStats.p50.avg.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Count:</span>
+                              <span className="font-mono">{summaryStats.p50.count}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {summaryStats.p90 && (
+                        <div className="space-y-2">
+                          <h4 className="font-semibold flex items-center gap-2">
+                            <div className="w-3 h-3 bg-green-500 rounded-full" />
+                            P90 Statistics
+                          </h4>
+                          <div className="space-y-1 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Min:</span>
+                              <span className="font-mono">{summaryStats.p90.min.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Max:</span>
+                              <span className="font-mono">{summaryStats.p90.max.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Avg:</span>
+                              <span className="font-mono">{summaryStats.p90.avg.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Count:</span>
+                              <span className="font-mono">{summaryStats.p90.count}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          ) : (
+            <Card>
+              <CardContent className="py-8 text-center">
+                <TableIcon className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                <p className="text-lg font-medium mb-2">No data to preview</p>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Please upload a CSV file first to view the data.
+                </p>
+                <Button onClick={() => setActiveTab('upload')} variant="outline">
+                  Upload CSV File
+                </Button>
+              </CardContent>
+            </Card>
           )}
         </TabsContent>
 
@@ -643,72 +971,100 @@ export default function SageMakerCanvasPage() {
                       config={chartConfig}
                       className="w-full"
                       style={{ 
-                        minHeight: Math.max(360, dimensions.height),
-                        maxHeight: 600 
+                        minHeight: Math.max(420, dimensions.height),
+                        maxHeight: 700 
                       }}
                     >
                       <LineChart
                         data={processedData}
                         margin={{
-                          top: 20,
-                          right: 30,
-                          left: 20,
-                          bottom: 60,
+                          top: 30,
+                          right: 60,
+                          left: 40,
+                          bottom: 100,
                         }}
                       >
+                        <defs>
+                          <linearGradient id="colorP10" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#ef4444" stopOpacity={0.1}/>
+                            <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                          </linearGradient>
+                          <linearGradient id="colorP50" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                          </linearGradient>
+                          <linearGradient id="colorP90" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
+                            <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
                         <CartesianGrid 
                           strokeDasharray="3 3" 
-                          strokeOpacity={0.3}
+                          strokeOpacity={0.2}
                           horizontal={true}
-                          vertical={false}
+                          vertical={true}
+                          stroke="#e5e5e5"
                         />
                         <XAxis
                           dataKey="date"
-                          tick={{ fontSize: 12 }}
+                          tick={{ fontSize: 11, fill: '#666' }}
                           angle={-45}
                           textAnchor="end"
-                          height={80}
-                          interval={Math.max(0, Math.floor(processedData.length / 10))}
+                          height={100}
+                          interval={Math.max(0, Math.floor(processedData.length / 15))}
+                          tickMargin={10}
                         />
                         <YAxis
-                          tick={{ fontSize: 12 }}
+                          tick={{ fontSize: 11, fill: '#666' }}
                           domain={['auto', 'auto']}
+                          tickMargin={10}
+                          label={{ 
+                            value: 'Value', 
+                            angle: -90, 
+                            position: 'insideLeft',
+                            style: { fontSize: 12, fill: '#666' }
+                          }}
                         />
                         <ChartTooltip
                           content={<ChartTooltipContent />}
+                          cursor={{ strokeDasharray: '5 5' }}
                         />
                         <ChartLegend
                           content={<ChartLegendContent />}
+                          wrapperStyle={{ paddingTop: '20px' }}
                         />
                         
                         {columnDetection?.p10Col && (
                           <Line
                             type="monotone"
                             dataKey="p10"
-                            stroke="var(--color-p10)"
-                            strokeWidth={1}
-                            dot={{ r: 3, strokeWidth: 1 }}
+                            stroke="#ef4444"
+                            strokeWidth={2.5}
+                            dot={{ r: 4, strokeWidth: 1, fill: '#ef4444' }}
                             connectNulls={false}
+                            activeDot={{ r: 6, strokeWidth: 2 }}
                           />
                         )}
                         {columnDetection?.p50Col && (
                           <Line
                             type="monotone"
                             dataKey="p50"
-                            stroke="var(--color-p50)"
-                            strokeWidth={1}
-                            dot={{ r: 3, strokeWidth: 1 }}
+                            stroke="#3b82f6"
+                            strokeWidth={2.5}
+                            dot={{ r: 4, strokeWidth: 1, fill: '#3b82f6' }}
                             connectNulls={false}
+                            activeDot={{ r: 6, strokeWidth: 2 }}
                           />
                         )}
                         {columnDetection?.p90Col && (
                           <Line
                             type="monotone"
                             dataKey="p90"
-                            stroke="var(--color-p90)"
-                            strokeWidth={1}
-                            dot={{ r: 3, strokeWidth: 1 }}
+                            stroke="#10b981"
+                            strokeWidth={2.5}
+                            dot={{ r: 4, strokeWidth: 1, fill: '#10b981' }}
                             connectNulls={false}
+                            activeDot={{ r: 6, strokeWidth: 2 }}
                           />
                         )}
                       </LineChart>
