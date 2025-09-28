@@ -113,11 +113,7 @@ function Router() {
               {() => <ErrorBoundary><AuthenticatedLayout><AnomalyDetection /></AuthenticatedLayout></ErrorBoundary>}
             </Route>
             <Route path="/sagemaker-canvas">
-              {() => {
-                // Redirect to anomaly detection with canvas parameter
-                window.location.href = '/anomaly-detection?canvas=true';
-                return null;
-              }}
+              {() => <ErrorBoundary><AuthenticatedLayout><AnomalyDetection /></AuthenticatedLayout></ErrorBoundary>}
             </Route>
             <Route path="/my-shared-results">
               {() => <ErrorBoundary><AuthenticatedLayout><MySharedResults /></AuthenticatedLayout></ErrorBoundary>}

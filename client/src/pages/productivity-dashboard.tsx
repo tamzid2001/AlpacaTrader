@@ -33,14 +33,14 @@ export function ProductivityDashboard() {
     queryKey: ['/api/productivity/boards'],
   });
 
-  const boards = boardsData?.boards || [];
+  const boards = (boardsData as any)?.boards || [];
 
   // Fetch productivity stats
   const { data: statsData } = useQuery({
     queryKey: ['/api/productivity/stats'],
   });
 
-  const stats = statsData?.stats || {};
+  const stats = (statsData as any)?.stats || {};
 
   // Create board mutation
   const createBoardMutation = useMutation({
