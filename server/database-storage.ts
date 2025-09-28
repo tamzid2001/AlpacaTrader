@@ -483,11 +483,93 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async getAnomalies(uploadId: string): Promise<Anomaly[]> {
+  async getUploadAnomalies(uploadId: string): Promise<Anomaly[]> {
     return await db.select()
       .from(anomalies)
       .where(eq(anomalies.uploadId, uploadId))
       .orderBy(desc(anomalies.createdAt));
+  }
+
+  async getUserAnomalies(userId: string): Promise<(Anomaly & { upload: CsvUpload })[]> {
+    const result = await db.select({
+      // Anomaly fields
+      id: anomalies.id,
+      uploadId: anomalies.uploadId,
+      anomalyType: anomalies.anomalyType,
+      detectedDate: anomalies.detectedDate,
+      weekBeforeValue: anomalies.weekBeforeValue,
+      p90Value: anomalies.p90Value,
+      description: anomalies.description,
+      openaiAnalysis: anomalies.openaiAnalysis,
+      createdAt: anomalies.createdAt,
+      // Upload fields (nested as upload object)
+      upload: {
+        id: csvUploads.id,
+        userId: csvUploads.userId,
+        filename: csvUploads.filename,
+        customFilename: csvUploads.customFilename,
+        objectStoragePath: csvUploads.objectStoragePath,
+        fileSize: csvUploads.fileSize,
+        columnCount: csvUploads.columnCount,
+        rowCount: csvUploads.rowCount,
+        status: csvUploads.status,
+        fileMetadata: csvUploads.fileMetadata,
+        timeSeriesData: csvUploads.timeSeriesData,
+        uploadedAt: csvUploads.uploadedAt,
+        processedAt: csvUploads.processedAt,
+        firebaseStorageUrl: csvUploads.firebaseStorageUrl,
+        firebaseStoragePath: csvUploads.firebaseStoragePath,
+      }
+    })
+    .from(anomalies)
+    .innerJoin(csvUploads, eq(anomalies.uploadId, csvUploads.id))
+    .where(eq(csvUploads.userId, userId))
+    .orderBy(desc(anomalies.createdAt));
+
+    return result;
+  }
+
+  async getAllAnomalies(): Promise<(Anomaly & { upload: CsvUpload })[]> {
+    const result = await db.select({
+      // Anomaly fields
+      id: anomalies.id,
+      uploadId: anomalies.uploadId,
+      anomalyType: anomalies.anomalyType,
+      detectedDate: anomalies.detectedDate,
+      weekBeforeValue: anomalies.weekBeforeValue,
+      p90Value: anomalies.p90Value,
+      description: anomalies.description,
+      openaiAnalysis: anomalies.openaiAnalysis,
+      createdAt: anomalies.createdAt,
+      // Upload fields (nested as upload object)
+      upload: {
+        id: csvUploads.id,
+        userId: csvUploads.userId,
+        filename: csvUploads.filename,
+        customFilename: csvUploads.customFilename,
+        objectStoragePath: csvUploads.objectStoragePath,
+        fileSize: csvUploads.fileSize,
+        columnCount: csvUploads.columnCount,
+        rowCount: csvUploads.rowCount,
+        status: csvUploads.status,
+        fileMetadata: csvUploads.fileMetadata,
+        timeSeriesData: csvUploads.timeSeriesData,
+        uploadedAt: csvUploads.uploadedAt,
+        processedAt: csvUploads.processedAt,
+        firebaseStorageUrl: csvUploads.firebaseStorageUrl,
+        firebaseStoragePath: csvUploads.firebaseStoragePath,
+      }
+    })
+    .from(anomalies)
+    .innerJoin(csvUploads, eq(anomalies.uploadId, csvUploads.id))
+    .orderBy(desc(anomalies.createdAt));
+
+    return result;
+  }
+
+  async deleteAnomaly(id: string): Promise<boolean> {
+    const result = await db.delete(anomalies).where(eq(anomalies.id, id));
+    return result.rowCount > 0;
   }
 
   // ===================
