@@ -1103,6 +1103,11 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(productivityBoards.createdAt));
   }
 
+  async getProductivityBoards(userId: string): Promise<ProductivityBoard[]> {
+    // Alias for getUserProductivityBoards for backward compatibility
+    return this.getUserProductivityBoards(userId);
+  }
+
   async updateProductivityBoard(id: string, updates: Partial<InsertProductivityBoard>): Promise<ProductivityBoard> {
     const result = await db.update(productivityBoards)
       .set(updates)

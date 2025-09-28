@@ -668,6 +668,7 @@ export interface IStorage {
   createProductivityBoard(board: InsertProductivityBoard): Promise<ProductivityBoard>;
   getProductivityBoard(id: string): Promise<ProductivityBoard | undefined>;
   getUserProductivityBoards(userId: string): Promise<ProductivityBoard[]>;
+  getProductivityBoards(userId: string): Promise<ProductivityBoard[]>; // Alias for getUserProductivityBoards
   updateProductivityBoard(id: string, updates: Partial<ProductivityBoard>): Promise<ProductivityBoard | undefined>;
   deleteProductivityBoard(id: string): Promise<boolean>;
   duplicateProductivityBoard(id: string, newTitle: string, userId: string): Promise<ProductivityBoard>;
