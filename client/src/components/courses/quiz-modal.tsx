@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { useSubmitQuizResult } from "@/hooks/use-courses";
@@ -181,6 +181,9 @@ export default function QuizModal({ isOpen, onClose, quizTitle = "Chapter 4 Quiz
         <DialogContent className="sm:max-w-2xl" data-testid="modal-quiz-results">
           <DialogHeader>
             <DialogTitle className="text-center text-2xl font-bold">Quiz Results</DialogTitle>
+            <DialogDescription className="text-center">
+              View your quiz performance and continue your learning journey.
+            </DialogDescription>
           </DialogHeader>
           
           <div className="text-center py-8">
@@ -224,6 +227,9 @@ export default function QuizModal({ isOpen, onClose, quizTitle = "Chapter 4 Quiz
               <i className="fas fa-times"></i>
             </Button>
           </div>
+          <DialogDescription>
+            Test your knowledge with this interactive quiz. Select the best answer for each question and track your progress.
+          </DialogDescription>
         </DialogHeader>
 
         {/* Progress Header */}

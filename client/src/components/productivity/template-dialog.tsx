@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -146,6 +146,9 @@ export function TemplateDialog({ boardId, children }: TemplateDialogProps) {
             <Files className="h-5 w-5" />
             Board Templates
           </DialogTitle>
+          <DialogDescription>
+            Browse, preview, and create productivity board templates. Use existing templates to quickly set up new boards or create your own templates for reuse.
+          </DialogDescription>
         </DialogHeader>
 
         <Tabs defaultValue="browse" className="w-full">
@@ -382,6 +385,9 @@ export function TemplateDialog({ boardId, children }: TemplateDialogProps) {
             <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle>{selectedTemplate.name}</DialogTitle>
+                <DialogDescription>
+                  Preview template details and create a new board based on this template.
+                </DialogDescription>
               </DialogHeader>
               
               <div className="space-y-4">

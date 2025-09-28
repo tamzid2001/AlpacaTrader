@@ -120,6 +120,7 @@ export class DatabaseStorageMinimal extends DatabaseStorage implements IStorage 
   async incrementShareLinkAccess(linkId: string): Promise<void> {}
   async updateShareLink(linkId: string, updates: any): Promise<any> { return undefined; }
   async deleteShareLink(linkId: string): Promise<boolean> { return false; }
+  async getUserShareLinks(userId: string): Promise<any[]> { return []; }
 
   // Database Management
   async getDatabaseStatistics(): Promise<any> { return { totalUsers: 0, totalCsvUploads: 0, totalStorageUsed: 0, totalQueries: 0, avgQueryTime: 0, activeConnections: 0, tableStats: [], recentActivity: [] }; }

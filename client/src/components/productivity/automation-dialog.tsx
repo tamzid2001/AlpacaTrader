@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -368,6 +368,9 @@ export function AutomationDialog({ boardId, children }: AutomationDialogProps) {
             <Zap className="h-5 w-5" />
             Board Automations
           </DialogTitle>
+          <DialogDescription>
+            Create and manage automated workflows for your productivity board. Set up triggers and actions to streamline your workflow.
+          </DialogDescription>
         </DialogHeader>
 
         <Tabs defaultValue="automations" className="w-full">

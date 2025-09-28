@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -373,6 +373,9 @@ export function ExportDialog({ boardId, open, onOpenChange }: ExportDialogProps)
             <Download className="w-5 h-5" />
             Export Board Data
           </DialogTitle>
+          <DialogDescription>
+            Export your productivity board data in various formats. Configure export options, preview data, and download files for backup or analysis.
+          </DialogDescription>
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">

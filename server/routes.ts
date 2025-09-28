@@ -4991,6 +4991,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/share/invites - Get user's incoming share invitations
+  app.get('/api/share/invites', isAuthenticated, async (req: any, res) => {
+    try {
+      const userEmail = req.user.claims.email;
+      
+      const invites = await storage.getShareInvites(userEmail);
+      res.json(invites);
+    } catch (error: any) {
+      console.error('Get share invites error:', error);
+      res.status(500).json({ error: 'Failed to get share invites' });
+    }
+  });
+
+  // GET /api/share/sent-invites - Get user's sent invitations
+  app.get('/api/share/sent-invites', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      
+      const invites = await storage.getUserSentInvites(userId);
+      res.json(invites);
+    } catch (error: any) {
+      console.error('Get sent invites error:', error);
+      res.status(500).json({ error: 'Failed to get sent invites' });
+    }
+  });
+
+  // GET /api/share/links - Get user's share links
+  app.get('/api/share/links', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      
+      const shareLinks = await storage.getUserShareLinks(userId);
+      res.json(shareLinks);
+    } catch (error: any) {
+      console.error('Get user share links error:', error);
+      res.status(500).json({ error: 'Failed to get share links' });
+    }
+  });
+
   // GET /api/share/:token - View shared results (public endpoint, no auth required)
   app.get("/api/share/:token", async (req, res) => {
     try {
@@ -6966,29 +7005,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/share/invites', isAuthenticated, async (req: any, res) => {
-    try {
-      const userEmail = req.user.claims.email;
-      
-      const invites = await storage.getShareInvites(userEmail);
-      res.json(invites);
-    } catch (error: any) {
-      console.error('Get share invites error:', error);
-      res.status(500).json({ error: 'Failed to get share invites' });
-    }
-  });
-
-  app.get('/api/share/sent-invites', isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.claims.sub;
-      
-      const invites = await storage.getUserSentInvites(userId);
-      res.json(invites);
-    } catch (error: any) {
-      console.error('Get sent invites error:', error);
-      res.status(500).json({ error: 'Failed to get sent invites' });
-    }
-  });
 
   // Share Link APIs
   app.post('/api/share/link', isAuthenticated, async (req: any, res) => {
@@ -7077,18 +7093,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get all share links created by the authenticated user
-  app.get('/api/share/links', isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.claims.sub;
-      
-      const shareLinks = await storage.getUserShareLinks(userId);
-      res.json(shareLinks);
-    } catch (error: any) {
-      console.error('Get user share links error:', error);
-      res.status(500).json({ error: 'Failed to get share links' });
-    }
-  });
 
   // ===========================================
   // PRODUCTIVITY TABLE SYSTEM API ENDPOINTS

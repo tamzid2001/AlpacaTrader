@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Upload, FileText, Table, AlertCircle, CheckCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -183,6 +183,9 @@ export function ImportDialog({ boardId, open, onOpenChange }: ImportDialogProps)
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="import-dialog">
         <DialogHeader>
           <DialogTitle data-testid="import-dialog-title">Import Data</DialogTitle>
+          <DialogDescription>
+            Import data from CSV, Excel, or JSON files to populate your productivity board. Select a file format and upload your data.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">

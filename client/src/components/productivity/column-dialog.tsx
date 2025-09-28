@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, X, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -155,6 +155,9 @@ export function ColumnDialog({ boardId, open, onOpenChange }: ColumnDialogProps)
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="column-dialog">
         <DialogHeader>
           <DialogTitle data-testid="column-dialog-title">Create New Column</DialogTitle>
+          <DialogDescription>
+            Add a new column to your productivity board. Configure the column type, validation rules, and display options.
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
