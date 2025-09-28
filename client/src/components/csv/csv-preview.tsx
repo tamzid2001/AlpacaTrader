@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -6,7 +6,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle, AlertTriangle, Info, FileText, BarChart, Database } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CheckCircle, AlertTriangle, Info, FileText, BarChart, Database, Eye, EyeOff, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Hash } from "lucide-react";
 import { 
   parseCsvFile, 
   validateCsvForSageMaker, 
@@ -27,12 +29,30 @@ interface CsvStats {
   estimatedProcessingTime: string;
 }
 
+interface ColumnStats {
+  name: string;
+  type: 'numeric' | 'text' | 'date' | 'mixed';
+  uniqueValues: number;
+  nullCount: number;
+  fillRate: number;
+  min?: number | string;
+  max?: number | string;
+  mean?: number;
+  median?: number;
+  mode?: string | number;
+  sampleValues: any[];
+}
+
 export function CsvPreview({ file, onValidation }: CsvPreviewProps) {
   const [csvData, setCsvData] = useState<any[] | null>(null);
   const [validationResult, setValidationResult] = useState<CsvValidationResult | null>(null);
   const [stats, setStats] = useState<CsvStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'preview' | 'full'>('preview');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [columnStats, setColumnStats] = useState<ColumnStats[]>([]);
 
   useEffect(() => {
     parseAndValidateCsv();
@@ -67,6 +87,10 @@ export function CsvPreview({ file, onValidation }: CsvPreviewProps) {
       };
       setStats(stats);
 
+      // Calculate column statistics
+      const colStats = calculateColumnStats(data, headers);
+      setColumnStats(colStats);
+
       // Notify parent component
       onValidation?.(validation.isValid, validation);
     } catch (err: any) {
@@ -74,6 +98,64 @@ export function CsvPreview({ file, onValidation }: CsvPreviewProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const calculateColumnStats = (data: any[], headers: string[]): ColumnStats[] => {
+    return headers.map(header => {
+      const values = data.map(row => row[header]);
+      const nonNullValues = values.filter(v => v !== null && v !== undefined && v !== '');
+      const uniqueValues = new Set(nonNullValues);
+      
+      // Determine column type
+      let type: 'numeric' | 'text' | 'date' | 'mixed' = 'text';
+      const numericValues = nonNullValues.filter(v => !isNaN(Number(v)));
+      const dateValues = nonNullValues.filter(v => {
+        const date = new Date(v);
+        return date instanceof Date && !isNaN(date.getTime());
+      });
+      
+      if (numericValues.length === nonNullValues.length && nonNullValues.length > 0) {
+        type = 'numeric';
+      } else if (dateValues.length === nonNullValues.length && nonNullValues.length > 0) {
+        type = 'date';
+      } else if (numericValues.length > 0 && numericValues.length < nonNullValues.length) {
+        type = 'mixed';
+      }
+      
+      const stats: ColumnStats = {
+        name: header,
+        type,
+        uniqueValues: uniqueValues.size,
+        nullCount: values.length - nonNullValues.length,
+        fillRate: (nonNullValues.length / values.length) * 100,
+        sampleValues: Array.from(uniqueValues).slice(0, 5)
+      };
+      
+      // Calculate numeric statistics if applicable
+      if (type === 'numeric' && numericValues.length > 0) {
+        const nums = numericValues.map(Number).sort((a, b) => a - b);
+        stats.min = Math.min(...nums);
+        stats.max = Math.max(...nums);
+        stats.mean = nums.reduce((a, b) => a + b, 0) / nums.length;
+        stats.median = nums[Math.floor(nums.length / 2)];
+      } else if (nonNullValues.length > 0) {
+        // For text/mixed types, get min/max based on string comparison
+        const sorted = nonNullValues.sort();
+        stats.min = sorted[0];
+        stats.max = sorted[sorted.length - 1];
+        
+        // Calculate mode (most frequent value)
+        const frequency: Record<string, number> = {};
+        nonNullValues.forEach(v => {
+          const key = String(v);
+          frequency[key] = (frequency[key] || 0) + 1;
+        });
+        const maxFreq = Math.max(...Object.values(frequency));
+        stats.mode = Object.keys(frequency).find(k => frequency[k] === maxFreq);
+      }
+      
+      return stats;
+    });
   };
 
   const formatFileSize = (bytes: number): string => {
@@ -135,8 +217,33 @@ export function CsvPreview({ file, onValidation }: CsvPreviewProps) {
     return null;
   }
 
-  const previewData = csvData.slice(0, 15);
   const headers = Object.keys(csvData[0] || {}).filter(h => h !== '_rowIndex');
+  
+  // Pagination calculations
+  const totalRows = csvData.length;
+  const totalPages = Math.ceil(totalRows / rowsPerPage);
+  const startIndex = viewMode === 'preview' ? 0 : (currentPage - 1) * rowsPerPage;
+  const endIndex = viewMode === 'preview' ? 15 : Math.min(startIndex + rowsPerPage, totalRows);
+  const displayData = csvData.slice(startIndex, endIndex);
+  
+  // Ensure current page is valid
+  if (currentPage > totalPages && totalPages > 0) {
+    setCurrentPage(1);
+  }
+  
+  const handlePageChange = (page: number) => {
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+  };
+  
+  const handleRowsPerPageChange = (value: string) => {
+    setRowsPerPage(parseInt(value));
+    setCurrentPage(1);
+  };
+  
+  const toggleViewMode = () => {
+    setViewMode(prev => prev === 'preview' ? 'full' : 'preview');
+    setCurrentPage(1);
+  };
 
   return (
     <div className="space-y-6" data-testid="container-csv-preview">
@@ -249,10 +356,27 @@ export function CsvPreview({ file, onValidation }: CsvPreviewProps) {
       {/* Data Preview */}
       <Card data-testid="card-csv-data-preview">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Database className="h-5 w-5" />
-            Data Preview (First 15 Rows)
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Database className="h-5 w-5" />
+              Data {viewMode === 'preview' ? 'Preview' : 'Full View'}
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={toggleViewMode}
+                className="flex items-center gap-2"
+                data-testid="button-toggle-view"
+              >
+                {viewMode === 'preview' ? (
+                  <><Eye className="h-4 w-4" /> Show Full Data</>
+                ) : (
+                  <><EyeOff className="h-4 w-4" /> Show Preview</>
+                )}
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="table" className="w-full">
@@ -261,12 +385,41 @@ export function CsvPreview({ file, onValidation }: CsvPreviewProps) {
               <TabsTrigger value="columns" data-testid="tab-columns-view">Column Info</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="table" className="mt-4">
-              <ScrollArea className="h-[400px] w-full border rounded-md">
+            <TabsContent value="table" className="mt-4 space-y-4">
+              {/* Row count indicator */}
+              <div className="flex items-center justify-between px-2">
+                <div className="text-sm text-muted-foreground" data-testid="text-row-indicator">
+                  {viewMode === 'preview' ? (
+                    <>Showing first {Math.min(15, totalRows)} of {totalRows.toLocaleString()} total rows</>
+                  ) : (
+                    <>Showing {startIndex + 1}-{endIndex} of {totalRows.toLocaleString()} total rows</>
+                  )}
+                </div>
+                {viewMode === 'full' && totalPages > 1 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Rows per page:</span>
+                    <Select value={String(rowsPerPage)} onValueChange={handleRowsPerPageChange}>
+                      <SelectTrigger className="w-20" data-testid="select-rows-per-page">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10">10</SelectItem>
+                        <SelectItem value="25">25</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                        <SelectItem value="100">100</SelectItem>
+                        <SelectItem value="200">200</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+
+              {/* Data table */}
+              <ScrollArea className="h-[500px] w-full border rounded-md">
                 <Table>
-                  <TableHeader>
+                  <TableHeader className="sticky top-0 bg-background z-10">
                     <TableRow>
-                      <TableHead className="w-12">#</TableHead>
+                      <TableHead className="w-16 sticky left-0 bg-background">#</TableHead>
                       {headers.map((header) => (
                         <TableHead key={header} className="min-w-[120px]" data-testid={`header-${header}`}>
                           <div className="flex items-center gap-1">
@@ -280,14 +433,21 @@ export function CsvPreview({ file, onValidation }: CsvPreviewProps) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {previewData.map((row, index) => (
-                      <TableRow key={index} data-testid={`row-${index}`}>
-                        <TableCell className="font-mono text-xs text-muted-foreground">
-                          {row._rowIndex}
+                    {displayData.map((row, index) => (
+                      <TableRow key={`${startIndex + index}`} data-testid={`row-${index}`}>
+                        <TableCell className="font-mono text-xs text-muted-foreground sticky left-0 bg-background">
+                          {startIndex + index + 1}
                         </TableCell>
                         {headers.map((header) => (
-                          <TableCell key={header} className="max-w-[200px] truncate" data-testid={`cell-${index}-${header}`}>
-                            {row[header] || '—'}
+                          <TableCell 
+                            key={header} 
+                            className="max-w-[300px]" 
+                            data-testid={`cell-${index}-${header}`}
+                            title={row[header] || '—'}
+                          >
+                            <div className="truncate">
+                              {row[header] || '—'}
+                            </div>
                           </TableCell>
                         ))}
                       </TableRow>
@@ -295,43 +455,189 @@ export function CsvPreview({ file, onValidation }: CsvPreviewProps) {
                   </TableBody>
                 </Table>
               </ScrollArea>
-              {csvData.length > 15 && (
-                <div className="mt-2 text-sm text-muted-foreground text-center">
-                  Showing 15 of {csvData.length.toLocaleString()} rows
+
+              {/* Pagination controls */}
+              {viewMode === 'full' && totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 mt-4">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handlePageChange(1)}
+                    disabled={currentPage === 1}
+                    data-testid="button-first-page"
+                  >
+                    <ChevronsLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    data-testid="button-prev-page"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <div className="flex items-center gap-2 mx-4">
+                    <span className="text-sm">Page</span>
+                    <Select 
+                      value={String(currentPage)} 
+                      onValueChange={(value) => handlePageChange(parseInt(value))}
+                    >
+                      <SelectTrigger className="w-20" data-testid="select-page-number">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: Math.min(totalPages, 100) }, (_, i) => i + 1).map(page => (
+                          <SelectItem key={page} value={String(page)}>
+                            {page}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-sm">of {totalPages}</span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    data-testid="button-next-page"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handlePageChange(totalPages)}
+                    disabled={currentPage === totalPages}
+                    data-testid="button-last-page"
+                  >
+                    <ChevronsRight className="h-4 w-4" />
+                  </Button>
                 </div>
               )}
             </TabsContent>
 
             <TabsContent value="columns" className="mt-4">
-              <div className="space-y-4">
-                {headers.map((header, index) => {
-                  const sampleValues = csvData.slice(0, 5).map(row => row[header]).filter(v => v);
-                  const isPercentile = stats.percentileColumns.includes(header);
-                  const isDate = header.toLowerCase().includes('date') || 
-                               header.toLowerCase().includes('time') || 
-                               header.toLowerCase().includes('timestamp');
-                  
-                  return (
-                    <div key={header} className="border rounded-lg p-4" data-testid={`column-info-${header}`}>
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-medium">{header}</h4>
-                        <div className="flex gap-1">
-                          {isPercentile && (
-                            <Badge variant="default" className="text-xs">Percentile</Badge>
+              <ScrollArea className="h-[600px] w-full">
+                <div className="space-y-4">
+                  {columnStats.map((colStat, index) => {
+                    const isPercentile = stats.percentileColumns.includes(colStat.name);
+                    const isDate = colStat.type === 'date';
+                    
+                    return (
+                      <Card key={colStat.name} className="border" data-testid={`column-info-${colStat.name}`}>
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Hash className="h-4 w-4 text-muted-foreground" />
+                              <h4 className="font-medium">{colStat.name}</h4>
+                            </div>
+                            <div className="flex gap-1">
+                              <Badge variant="outline" className="text-xs">
+                                {colStat.type}
+                              </Badge>
+                              {isPercentile && (
+                                <Badge variant="default" className="text-xs">Percentile</Badge>
+                              )}
+                              {isDate && (
+                                <Badge variant="secondary" className="text-xs">Date/Time</Badge>
+                              )}
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="pt-0">
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
+                            <div>
+                              <div className="text-xs text-muted-foreground">Unique Values</div>
+                              <div className="font-medium" data-testid={`unique-${colStat.name}`}>
+                                {colStat.uniqueValues.toLocaleString()}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-muted-foreground">Fill Rate</div>
+                              <div className="font-medium" data-testid={`fillrate-${colStat.name}`}>
+                                {colStat.fillRate.toFixed(1)}%
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-muted-foreground">Null Count</div>
+                              <div className="font-medium" data-testid={`nullcount-${colStat.name}`}>
+                                {colStat.nullCount.toLocaleString()}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-muted-foreground">Data Type</div>
+                              <div className="font-medium capitalize" data-testid={`type-${colStat.name}`}>
+                                {colStat.type}
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {colStat.type === 'numeric' && (
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3 pt-3 border-t">
+                              <div>
+                                <div className="text-xs text-muted-foreground">Min</div>
+                                <div className="font-medium" data-testid={`min-${colStat.name}`}>
+                                  {typeof colStat.min === 'number' ? colStat.min.toLocaleString() : colStat.min}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-muted-foreground">Max</div>
+                                <div className="font-medium" data-testid={`max-${colStat.name}`}>
+                                  {typeof colStat.max === 'number' ? colStat.max.toLocaleString() : colStat.max}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-muted-foreground">Mean</div>
+                                <div className="font-medium" data-testid={`mean-${colStat.name}`}>
+                                  {colStat.mean ? colStat.mean.toFixed(2) : '—'}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-muted-foreground">Median</div>
+                                <div className="font-medium" data-testid={`median-${colStat.name}`}>
+                                  {colStat.median ? colStat.median.toFixed(2) : '—'}
+                                </div>
+                              </div>
+                            </div>
                           )}
-                          {isDate && (
-                            <Badge variant="secondary" className="text-xs">Date/Time</Badge>
+                          
+                          {(colStat.type === 'text' || colStat.type === 'mixed') && colStat.mode && (
+                            <div className="pt-3 border-t">
+                              <div className="text-xs text-muted-foreground mb-1">Most Frequent Value</div>
+                              <div className="font-medium truncate" data-testid={`mode-${colStat.name}`}>
+                                {colStat.mode}
+                              </div>
+                            </div>
                           )}
-                        </div>
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        <div>Sample values: {sampleValues.slice(0, 3).join(', ')}</div>
-                        <div>Non-empty values: {csvData.filter(row => row[header]).length} / {csvData.length}</div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                          
+                          <div className="pt-3 border-t">
+                            <div className="text-xs text-muted-foreground mb-1">Sample Values</div>
+                            <div className="flex flex-wrap gap-1">
+                              {colStat.sampleValues.slice(0, 5).map((value, idx) => (
+                                <Badge 
+                                  key={idx} 
+                                  variant="secondary" 
+                                  className="text-xs truncate max-w-[150px]"
+                                  title={String(value)}
+                                >
+                                  {String(value)}
+                                </Badge>
+                              ))}
+                              {colStat.uniqueValues > 5 && (
+                                <Badge variant="outline" className="text-xs">
+                                  +{(colStat.uniqueValues - 5).toLocaleString()} more
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
             </TabsContent>
           </Tabs>
         </CardContent>

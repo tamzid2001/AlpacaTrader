@@ -1,8 +1,19 @@
 import { DatabaseStorage } from "./database-storage";
 import type { IStorage } from "./storage";
 import { db } from "./db";
-import { eq, desc, asc } from "drizzle-orm";
-import { backgroundJobs } from "@shared/schema";
+import { eq, desc, asc, and } from "drizzle-orm";
+import { 
+  backgroundJobs, 
+  chatConversations, 
+  chatMessages, 
+  messageFeedback,
+  type ChatConversation,
+  type InsertChatConversation,
+  type ChatMessage,
+  type InsertChatMessage,
+  type MessageFeedback,
+  type InsertMessageFeedback 
+} from "@shared/schema";
 
 /**
  * DatabaseStorageMinimal - Extends DatabaseStorage with placeholder implementations
@@ -240,22 +251,117 @@ export class DatabaseStorageMinimal extends DatabaseStorage implements IStorage 
   // (Adding all remaining methods as placeholders)
   
   // Chat System
-  async createChatConversation(conversation: any): Promise<any> { throw new Error("Not implemented"); }
-  async getChatConversation(id: string): Promise<any> { return undefined; }
-  async updateChatConversation(id: string, updates: any): Promise<any> { return undefined; }
-  async getUserChatConversations(userId: string): Promise<any[]> { return []; }
-  async getActiveChatConversations(userId: string): Promise<any[]> { return []; }
-  async deactivateChatConversation(id: string): Promise<any> { return undefined; }
-  async createChatMessage(messageData: any): Promise<any> { throw new Error("Not implemented"); }
-  async getChatMessage(messageId: string): Promise<any> { return undefined; }
-  async getConversationMessages(conversationId: string, limit?: number): Promise<any[]> { return []; }
-  async updateChatMessage(messageId: string, updates: any): Promise<any> { return undefined; }
-  async deleteChatMessage(messageId: string): Promise<boolean> { return false; }
-  async createMessageFeedback(feedbackData: any): Promise<any> { throw new Error("Not implemented"); }
-  async getMessageFeedback(messageId: string): Promise<any> { return undefined; }
-  async updateMessageFeedback(messageId: string, updates: any): Promise<any> { return undefined; }
-  async getUserMessageFeedback(userId: string, limit?: number): Promise<any[]> { return []; }
+  async createChatConversation(conversation: InsertChatConversation): Promise<ChatConversation> {
+    const [result] = await db.insert(chatConversations).values(conversation).returning();
+    return result;
+  }
+  
+  async getChatConversation(id: string): Promise<ChatConversation | undefined> {
+    const results = await db.select().from(chatConversations).where(eq(chatConversations.id, id)).limit(1);
+    return results[0];
+  }
+  
+  async updateChatConversation(id: string, updates: Partial<ChatConversation>): Promise<ChatConversation | undefined> {
+    const [result] = await db.update(chatConversations)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(chatConversations.id, id))
+      .returning();
+    return result;
+  }
+  
+  async getUserChatConversations(userId: string, limit?: number): Promise<ChatConversation[]> {
+    const query = db.select()
+      .from(chatConversations)
+      .where(eq(chatConversations.userId, userId))
+      .orderBy(desc(chatConversations.lastMessageAt));
+    
+    if (limit) {
+      return await query.limit(limit);
+    }
+    return await query;
+  }
+  
+  async getActiveChatConversations(userId: string): Promise<ChatConversation[]> {
+    return await db.select()
+      .from(chatConversations)
+      .where(and(
+        eq(chatConversations.userId, userId),
+        eq(chatConversations.isActive, true)
+      ))
+      .orderBy(desc(chatConversations.lastMessageAt));
+  }
+  
+  async deactivateChatConversation(id: string): Promise<ChatConversation | undefined> {
+    return this.updateChatConversation(id, { isActive: false });
+  }
+  
+  async createChatMessage(messageData: InsertChatMessage): Promise<ChatMessage> {
+    const [result] = await db.insert(chatMessages).values(messageData).returning();
+    return result;
+  }
+  
+  async getChatMessage(messageId: string): Promise<ChatMessage | undefined> {
+    const results = await db.select().from(chatMessages).where(eq(chatMessages.id, messageId)).limit(1);
+    return results[0];
+  }
+  
+  async getConversationMessages(conversationId: string, limit?: number): Promise<ChatMessage[]> {
+    const query = db.select()
+      .from(chatMessages)
+      .where(eq(chatMessages.conversationId, conversationId))
+      .orderBy(asc(chatMessages.createdAt));
+    
+    if (limit) {
+      return await query.limit(limit);
+    }
+    return await query;
+  }
+  
+  async updateChatMessage(messageId: string, updates: Partial<ChatMessage>): Promise<ChatMessage | undefined> {
+    const [result] = await db.update(chatMessages)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(chatMessages.id, messageId))
+      .returning();
+    return result;
+  }
+  
+  async deleteChatMessage(messageId: string): Promise<boolean> {
+    const result = await db.delete(chatMessages).where(eq(chatMessages.id, messageId));
+    return result.count > 0;
+  }
+  
+  async createMessageFeedback(feedbackData: InsertMessageFeedback): Promise<MessageFeedback> {
+    const [result] = await db.insert(messageFeedback).values(feedbackData).returning();
+    return result;
+  }
+  
+  async getMessageFeedback(messageId: string): Promise<MessageFeedback | undefined> {
+    const results = await db.select().from(messageFeedback).where(eq(messageFeedback.messageId, messageId)).limit(1);
+    return results[0];
+  }
+  
+  async updateMessageFeedback(messageId: string, updates: Partial<MessageFeedback>): Promise<MessageFeedback | undefined> {
+    const [result] = await db.update(messageFeedback)
+      .set(updates)
+      .where(eq(messageFeedback.messageId, messageId))
+      .returning();
+    return result;
+  }
+  
+  async getUserMessageFeedback(userId: string, limit?: number): Promise<MessageFeedback[]> {
+    const query = db.select()
+      .from(messageFeedback)
+      .where(eq(messageFeedback.userId, userId))
+      .orderBy(desc(messageFeedback.createdAt));
+    
+    if (limit) {
+      return await query.limit(limit);
+    }
+    return await query;
+  }
+  
   async getChatAnalytics(userId?: string, timeframe?: any): Promise<any> {
+    // TODO: Implement analytics aggregation
     return {
       totalConversations: 0,
       totalMessages: 0,

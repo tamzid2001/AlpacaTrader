@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from "recharts";
 import { useRef, useCallback } from "react";
 import ChartAccessibility from "@/components/accessibility/chart-accessibility"; 
@@ -137,8 +138,11 @@ function calculateChartDimensions(dataLength: number) {
   const height = 6; // Fixed height as in Python
   
   return {
-    width: width * 20, // Convert to pixels (approximate)
-    height: height * 60 // Convert to pixels (approximate)
+    // Make chart dimensions responsive
+    width: '100%', // Use percentage for responsive width
+    height: Math.min(500, Math.max(350, height * 50)), // More balanced height
+    minHeight: 350,
+    maxHeight: 500
   };
 }
 
@@ -347,31 +351,35 @@ function SageMakerCanvasVisualizor() {
   const dimensions = calculateChartDimensions(processedData.length);
 
   return (
-    <div className="space-y-6">
-      {/* Description */}
-      <Card>
+    <div className="space-y-8">
+      {/* Enhanced Description Card */}
+      <Card className="border-l-4 border-l-blue-600 shadow-sm hover:shadow-md transition-shadow">
         <CardContent className="p-6">
-          <div className="flex items-start gap-4">
-            <Info className="h-5 w-5 text-blue-600 mt-0.5" />
-            <div>
-              <h3 className="font-semibold mb-2">SageMaker Canvas Quantile Visualization</h3>
-              <p className="text-sm text-muted-foreground mb-3">
+          <div className="flex flex-col sm:flex-row items-start gap-4">
+            <div className="flex-shrink-0">
+              <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-full">
+                <Info className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              </div>
+            </div>
+            <div className="flex-1 space-y-4">
+              <h3 className="text-lg font-semibold">SageMaker Canvas Quantile Visualization</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">
                 Upload CSV files from Amazon SageMaker Canvas containing quantile forecast data (P10, P50, P90) 
                 to create interactive visualizations. The system automatically detects your data columns and 
                 generates professional charts that can be exported as SVG files.
               </p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                  <span>P10: 10th percentile (lower bound)</span>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 bg-muted/30 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-4 h-4 bg-red-500 rounded-full shadow-sm"></div>
+                  <span className="text-xs font-medium">P10: Lower bound (10th)</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                  <span>P50: 50th percentile (median)</span>
+                <div className="flex items-center gap-3">
+                  <div className="w-4 h-4 bg-blue-500 rounded-full shadow-sm"></div>
+                  <span className="text-xs font-medium">P50: Median (50th)</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                  <span>P90: 90th percentile (upper bound)</span>
+                <div className="flex items-center gap-3">
+                  <div className="w-4 h-4 bg-green-500 rounded-full shadow-sm"></div>
+                  <span className="text-xs font-medium">P90: Upper bound (90th)</span>
                 </div>
               </div>
             </div>
@@ -379,9 +387,9 @@ function SageMakerCanvasVisualizor() {
         </CardContent>
       </Card>
 
-      {/* Main Interface */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2">
+      {/* Enhanced Main Interface */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8">
+        <TabsList className="grid w-full grid-cols-2 h-auto p-1 bg-muted/50">
           <TabsTrigger value="upload" className="flex items-center gap-2" data-testid="tab-canvas-upload">
             <Upload className="h-4 w-4" />
             Upload & Process
@@ -392,13 +400,17 @@ function SageMakerCanvasVisualizor() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="upload" className="space-y-6">
-          {/* File Upload Area */}
-          <Card className="border-2 border-dashed border-muted-foreground/25 hover:border-primary/50 transition-colors">
-            <CardContent className="p-6">
+        <TabsContent value="upload" className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-2 duration-200">
+          {/* Enhanced File Upload Area */}
+          <Card className={`border-2 border-dashed transition-all duration-300 ${
+            dragActive 
+              ? 'border-primary bg-primary/5 shadow-lg scale-[1.02]' 
+              : 'border-muted-foreground/30 hover:border-primary/60 hover:shadow-md hover:bg-muted/20'
+          }`}>
+            <CardContent className="p-8">
               <div
-                className={`min-h-[200px] flex flex-col items-center justify-center space-y-4 text-center ${
-                  dragActive ? 'bg-primary/5 border-primary' : ''
+                className={`min-h-[350px] flex flex-col items-center justify-center space-y-6 text-center rounded-lg p-8 ${
+                  dragActive ? 'bg-primary/10' : 'bg-gradient-to-b from-background to-muted/10'
                 }`}
                 onDragEnter={handleDrag}
                 onDragLeave={handleDrag}
@@ -407,10 +419,17 @@ function SageMakerCanvasVisualizor() {
               >
                 {uploadState.step === 'select' ? (
                   <>
-                    <FileSpreadsheet className="h-16 w-16 text-muted-foreground" />
-                    <div>
-                      <h3 className="text-xl font-semibold mb-2">Upload SageMaker Canvas CSV</h3>
-                      <p className="text-muted-foreground mb-4">
+                    <div className="relative">
+                      <FileSpreadsheet className="h-24 w-24 text-primary/60 animate-pulse" />
+                      <div className="absolute -bottom-2 -right-2 w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center shadow-lg">
+                        <Upload className="h-5 w-5 text-white" />
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      <h3 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                        Upload SageMaker Canvas CSV
+                      </h3>
+                      <p className="text-muted-foreground text-base max-w-md">
                         Drag and drop your CSV file here, or click to browse
                       </p>
                       <input
@@ -426,14 +445,16 @@ function SageMakerCanvasVisualizor() {
                       />
                       <Button 
                         onClick={() => document.getElementById('file-upload-canvas')?.click()}
-                        className="gap-2"
+                        className="gap-2 px-8 py-6 text-base font-semibold shadow-lg hover:shadow-xl transition-all"
+                        size="lg"
                         data-testid="button-browse-canvas"
                       >
-                        <Upload className="h-4 w-4" />
+                        <Upload className="h-5 w-5" />
                         Browse Files
                       </Button>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        CSV files up to 50MB | Requires P10, P50, P90 columns
+                      <p className="text-sm text-muted-foreground mt-4 space-y-1">
+                        <span className="block font-medium">CSV files up to 50MB</span>
+                        <span className="block">Requires P10, P50, P90 columns</span>
                       </p>
                     </div>
                   </>
@@ -518,11 +539,11 @@ function SageMakerCanvasVisualizor() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="visualization" className="space-y-6">
+        <TabsContent value="visualization" className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-2 duration-200">
           {processedData.length > 0 ? (
             <>
-              {/* Chart Controls */}
-              <Card>
+              {/* Enhanced Chart Controls */}
+              <Card className="shadow-lg border-t-4 border-t-primary">
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -542,11 +563,12 @@ function SageMakerCanvasVisualizor() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {/* Chart */}
-                  <div ref={chartRef} className="w-full">
+                  {/* Enhanced Responsive Chart Container */}
+                  <div ref={chartRef} className="w-full overflow-x-auto overflow-y-hidden p-4 bg-muted/10 rounded-lg">
                     <ResponsiveContainer 
                       width="100%" 
-                      height={Math.max(360, dimensions.height)}
+                      height={typeof dimensions.height === 'number' ? dimensions.height : 400}
+                      minHeight={dimensions.minHeight}
                     >
                       <LineChart data={processedData}>
                         <CartesianGrid strokeDasharray="3 3" />
@@ -598,19 +620,19 @@ function SageMakerCanvasVisualizor() {
                     </ResponsiveContainer>
                   </div>
                   
-                  {/* Chart Statistics */}
-                  <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="text-center p-4 bg-muted/50 rounded-lg">
+                  {/* Enhanced Chart Statistics */}
+                  <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="text-center p-6 bg-gradient-to-br from-muted/30 to-muted/50 rounded-xl border border-border/50 shadow-sm hover:shadow-md transition-shadow">
                       <div className="text-2xl font-bold text-foreground">{processedData.length}</div>
                       <div className="text-sm text-muted-foreground">Data Points</div>
                     </div>
-                    <div className="text-center p-4 bg-muted/50 rounded-lg">
+                    <div className="text-center p-6 bg-gradient-to-br from-muted/30 to-muted/50 rounded-xl border border-border/50 shadow-sm hover:shadow-md transition-shadow">
                       <div className="text-2xl font-bold text-foreground">
                         {columnDetection ? [columnDetection.p10Col, columnDetection.p50Col, columnDetection.p90Col].filter(Boolean).length : 0}
                       </div>
                       <div className="text-sm text-muted-foreground">Quantile Columns</div>
                     </div>
-                    <div className="text-center p-4 bg-muted/50 rounded-lg">
+                    <div className="text-center p-6 bg-gradient-to-br from-muted/30 to-muted/50 rounded-xl border border-border/50 shadow-sm hover:shadow-md transition-shadow">
                       <div className="text-2xl font-bold text-foreground">{file?.name?.substring(0, 20) || 'N/A'}</div>
                       <div className="text-sm text-muted-foreground">Source File</div>
                     </div>
@@ -619,8 +641,8 @@ function SageMakerCanvasVisualizor() {
               </Card>
             </>
           ) : (
-            <Card>
-              <CardContent className="py-12 text-center">
+            <Card className="border-2 border-dashed border-muted-foreground/30">
+              <CardContent className="py-16 text-center">
                 <BarChart3 className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
                 <h3 className="text-lg font-semibold mb-2">No Visualization Data</h3>
                 <p className="text-muted-foreground mb-4">
@@ -788,7 +810,9 @@ export default function AnomalyDetection() {
 
   const analyzeMutation = useMutation({
     mutationFn: async (uploadId: string) => {
-      const response = await apiRequest("POST", `/api/csv/${uploadId}/analyze`, {});
+      const response = await apiRequest(`/api/csv/${uploadId}/analyze`, {
+        method: "POST"
+      });
       return response.json();
     },
     onSuccess: (result) => {
@@ -891,8 +915,8 @@ export default function AnomalyDetection() {
     <div className="min-h-screen bg-background flex">
       <Sidebar />
       
-      <div className="flex-1 md:ml-64 p-4 sm:p-6 lg:p-8" data-testid="anomaly-detection-main">
-        <div className="max-w-7xl mx-auto space-y-8">
+      <div className="flex-1 md:ml-64 p-2 sm:p-4 md:p-6 lg:p-8 xl:p-10" data-testid="anomaly-detection-main">
+        <div className="max-w-full xl:max-w-7xl mx-auto space-y-8">
           {/* Header */}
           <div className="flex items-center justify-between">
             <div>
@@ -923,9 +947,9 @@ export default function AnomalyDetection() {
             }} 
           />
 
-          {/* Main Content */}
-          <Tabs defaultValue={showSageMakerCanvas ? "sagemaker-canvas" : "uploads"} className="space-y-4" role="tablist" aria-label="Anomaly detection content sections">
-            <TabsList data-testid="tabs-main" role="tablist">
+          {/* Main Content with Enhanced Tabs */}
+          <Tabs defaultValue={showSageMakerCanvas ? "sagemaker-canvas" : "uploads"} className="space-y-6" role="tablist" aria-label="Anomaly detection content sections">
+            <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 h-auto gap-2 p-2 bg-muted/30" data-testid="tabs-main" role="tablist">
               <TabsTrigger 
                 value="uploads" 
                 data-testid="tab-uploads"
@@ -1045,8 +1069,9 @@ export default function AnomalyDetection() {
                 </CardHeader>
                 <CardContent>
                   {anomalies && anomalies.length > 0 ? (
-                    <div className="overflow-x-auto">
-                      <Table 
+                    <div className="relative rounded-lg border">
+                      <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+                        <Table 
                         aria-label="Detected anomalies data"
                         caption="Table showing detected anomalies with type, date, description, and values"
                       >
@@ -1080,7 +1105,8 @@ export default function AnomalyDetection() {
                           </TableRow>
                         ))}
                       </TableBody>
-                    </Table>
+                        </Table>
+                      </div>
                     </div>
                   ) : (
                     <div className="text-center py-8">
@@ -1113,7 +1139,7 @@ export default function AnomalyDetection() {
 
             <TabsContent 
               value="sagemaker-canvas" 
-              className="space-y-4"
+              className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-2 duration-200"
               role="tabpanel"
               id="sagemaker-canvas-panel"
               aria-labelledby="tab-sagemaker-canvas"

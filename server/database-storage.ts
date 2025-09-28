@@ -1215,7 +1215,7 @@ export class DatabaseStorage implements IStorage {
   async getUserProductivityBoards(userId: string): Promise<ProductivityBoard[]> {
     return await db.select()
       .from(productivityBoards)
-      .where(eq(productivityBoards.ownerId, userId))
+      .where(eq(productivityBoards.userId, userId))
       .orderBy(desc(productivityBoards.createdAt));
   }
 
@@ -1254,7 +1254,7 @@ export class DatabaseStorage implements IStorage {
     return await db.select()
       .from(productivityItems)
       .where(eq(productivityItems.boardId, boardId))
-      .orderBy(asc(productivityItems.order));
+      .orderBy(asc(productivityItems.position));
   }
 
   async updateProductivityItem(id: string, updates: Partial<InsertProductivityItem>): Promise<ProductivityItem> {
@@ -1282,7 +1282,12 @@ export class DatabaseStorage implements IStorage {
     return await db.select()
       .from(itemColumns)
       .where(eq(itemColumns.boardId, boardId))
-      .orderBy(asc(itemColumns.order));
+      .orderBy(asc(itemColumns.position));
+  }
+
+  // Alias for route compatibility
+  async getBoardColumns(boardId: string): Promise<ItemColumn[]> {
+    return this.getBoardItemColumns(boardId);
   }
 
   async updateItemColumn(id: string, updates: Partial<InsertItemColumn>): Promise<ItemColumn> {
@@ -1320,35 +1325,184 @@ export class DatabaseStorage implements IStorage {
     await db.delete(columnValues).where(eq(columnValues.id, id));
   }
 
+  async getColumnValueByItemAndColumn(itemId: string, columnId: string): Promise<ColumnValue | undefined> {
+    const result = await db.select()
+      .from(columnValues)
+      .where(and(
+        eq(columnValues.itemId, itemId),
+        eq(columnValues.columnId, columnId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+
+  async bulkUpdateColumnValues(updates: Array<{ id: string; value: any; metadata?: any }>): Promise<ColumnValue[]> {
+    const results: ColumnValue[] = [];
+    for (const update of updates) {
+      const result = await db.update(columnValues)
+        .set({ value: update.value, metadata: update.metadata })
+        .where(eq(columnValues.id, update.id))
+        .returning();
+      if (result[0]) results.push(result[0]);
+    }
+    return results;
+  }
+
+  // ===================
+  // PRODUCTIVITY ITEMS - Additional Methods
+  // ===================
+
+  async bulkUpdateProductivityItems(itemIds: string[], updates: Partial<ProductivityItem>): Promise<ProductivityItem[]> {
+    const results: ProductivityItem[] = [];
+    for (const itemId of itemIds) {
+      const result = await db.update(productivityItems)
+        .set(updates)
+        .where(eq(productivityItems.id, itemId))
+        .returning();
+      if (result[0]) results.push(result[0]);
+    }
+    return results;
+  }
+
+  async bulkDeleteProductivityItems(itemIds: string[]): Promise<boolean> {
+    await db.delete(productivityItems)
+      .where(inArray(productivityItems.id, itemIds));
+    return true;
+  }
+
+  async getItemActivityLog(itemId: string, limit: number = 20): Promise<ActivityLog[]> {
+    return await db.select()
+      .from(activityLogs)
+      .where(eq(activityLogs.itemId, itemId))
+      .orderBy(desc(activityLogs.timestamp))
+      .limit(limit);
+  }
+
+  async createActivityLog(log: InsertActivityLog): Promise<ActivityLog> {
+    const result = await db.insert(activityLogs).values(log).returning();
+    return result[0];
+  }
+
+  async createAssignmentNotification(itemId: string, assigneeId: string, assignedBy: string): Promise<ProductivityNotification> {
+    const item = await this.getProductivityItem(itemId);
+    if (!item) throw new Error('Item not found');
+
+    const notification = await db.insert(productivityNotifications).values({
+      userId: assigneeId,
+      type: 'assignment',
+      title: 'New Assignment',
+      message: `You have been assigned to task: ${item.title}`,
+      metadata: { itemId, assignedBy },
+      itemId,
+      boardId: item.boardId,
+      isRead: false,
+    }).returning();
+    return notification[0];
+  }
+
+  async createStatusChangeNotification(itemId: string, oldStatus: string, newStatus: string, changedBy: string): Promise<ProductivityNotification> {
+    const item = await this.getProductivityItem(itemId);
+    if (!item) throw new Error('Item not found');
+
+    // Only notify if there's an assignee and it's not the person making the change
+    if (!item.assignedTo || item.assignedTo === changedBy) {
+      // Return a dummy notification
+      return {} as ProductivityNotification;
+    }
+
+    const notification = await db.insert(productivityNotifications).values({
+      userId: item.assignedTo,
+      type: 'status_change',
+      title: 'Status Updated',
+      message: `Status of "${item.title}" changed from ${oldStatus} to ${newStatus}`,
+      metadata: { itemId, oldStatus, newStatus, changedBy },
+      itemId,
+      boardId: item.boardId,
+      isRead: false,
+    }).returning();
+    return notification[0];
+  }
+
+  async exportBoardData(boardId: string, format: string): Promise<{ filename: string; data: any }> {
+    const board = await this.getProductivityBoard(boardId);
+    if (!board) throw new Error('Board not found');
+
+    const items = await this.getBoardProductivityItems(boardId);
+    const columns = await this.getBoardColumns(boardId);
+
+    const data = {
+      board,
+      columns,
+      items: await Promise.all(items.map(async (item) => ({
+        ...item,
+        columnValues: await this.getItemColumnValues(item.id)
+      })))
+    };
+
+    const filename = `${board.title.replace(/[^a-z0-9]/gi, '_')}_export.${format}`;
+    
+    if (format === 'json') {
+      return { filename, data: JSON.stringify(data, null, 2) };
+    } else if (format === 'csv') {
+      // Simple CSV export
+      const csvRows = ['Title,Status,Priority,Due Date,Assigned To'];
+      for (const item of items) {
+        csvRows.push(`"${item.title}","${item.status}","${item.priority}","${item.dueDate || ''}","${item.assignedTo || ''}"`);
+      }
+      return { filename, data: csvRows.join('\n') };
+    }
+    
+    return { filename, data };
+  }
+
+  async createItemsFromAnomalies(anomalyIds: string[], boardId: string, userId: string): Promise<ProductivityItem[]> {
+    const items: ProductivityItem[] = [];
+    let position = 1000;
+    
+    for (const anomalyId of anomalyIds) {
+      // Create productivity item from anomaly
+      const item = await this.createProductivityItem({
+        boardId,
+        title: `Anomaly Investigation: ${anomalyId}`,
+        status: 'not_started',
+        priority: 'high',
+        createdBy: userId,
+        position,
+        metadata: { anomalyId }
+      });
+      items.push(item);
+      position += 100;
+    }
+    
+    return items;
+  }
+
+  async createItemFromAnomaly(anomalyId: string, boardId: string, userId: string): Promise<ProductivityItem> {
+    const items = await this.createItemsFromAnomalies([anomalyId], boardId, userId);
+    return items[0];
+  }
+
   // ===================
   // PRODUCTIVITY STATS
   // ===================
 
-  async getUserProductivityStats(userId: string): Promise<{
-    totalBoards: number;
-    totalItems: number;
-    completedThisWeek: number;
-    overdueItems: number;
-    upcomingDeadlines: number;
-    mostProductiveDay: string;
-    averageCompletionTime: number;
-  }> {
+  async getUserProductivityStats(userId: string): Promise<any> {
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
     
-    const threeDaysFromNow = new Date();
-    threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
+    const nextWeek = new Date();
+    nextWeek.setDate(nextWeek.getDate() + 7);
 
     // Get total boards count
     const totalBoardsResult = await db.select({ count: sql<number>`count(*)` })
       .from(productivityBoards)
-      .where(eq(productivityBoards.ownerId, userId));
+      .where(eq(productivityBoards.userId, userId));
     const totalBoards = totalBoardsResult[0]?.count || 0;
 
     // Get all user boards to query items
     const userBoards = await db.select({ id: productivityBoards.id })
       .from(productivityBoards)
-      .where(eq(productivityBoards.ownerId, userId));
+      .where(eq(productivityBoards.userId, userId));
     
     const boardIds = userBoards.map(board => board.id);
 
@@ -1356,11 +1510,8 @@ export class DatabaseStorage implements IStorage {
       return {
         totalBoards: 0,
         totalItems: 0,
-        completedThisWeek: 0,
-        overdueItems: 0,
-        upcomingDeadlines: 0,
-        mostProductiveDay: 'Monday',
-        averageCompletionTime: 0,
+        itemsDueThisWeek: 0,
+        completionRate: 0,
       };
     }
 
@@ -1370,51 +1521,38 @@ export class DatabaseStorage implements IStorage {
       .where(inArray(productivityItems.boardId, boardIds));
     const totalItems = totalItemsResult[0]?.count || 0;
 
-    // Get completed items this week
-    const completedThisWeekResult = await db.select({ count: sql<number>`count(*)` })
+    // Get items due this week
+    const itemsDueThisWeekResult = await db.select({ count: sql<number>`count(*)` })
       .from(productivityItems)
       .where(
         and(
           inArray(productivityItems.boardId, boardIds),
-          eq(productivityItems.status, 'done'),
-          gte(productivityItems.updatedAt, oneWeekAgo)
-        )
-      );
-    const completedThisWeek = completedThisWeekResult[0]?.count || 0;
-
-    // Get overdue items
-    const overdueItemsResult = await db.select({ count: sql<number>`count(*)` })
-      .from(productivityItems)
-      .where(
-        and(
-          inArray(productivityItems.boardId, boardIds),
-          ne(productivityItems.status, 'done'),
-          lt(productivityItems.dueDate, new Date())
-        )
-      );
-    const overdueItems = overdueItemsResult[0]?.count || 0;
-
-    // Get upcoming deadlines (next 3 days)
-    const upcomingDeadlinesResult = await db.select({ count: sql<number>`count(*)` })
-      .from(productivityItems)
-      .where(
-        and(
-          inArray(productivityItems.boardId, boardIds),
-          ne(productivityItems.status, 'done'),
           gte(productivityItems.dueDate, new Date()),
-          lte(productivityItems.dueDate, threeDaysFromNow)
+          lte(productivityItems.dueDate, nextWeek)
         )
       );
-    const upcomingDeadlines = upcomingDeadlinesResult[0]?.count || 0;
+    const itemsDueThisWeek = itemsDueThisWeekResult[0]?.count || 0;
+
+    // Calculate completion rate
+    let completionRate = 0;
+    if (totalItems > 0) {
+      const completedItemsResult = await db.select({ count: sql<number>`count(*)` })
+        .from(productivityItems)
+        .where(
+          and(
+            inArray(productivityItems.boardId, boardIds),
+            eq(productivityItems.status, 'completed')
+          )
+        );
+      const completedItems = completedItemsResult[0]?.count || 0;
+      completionRate = Math.round((completedItems / totalItems) * 100);
+    }
 
     return {
       totalBoards,
       totalItems,
-      completedThisWeek,
-      overdueItems,
-      upcomingDeadlines,
-      mostProductiveDay: 'Monday', // Default for now
-      averageCompletionTime: 2.5, // Default average in days
+      itemsDueThisWeek,
+      completionRate,
     };
   }
 
