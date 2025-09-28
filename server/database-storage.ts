@@ -445,9 +445,39 @@ export class DatabaseStorage implements IStorage {
   // CSV UPLOADS
   // ===================
 
-  async createCsvUpload(csvData: InsertCsvUpload): Promise<CsvUpload> {
-    const result = await db.insert(csvUploads).values(csvData).returning();
-    return result[0];
+  async createCsvUpload(csvData: InsertCsvUpload, userId?: string): Promise<CsvUpload> {
+    try {
+      // Ensure userId is included in the data
+      const uploadData = {
+        ...csvData,
+        userId: userId || csvData.userId,
+      };
+      
+      // Validate userId is present
+      if (!uploadData.userId) {
+        throw new Error("User ID is required for CSV upload");
+      }
+      
+      // Verify user exists to prevent foreign key constraint violation
+      const userExists = await db.select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, uploadData.userId))
+        .limit(1);
+      
+      if (userExists.length === 0) {
+        console.error(`User not found: ${uploadData.userId}`);
+        throw new Error("User not found. Please ensure you are logged in.");
+      }
+      
+      const result = await db.insert(csvUploads).values(uploadData).returning();
+      return result[0];
+    } catch (error: any) {
+      console.error("Database CSV upload error:", error);
+      if (error.code === '23503') { // Foreign key violation
+        throw new Error("Invalid user. Please log in again and try again.");
+      }
+      throw error;
+    }
   }
 
   async getCsvUpload(id: string): Promise<CsvUpload | undefined> {
@@ -586,11 +616,54 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async getUserSharedResults(userId: string): Promise<SharedResult[]> {
-    return await db.select()
-      .from(sharedResults)
-      .where(eq(sharedResults.userId, userId))
-      .orderBy(desc(sharedResults.createdAt));
+  async getUserSharedResults(userId: string): Promise<(SharedResult & { upload: CsvUpload })[]> {
+    const results = await db.select({
+      // SharedResult fields
+      id: sharedResults.id,
+      csvUploadId: sharedResults.csvUploadId,
+      userId: sharedResults.userId,
+      shareToken: sharedResults.shareToken,
+      permissions: sharedResults.permissions,
+      expiresAt: sharedResults.expiresAt,
+      viewCount: sharedResults.viewCount,
+      accessLogs: sharedResults.accessLogs,
+      title: sharedResults.title,
+      description: sharedResults.description,
+      createdAt: sharedResults.createdAt,
+      updatedAt: sharedResults.updatedAt,
+      // Upload fields
+      upload_id: csvUploads.id,
+      upload_userId: csvUploads.userId,
+      upload_filename: csvUploads.filename,
+      upload_customFilename: csvUploads.customFilename,
+      upload_uploadedAt: csvUploads.uploadedAt,
+    })
+    .from(sharedResults)
+    .innerJoin(csvUploads, eq(sharedResults.csvUploadId, csvUploads.id))
+    .where(eq(sharedResults.userId, userId))
+    .orderBy(desc(sharedResults.createdAt));
+
+    return results.map(row => ({
+      id: row.id,
+      csvUploadId: row.csvUploadId,
+      userId: row.userId,
+      shareToken: row.shareToken,
+      permissions: row.permissions,
+      expiresAt: row.expiresAt,
+      viewCount: row.viewCount,
+      accessLogs: row.accessLogs,
+      title: row.title,
+      description: row.description,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      upload: {
+        id: row.upload_id,
+        userId: row.upload_userId,
+        filename: row.upload_filename,
+        customFilename: row.upload_customFilename,
+        uploadedAt: row.upload_uploadedAt,
+      } as CsvUpload,
+    }));
   }
 
   async getSharedResultByToken(token: string): Promise<(SharedResult & { upload: CsvUpload; user: User }) | undefined> {
@@ -747,6 +820,49 @@ export class DatabaseStorage implements IStorage {
       upload,
       user,
     };
+  }
+
+  async updateSharedResult(id: string, updates: Partial<SharedResult>): Promise<SharedResult | undefined> {
+    const result = await db.update(sharedResults)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(sharedResults.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async deleteSharedResult(id: string): Promise<boolean> {
+    const result = await db.delete(sharedResults).where(eq(sharedResults.id, id));
+    return result.rowCount > 0;
+  }
+
+  async incrementViewCount(id: string): Promise<void> {
+    const sharedResult = await this.getSharedResult(id);
+    if (sharedResult) {
+      await db.update(sharedResults)
+        .set({ 
+          viewCount: sharedResult.viewCount + 1,
+          updatedAt: new Date()
+        })
+        .where(eq(sharedResults.id, id));
+    }
+  }
+
+  async logAccess(id: string, accessInfo: { ip: string; userAgent: string; timestamp: Date }): Promise<void> {
+    const sharedResult = await this.getSharedResult(id);
+    if (sharedResult) {
+      const currentLogs = Array.isArray(sharedResult.accessLogs) ? sharedResult.accessLogs : [];
+      const updatedLogs = [...currentLogs, accessInfo];
+      
+      // Keep only last 100 access logs to prevent unlimited growth
+      const trimmedLogs = updatedLogs.slice(-100);
+      
+      await db.update(sharedResults)
+        .set({ 
+          accessLogs: trimmedLogs,
+          updatedAt: new Date()
+        })
+        .where(eq(sharedResults.id, id));
+    }
   }
 
   // ===================
@@ -1303,25 +1419,252 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ===================
-  // NOTIFICATIONS
+  // IN-APP NOTIFICATIONS
   // ===================
+
+  async getInAppNotifications(userId: string, options?: { 
+    limit?: number; 
+    offset?: number; 
+    unreadOnly?: boolean;
+    type?: InAppNotificationType;
+    category?: NotificationCategory;
+    priority?: NotificationPriority;
+  }): Promise<{ notifications: InAppNotification[]; totalCount: number; unreadCount: number }> {
+    let query = db.select()
+      .from(inAppNotifications)
+      .where(eq(inAppNotifications.userId, userId));
+
+    // Apply filters
+    const conditions = [eq(inAppNotifications.userId, userId)];
+    
+    if (options?.unreadOnly) {
+      conditions.push(eq(inAppNotifications.read, false));
+    }
+    if (options?.type) {
+      conditions.push(eq(inAppNotifications.type, options.type));
+    }
+    if (options?.category) {
+      conditions.push(eq(inAppNotifications.category, options.category));
+    }
+    if (options?.priority) {
+      conditions.push(eq(inAppNotifications.priority, options.priority));
+    }
+
+    // Get total and unread counts
+    const [totalCountResult, unreadCountResult] = await Promise.all([
+      db.select({ count: sql<number>`count(*)` })
+        .from(inAppNotifications)
+        .where(eq(inAppNotifications.userId, userId)),
+      db.select({ count: sql<number>`count(*)` })
+        .from(inAppNotifications)
+        .where(and(
+          eq(inAppNotifications.userId, userId),
+          eq(inAppNotifications.read, false)
+        ))
+    ]);
+
+    // Get paginated notifications
+    const notifications = await db.select()
+      .from(inAppNotifications)
+      .where(and(...conditions))
+      .orderBy(desc(inAppNotifications.createdAt))
+      .limit(options?.limit || 20)
+      .offset(options?.offset || 0);
+
+    return {
+      notifications,
+      totalCount: totalCountResult[0]?.count || 0,
+      unreadCount: unreadCountResult[0]?.count || 0
+    };
+  }
 
   async createInAppNotification(notification: InsertInAppNotification): Promise<InAppNotification> {
     const result = await db.insert(inAppNotifications).values(notification).returning();
     return result[0];
   }
 
-  async getUserNotifications(userId: string): Promise<InAppNotification[]> {
+  async getInAppNotification(id: string): Promise<InAppNotification | undefined> {
+    const result = await db.select()
+      .from(inAppNotifications)
+      .where(eq(inAppNotifications.id, id))
+      .limit(1);
+    return result[0];
+  }
+
+  async markInAppNotificationRead(id: string, userId: string): Promise<InAppNotification | undefined> {
+    const result = await db.update(inAppNotifications)
+      .set({ read: true, readAt: new Date() })
+      .where(and(
+        eq(inAppNotifications.id, id),
+        eq(inAppNotifications.userId, userId)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  async markAllInAppNotificationsRead(userId: string): Promise<number> {
+    const result = await db.update(inAppNotifications)
+      .set({ read: true, readAt: new Date() })
+      .where(and(
+        eq(inAppNotifications.userId, userId),
+        eq(inAppNotifications.read, false)
+      ));
+    // Return the count of updated rows (Drizzle doesn't provide this directly)
+    const countResult = await db.select({ count: sql<number>`count(*)` })
+      .from(inAppNotifications)
+      .where(and(
+        eq(inAppNotifications.userId, userId),
+        eq(inAppNotifications.read, true)
+      ));
+    return countResult[0]?.count || 0;
+  }
+
+  async deleteInAppNotification(id: string, userId: string): Promise<boolean> {
+    const result = await db.delete(inAppNotifications)
+      .where(and(
+        eq(inAppNotifications.id, id),
+        eq(inAppNotifications.userId, userId)
+      ));
+    return true; // Drizzle doesn't return affected rows for delete
+  }
+
+  async bulkDeleteInAppNotifications(notificationIds: string[], userId: string): Promise<number> {
+    await db.delete(inAppNotifications)
+      .where(and(
+        inArray(inAppNotifications.id, notificationIds),
+        eq(inAppNotifications.userId, userId)
+      ));
+    return notificationIds.length; // Return the count of IDs we attempted to delete
+  }
+
+  async getUnreadNotificationCount(userId: string): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)` })
+      .from(inAppNotifications)
+      .where(and(
+        eq(inAppNotifications.userId, userId),
+        eq(inAppNotifications.read, false)
+      ));
+    return result[0]?.count || 0;
+  }
+
+  async getNotificationCountsByType(userId: string): Promise<Record<InAppNotificationType, number>> {
+    const results = await db.select({
+      type: inAppNotifications.type,
+      count: sql<number>`count(*)`
+    })
+      .from(inAppNotifications)
+      .where(eq(inAppNotifications.userId, userId))
+      .groupBy(inAppNotifications.type);
+
+    const counts: Record<string, number> = {};
+    results.forEach(r => {
+      if (r.type) counts[r.type] = r.count;
+    });
+    
+    return counts as Record<InAppNotificationType, number>;
+  }
+
+  async deleteExpiredInAppNotifications(): Promise<number> {
+    const now = new Date();
+    await db.delete(inAppNotifications)
+      .where(lte(inAppNotifications.expiresAt, now));
+    return 0; // Drizzle doesn't return affected rows for delete
+  }
+
+  async getRecentInAppNotifications(userId: string, limit: number = 5): Promise<InAppNotification[]> {
     return await db.select()
       .from(inAppNotifications)
       .where(eq(inAppNotifications.userId, userId))
-      .orderBy(desc(inAppNotifications.createdAt));
+      .orderBy(desc(inAppNotifications.createdAt))
+      .limit(limit);
+  }
+
+  // Notification creation helpers
+  async createMarketDataAlertNotification(userId: string, alertData: { title: string; message: string; ticker?: string; price?: number; actionUrl?: string }): Promise<InAppNotification> {
+    return this.createInAppNotification({
+      userId,
+      type: 'market_alert',
+      category: 'financial',
+      priority: 'high',
+      title: alertData.title,
+      message: alertData.message,
+      metadata: { ticker: alertData.ticker, price: alertData.price },
+      actionUrl: alertData.actionUrl,
+      read: false
+    });
+  }
+
+  async createCourseUpdateNotification(userId: string, courseData: { title: string; message: string; courseId: string; actionUrl?: string }): Promise<InAppNotification> {
+    return this.createInAppNotification({
+      userId,
+      type: 'course_update',
+      category: 'education',
+      priority: 'normal',
+      title: courseData.title,
+      message: courseData.message,
+      metadata: { courseId: courseData.courseId },
+      actionUrl: courseData.actionUrl,
+      read: false
+    });
+  }
+
+  async createProductivityReminderNotification(userId: string, reminderData: { title: string; message: string; itemId?: string; boardId?: string; actionUrl?: string }): Promise<InAppNotification> {
+    return this.createInAppNotification({
+      userId,
+      type: 'task_reminder',
+      category: 'productivity',
+      priority: 'normal',
+      title: reminderData.title,
+      message: reminderData.message,
+      metadata: { itemId: reminderData.itemId, boardId: reminderData.boardId },
+      actionUrl: reminderData.actionUrl,
+      read: false
+    });
+  }
+
+  async createShareInvitationNotification(userId: string, inviteData: { title: string; message: string; inviterId: string; resourceType: string; resourceId: string; actionUrl?: string }): Promise<InAppNotification> {
+    return this.createInAppNotification({
+      userId,
+      type: 'share_invitation',
+      category: 'social',
+      priority: 'normal',
+      title: inviteData.title,
+      message: inviteData.message,
+      metadata: { 
+        inviterId: inviteData.inviterId, 
+        resourceType: inviteData.resourceType,
+        resourceId: inviteData.resourceId 
+      },
+      actionUrl: inviteData.actionUrl,
+      read: false
+    });
+  }
+
+  async createAdminNotification(userId: string, adminData: { title: string; message: string; priority?: NotificationPriority; actionUrl?: string }): Promise<InAppNotification> {
+    return this.createInAppNotification({
+      userId,
+      type: 'system_update',
+      category: 'system',
+      priority: adminData.priority || 'high',
+      title: adminData.title,
+      message: adminData.message,
+      actionUrl: adminData.actionUrl,
+      read: false
+    });
+  }
+
+  // Backward compatibility aliases
+  async getUserNotifications(userId: string): Promise<InAppNotification[]> {
+    const result = await this.getInAppNotifications(userId, { limit: 100 });
+    return result.notifications;
   }
 
   async markNotificationAsRead(id: string): Promise<void> {
-    await db.update(inAppNotifications)
-      .set({ isRead: true, readAt: new Date() })
-      .where(eq(inAppNotifications.id, id));
+    // Get the notification first to find the userId
+    const notification = await this.getInAppNotification(id);
+    if (notification) {
+      await this.markInAppNotificationRead(id, notification.userId);
+    }
   }
 
   // ===================
@@ -1370,5 +1713,17 @@ export class DatabaseStorage implements IStorage {
       .where(eq(userNotificationPreferences.userId, userId))
       .returning();
     return result[0];
+  }
+
+  async getOrCreateUserNotificationPreferences(userId: string): Promise<UserNotificationPreferences> {
+    // Check if preferences already exist
+    const existing = await this.getUserNotificationPreferences(userId);
+    if (existing) return existing;
+
+    // Create default preferences for new user
+    return this.createUserNotificationPreferences({
+      userId,
+      // All default values are handled by the database schema
+    });
   }
 }

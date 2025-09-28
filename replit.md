@@ -68,8 +68,19 @@ Key entities include Users, Courses, Enrollments, Quizzes, Support Messages, CSV
 ## Mobile Application
 - **Framework:** Expo React Native
 - **Location:** `apps/mobile/`
-- **Start Command:** `cd apps/mobile && npx expo start`
-- **Dependencies:** Expo Router, NativeWind, Victory Native, Stripe RN
-- **Features:** Tab navigation, device detection, shared business logic
-- **Configuration:** Metro bundler configured for monorepo support
-- **Shared Code:** Uses @lms/shared package for business logic and schemas
+- **Start Command:** `cd apps/mobile && npm start`
+- **Dependencies:** Expo SDK, React Navigation, React Native Elements, React Hook Form
+- **Features:** Tab navigation, authentication flow, course management, market data visualization, AI chat
+- **Configuration:** Metro bundler configured with API endpoint configuration
+- **API Integration:** Connects to backend at http://localhost:5000
+- **Authentication:** Secure token storage with Expo Secure Store
+- **Screens:** Login, Register, Dashboard, Courses, Market Data, AI Chat, Profile
+
+## Recent Fixes and Improvements (September 28, 2025)
+- **Fixed Multi-Device Login:** Improved concurrent session management (MAX_CONCURRENT_SESSIONS increased to 10, configurable via env)
+- **Fixed Invitations Tab:** Added missing accept/decline API endpoints
+- **Fixed Shared Results:** Implemented missing database storage methods
+- **Fixed CSV Upload:** Enhanced validation and foreign key constraint handling
+- **Fixed Notification Settings:** Added all missing notification preference methods
+- **Enhanced Responsive Design:** Comprehensive mobile-friendly updates across all pages
+- **Added React Native App:** Complete Expo mobile application with full API integration

@@ -75,9 +75,9 @@ export default function LandingPage() {
             <div className="relative flex items-center justify-between min-h-[80vh]">
               {/* Left Content */}
               <div className="flex-1 z-10">
-                <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-white mb-8 leading-tight">
+                <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold text-white mb-6 sm:mb-8 leading-tight">
                   <span className="flex items-center gap-4 mb-4" data-testid="hero-title">
-                    <TrendingUp className="w-16 h-16 text-yellow-300 animate-pulse" />
+                    <TrendingUp className="w-10 h-10 sm:w-12 sm:h-12 lg:w-16 lg:h-16 text-yellow-300 animate-pulse" />
                     Master Financial Markets
                   </span>
                   <span className="bg-gradient-to-r from-yellow-300 via-pink-300 to-cyan-300 bg-clip-text text-transparent">
@@ -86,7 +86,7 @@ export default function LandingPage() {
                 </h1>
                 
                 <p 
-                  className="text-xl sm:text-2xl text-white/90 mb-8 max-w-2xl"
+                  className="text-base sm:text-lg md:text-xl lg:text-2xl text-white/90 mb-6 sm:mb-8 max-w-2xl"
                   data-testid="hero-subtitle"
                 >
                   Build multi-period binomial models using Amazon SageMaker Canvas. State-of-the-art end-to-end machine learning pipeline for financial analysis.
@@ -166,7 +166,7 @@ export default function LandingPage() {
               </p>
             </div>
             
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 mb-12 sm:mb-16">
               {/* Success Story 1 - Career Transformation */}
               <Card className="p-8 border-2 border-orange-200 hover:border-orange-400 transition-all duration-300 hover:shadow-xl hover:-translate-y-2" data-testid="card-success-story-1">
                 <div className="flex items-center mb-6">
@@ -274,7 +274,7 @@ export default function LandingPage() {
             </div>
             
             {/* Success Metrics */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 lg:gap-8 text-center">
               <div className="p-6">
                 <div className="flex items-center justify-center mb-4">
                   <Users className="w-12 h-12 text-blue-500" />
@@ -323,7 +323,7 @@ export default function LandingPage() {
               </p>
             </div>
             
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 mb-12 sm:mb-16">
               {/* Video Courses */}
               <Card className="relative overflow-hidden group hover:shadow-2xl transition-all duration-500 hover:-translate-y-3 border-2 border-blue-200 hover:border-blue-400" data-testid="card-feature-videos">
                 <div className="absolute inset-0 bg-gradient-to-br from-blue-400/10 to-purple-400/10 group-hover:from-blue-400/20 group-hover:to-purple-400/20 transition-all duration-300"></div>

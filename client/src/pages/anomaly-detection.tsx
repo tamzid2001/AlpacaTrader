@@ -891,7 +891,7 @@ export default function AnomalyDetection() {
     <div className="min-h-screen bg-background flex">
       <Sidebar />
       
-      <div className="flex-1 ml-64 p-8" data-testid="anomaly-detection-main">
+      <div className="flex-1 md:ml-64 p-4 sm:p-6 lg:p-8" data-testid="anomaly-detection-main">
         <div className="max-w-7xl mx-auto space-y-8">
           {/* Header */}
           <div className="flex items-center justify-between">
@@ -1045,10 +1045,11 @@ export default function AnomalyDetection() {
                 </CardHeader>
                 <CardContent>
                   {anomalies && anomalies.length > 0 ? (
-                    <Table 
-                      aria-label="Detected anomalies data"
-                      caption="Table showing detected anomalies with type, date, description, and values"
-                    >
+                    <div className="overflow-x-auto">
+                      <Table 
+                        aria-label="Detected anomalies data"
+                        caption="Table showing detected anomalies with type, date, description, and values"
+                      >
                       <TableHeader>
                         <TableRow role="row">
                           <TableHead scope="col">Type</TableHead>
@@ -1080,6 +1081,7 @@ export default function AnomalyDetection() {
                         ))}
                       </TableBody>
                     </Table>
+                    </div>
                   ) : (
                     <div className="text-center py-8">
                       <AlertTriangle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />

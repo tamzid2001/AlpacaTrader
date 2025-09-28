@@ -93,16 +93,14 @@ export function InvitationInbox() {
 
   const { data: invitations, isLoading, error } = useQuery({
     queryKey: ['/api/share/invites'],
-    queryFn: async () => {
-      const response = await apiRequest('GET', '/api/share/invites');
-      return response.json();
-    },
   });
 
   const acceptMutation = useMutation({
     mutationFn: async (token: string) => {
       setActionInProgress(token);
-      const response = await apiRequest('POST', `/api/share/accept/${token}`);
+      const response = await apiRequest(`/api/share/accept/${token}`, {
+        method: 'POST',
+      });
       return response.json();
     },
     onSuccess: (_, token) => {
@@ -128,7 +126,9 @@ export function InvitationInbox() {
   const declineMutation = useMutation({
     mutationFn: async (token: string) => {
       setActionInProgress(token);
-      const response = await apiRequest('POST', `/api/share/decline/${token}`);
+      const response = await apiRequest(`/api/share/decline/${token}`, {
+        method: 'POST',
+      });
       return response.json();
     },
     onSuccess: () => {

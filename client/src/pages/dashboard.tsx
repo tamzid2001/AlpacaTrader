@@ -193,29 +193,29 @@ export default function Dashboard() {
 
       {/* Dashboard Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full" data-testid="dashboard-tabs">
-        <TabsList className="grid w-full grid-cols-4" data-testid="tabs-list">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4" data-testid="tabs-list">
           <TabsTrigger value="overview" data-testid="tab-overview">
-            <EnhancedIcon name="LayoutDashboard" size={16} className="mr-2" />
-            Overview
+            <span className="hidden sm:inline"><EnhancedIcon name="LayoutDashboard" size={16} className="mr-2" /></span>
+            <span className="text-xs sm:text-sm">Overview</span>
           </TabsTrigger>
           <TabsTrigger 
             value="premium" 
             data-testid="tab-premium"
             className={user?.isPremiumApproved ? "" : "text-amber-600 dark:text-amber-400"}
           >
-            <EnhancedIcon name="Crown" size={16} className="mr-2" />
-            Premium
+            <span className="hidden sm:inline"><EnhancedIcon name="Crown" size={16} className="mr-2" /></span>
+            <span className="text-xs sm:text-sm">Premium</span>
             {!user?.isPremiumApproved && (
               <Badge variant="secondary" className="ml-2 text-xs">New</Badge>
             )}
           </TabsTrigger>
           <TabsTrigger value="courses" data-testid="tab-courses">
-            <EnhancedIcon name="BookOpen" size={16} className="mr-2" />
-            Courses
+            <span className="hidden sm:inline"><EnhancedIcon name="BookOpen" size={16} className="mr-2" /></span>
+            <span className="text-xs sm:text-sm">Courses</span>
           </TabsTrigger>
           <TabsTrigger value="certificates" data-testid="tab-certificates">
-            <EnhancedIcon name="Award" size={16} className="mr-2" />
-            Certificates
+            <span className="hidden sm:inline"><EnhancedIcon name="Award" size={16} className="mr-2" /></span>
+            <span className="text-xs sm:text-sm">Certificates</span>
           </TabsTrigger>
         </TabsList>
 
@@ -225,7 +225,7 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6" role="region" aria-labelledby="stats-heading">
           <h2 id="stats-heading" className="sr-only">Learning Statistics</h2>
           <Card data-testid="card-enrolled" role="article" aria-labelledby="enrolled-heading">
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-muted-foreground text-sm" id="enrolled-heading">Courses Enrolled</p>
@@ -245,7 +245,7 @@ export default function Dashboard() {
             </CardContent>
           </Card>
           <Card data-testid="card-completed" role="article" aria-labelledby="completed-heading">
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-muted-foreground text-sm" id="completed-heading">Completed</p>
@@ -265,7 +265,7 @@ export default function Dashboard() {
             </CardContent>
           </Card>
           <Card data-testid="card-hours" role="article" aria-labelledby="hours-heading">
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-muted-foreground text-sm" id="hours-heading">Learning Hours</p>
@@ -285,7 +285,7 @@ export default function Dashboard() {
             </CardContent>
           </Card>
           <Card data-testid="card-certificates" role="article" aria-labelledby="certificates-heading">
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-muted-foreground text-sm" id="certificates-heading">Certificates</p>
@@ -311,10 +311,10 @@ export default function Dashboard() {
 
       {/* Current Courses */}
       <div role="region" aria-labelledby="current-courses-heading">
-          <h2 id="current-courses-heading" className="text-2xl font-bold text-foreground mb-6" data-testid="text-continue-learning">
+          <h2 id="current-courses-heading" className="text-xl sm:text-2xl font-bold text-foreground mb-4 sm:mb-6" data-testid="text-continue-learning">
             Continue Learning
           </h2>
-          <div className="grid md:grid-cols-2 gap-6" role="list">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6" role="list">
             {enrollments?.slice(0, 2).map((enrollment) => (
               <Card key={enrollment.id} className="overflow-hidden" data-testid={`card-enrollment-${enrollment.id}`} role="listitem">
                 {enrollment.course.imageUrl ? (
@@ -341,7 +341,7 @@ export default function Dashboard() {
                     aria-hidden={true}
                   />
                 </div>
-                <CardContent className="p-6">
+                <CardContent className="p-4 sm:p-6">
                   <h3 className="text-xl font-semibold mb-2" data-testid={`text-course-title-${enrollment.id}`}>
                     {enrollment.course.title}
                   </h3>
@@ -385,7 +385,7 @@ export default function Dashboard() {
 
           {/* Video Course Section */}
           <div role="region" aria-labelledby="latest-content-heading">
-              <h2 id="latest-content-heading" className="text-2xl font-bold text-foreground mb-6" data-testid="text-latest-content">
+              <h2 id="latest-content-heading" className="text-xl sm:text-2xl font-bold text-foreground mb-4 sm:mb-6" data-testid="text-latest-content">
                 Latest Course Content
               </h2>
               <VideoPlayer />
@@ -404,12 +404,12 @@ export default function Dashboard() {
         {/* Courses Tab Content */}
         <TabsContent value="courses" className="space-y-6 md:space-y-8" data-testid="tab-content-courses">
           <div role="region" aria-labelledby="courses-tab-heading">
-            <h2 id="courses-tab-heading" className="text-2xl font-bold text-foreground mb-6">
+            <h2 id="courses-tab-heading" className="text-xl sm:text-2xl font-bold text-foreground mb-4 sm:mb-6">
               My Courses
             </h2>
             
             {/* Current Courses Grid */}
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6" role="list">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6" role="list">
               {enrollments?.map((enrollment) => (
                 <Card key={enrollment.id} className="overflow-hidden" data-testid={`card-enrollment-${enrollment.id}`} role="listitem">
                   {enrollment.course.imageUrl ? (
@@ -436,7 +436,7 @@ export default function Dashboard() {
                       aria-hidden={true}
                     />
                   </div>
-                  <CardContent className="p-6">
+                  <CardContent className="p-4 sm:p-6">
                     <h3 className="text-xl font-semibold mb-2" data-testid={`text-course-title-${enrollment.id}`}>
                       {enrollment.course.title}
                     </h3>

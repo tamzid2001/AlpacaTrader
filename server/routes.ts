@@ -4321,6 +4321,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { customFilename } = req.body;
       const file = req.file;
 
+      // Validate userId is present
+      if (!userId) {
+        console.error("CSV Upload: No userId found in authenticated request");
+        return res.status(401).json({ error: "Authentication required. Please log in and try again." });
+      }
+
+      // Verify user exists in database before processing upload
+      const user = await storage.getUser(userId);
+      if (!user) {
+        console.error(`CSV Upload: User not found in database: ${userId}`);
+        return res.status(403).json({ error: "User account not found. Please log in again." });
+      }
+
       // Validate required fields
       if (!file) {
         return res.status(400).json({ error: "No file uploaded. Please select a CSV file." });
@@ -4383,6 +4396,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create upload record with server-generated metadata
       const uploadData = insertCsvUploadSchema.parse({
+        userId,  // Include userId directly in the upload data
         filename: file.originalname,
         customFilename: sanitizedCustomFilename,
         objectStoragePath: objectStorageResult.path,
@@ -4407,14 +4421,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         firebaseStoragePath: null,
       });
 
-      const upload = await storage.createCsvUpload(uploadData, userId);
+      const upload = await storage.createCsvUpload(uploadData);
       res.json(upload);
 
     } catch (error: any) {
       console.error("Secure CSV upload error:", error);
       
       // Provide specific error messages for different types of failures
-      if (error.message.includes('File size')) {
+      if (error.message.includes('User not found') || error.message.includes('Invalid user')) {
+        return res.status(403).json({ error: "User validation failed. Please log in again." });
+      } else if (error.message.includes('User ID is required')) {
+        return res.status(401).json({ error: "Authentication required. Please log in and try again." });
+      } else if (error.code === '23503') { // Foreign key constraint violation
+        return res.status(403).json({ error: "User account issue. Please log in again and ensure your account is properly set up." });
+      } else if (error.message.includes('File size')) {
         return res.status(400).json({ error: "File too large. Maximum file size is 100MB." });
       } else if (error.message.includes('CSV file too large')) {
         return res.status(400).json({ error: "CSV data too large. Maximum 10,000 rows allowed." });
@@ -5014,6 +5034,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('Get sent invites error:', error);
       res.status(500).json({ error: 'Failed to get sent invites' });
+    }
+  });
+
+  // POST /api/share/accept/:token - Accept a share invitation
+  app.post('/api/share/accept/:token', isAuthenticated, async (req: any, res) => {
+    try {
+      const token = req.params.token;
+      const userId = req.user.claims.sub;
+      
+      if (!token) {
+        return res.status(400).json({ error: 'Invalid invitation token' });
+      }
+      
+      // Get invitation details first
+      const invite = await storage.getShareInvite(token);
+      if (!invite) {
+        return res.status(404).json({ error: 'Invitation not found' });
+      }
+      
+      // Check if invitation has expired
+      if (new Date(invite.expiresAt) < new Date()) {
+        return res.status(410).json({ error: 'Invitation has expired' });
+      }
+      
+      // Check if invitation is still pending
+      if (invite.status !== 'pending') {
+        return res.status(400).json({ error: `Invitation has already been ${invite.status}` });
+      }
+      
+      // Accept the invitation
+      const success = await storage.acceptShareInvite(token, userId);
+      
+      if (!success) {
+        return res.status(500).json({ error: 'Failed to accept invitation' });
+      }
+      
+      // Send notification to inviter (optional)
+      try {
+        if (invite.inviterUserId) {
+          const inviter = await storage.getUser(invite.inviterUserId);
+          const invitee = await storage.getUser(userId);
+          if (inviter && invitee && inviter.email) {
+            await sendShareAcceptedNotification(
+              inviter.email,
+              invitee.email || invitee.firstName || 'A user',
+              invite.resourceType,
+              invite.resourceId
+            );
+          }
+        }
+      } catch (emailError) {
+        console.error('Failed to send acceptance notification:', emailError);
+      }
+      
+      res.json({ 
+        success: true, 
+        message: 'Invitation accepted successfully',
+        resourceType: invite.resourceType,
+        resourceId: invite.resourceId,
+        permissions: invite.permissions
+      });
+    } catch (error: any) {
+      console.error('Accept invite error:', error);
+      res.status(500).json({ error: 'Failed to accept invitation' });
+    }
+  });
+
+  // POST /api/share/decline/:token - Decline a share invitation
+  app.post('/api/share/decline/:token', isAuthenticated, async (req: any, res) => {
+    try {
+      const token = req.params.token;
+      
+      if (!token) {
+        return res.status(400).json({ error: 'Invalid invitation token' });
+      }
+      
+      // Get invitation details first
+      const invite = await storage.getShareInvite(token);
+      if (!invite) {
+        return res.status(404).json({ error: 'Invitation not found' });
+      }
+      
+      // Check if invitation is still pending
+      if (invite.status !== 'pending') {
+        return res.status(400).json({ error: `Invitation has already been ${invite.status}` });
+      }
+      
+      // Decline the invitation
+      const success = await storage.declineShareInvite(token);
+      
+      if (!success) {
+        return res.status(500).json({ error: 'Failed to decline invitation' });
+      }
+      
+      res.json({ 
+        success: true, 
+        message: 'Invitation declined successfully' 
+      });
+    } catch (error: any) {
+      console.error('Decline invite error:', error);
+      res.status(500).json({ error: 'Failed to decline invitation' });
     }
   });
 

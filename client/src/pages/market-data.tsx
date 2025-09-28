@@ -478,10 +478,10 @@ export default function MarketDataPage() {
 
       {/* Loading State */}
       {dataLoading && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           {[...Array(8)].map((_, i) => (
             <Card key={i}>
-              <CardContent className="p-6">
+              <CardContent className="p-4 sm:p-6">
                 <Skeleton className="h-20 w-full" />
               </CardContent>
             </Card>
@@ -493,9 +493,9 @@ export default function MarketDataPage() {
       {comprehensiveData && !dataLoading && (
         <>
           {/* Quote Overview Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
             <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900">
-              <CardContent className="p-6">
+              <CardContent className="p-4 sm:p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-blue-600">Current Price</p>
@@ -513,7 +513,7 @@ export default function MarketDataPage() {
             </Card>
 
             <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900">
-              <CardContent className="p-6">
+              <CardContent className="p-4 sm:p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-green-600">Market Cap</p>
@@ -528,7 +528,7 @@ export default function MarketDataPage() {
             </Card>
 
             <Card className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900">
-              <CardContent className="p-6">
+              <CardContent className="p-4 sm:p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-purple-600">P/E Ratio</p>
@@ -545,7 +545,7 @@ export default function MarketDataPage() {
             </Card>
 
             <Card className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950 dark:to-orange-900">
-              <CardContent className="p-6">
+              <CardContent className="p-4 sm:p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-orange-600">52W Range</p>
@@ -597,38 +597,38 @@ export default function MarketDataPage() {
 
           {/* Comprehensive Data Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-8">
-              <TabsTrigger value="overview" className="flex items-center gap-1">
-                <PieChart className="h-4 w-4" />
-                Overview
+            <TabsList className="w-full overflow-x-auto flex gap-1 justify-start p-1">
+              <TabsTrigger value="overview" className="flex items-center gap-1 whitespace-nowrap">
+                <PieChart className="h-4 w-4 hidden sm:inline" />
+                <span className="text-xs sm:text-sm">Overview</span>
               </TabsTrigger>
-              <TabsTrigger value="earnings" className="flex items-center gap-1">
-                <TrendingUp className="h-4 w-4" />
-                Earnings
+              <TabsTrigger value="earnings" className="flex items-center gap-1 whitespace-nowrap">
+                <TrendingUp className="h-4 w-4 hidden sm:inline" />
+                <span className="text-xs sm:text-sm">Earnings</span>
               </TabsTrigger>
-              <TabsTrigger value="financials" className="flex items-center gap-1">
-                <FileText className="h-4 w-4" />
-                Financials
+              <TabsTrigger value="financials" className="flex items-center gap-1 whitespace-nowrap">
+                <FileText className="h-4 w-4 hidden sm:inline" />
+                <span className="text-xs sm:text-sm">Financials</span>
               </TabsTrigger>
-              <TabsTrigger value="statistics" className="flex items-center gap-1">
-                <Calculator className="h-4 w-4" />
-                Statistics
+              <TabsTrigger value="statistics" className="flex items-center gap-1 whitespace-nowrap">
+                <Calculator className="h-4 w-4 hidden sm:inline" />
+                <span className="text-xs sm:text-sm">Statistics</span>
               </TabsTrigger>
-              <TabsTrigger value="profile" className="flex items-center gap-1">
-                <Building2 className="h-4 w-4" />
-                Profile
+              <TabsTrigger value="profile" className="flex items-center gap-1 whitespace-nowrap">
+                <Building2 className="h-4 w-4 hidden sm:inline" />
+                <span className="text-xs sm:text-sm">Profile</span>
               </TabsTrigger>
-              <TabsTrigger value="options" className="flex items-center gap-1">
-                <Target className="h-4 w-4" />
-                Options
+              <TabsTrigger value="options" className="flex items-center gap-1 whitespace-nowrap">
+                <Target className="h-4 w-4 hidden sm:inline" />
+                <span className="text-xs sm:text-sm">Options</span>
               </TabsTrigger>
-              <TabsTrigger value="technicals" className="flex items-center gap-1">
-                <LineChart className="h-4 w-4" />
-                Technicals
+              <TabsTrigger value="technicals" className="flex items-center gap-1 whitespace-nowrap">
+                <LineChart className="h-4 w-4 hidden sm:inline" />
+                <span className="text-xs sm:text-sm">Technicals</span>
               </TabsTrigger>
-              <TabsTrigger value="news" className="flex items-center gap-1">
-                <Newspaper className="h-4 w-4" />
-                News
+              <TabsTrigger value="news" className="flex items-center gap-1 whitespace-nowrap">
+                <Newspaper className="h-4 w-4 hidden sm:inline" />
+                <span className="text-xs sm:text-sm">News</span>
               </TabsTrigger>
             </TabsList>
 

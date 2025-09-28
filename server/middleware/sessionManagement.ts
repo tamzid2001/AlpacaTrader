@@ -4,9 +4,11 @@ import type { Request, Response, NextFunction } from 'express';
 import { storage } from '../storage';
 import { randomBytes } from 'crypto';
 
-const MAX_CONCURRENT_SESSIONS = 3;
-const SESSION_IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes
-const SESSION_ABSOLUTE_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours
+// Make concurrent sessions configurable with a reasonable default
+const MAX_CONCURRENT_SESSIONS = parseInt(process.env.MAX_CONCURRENT_SESSIONS || '10', 10); // Increased from 3 to 10 for multi-device support
+const SESSION_IDLE_TIMEOUT = parseInt(process.env.SESSION_IDLE_TIMEOUT || String(30 * 60 * 1000), 10); // 30 minutes default
+const SESSION_ABSOLUTE_TIMEOUT = parseInt(process.env.SESSION_ABSOLUTE_TIMEOUT || String(24 * 60 * 60 * 1000), 10); // 24 hours default
+const ALLOW_IP_CHANGES = process.env.ALLOW_IP_CHANGES === 'true'; // Allow IP changes for mobile users
 
 // Enhanced session store configuration
 export function createSessionStore() {
@@ -73,17 +75,19 @@ export const sessionSecurity = async (req: Request, res: Response, next: NextFun
     let riskScore = 0;
     let reasons: string[] = [];
     
-    // IP address change detection
-    if (metadata.initialIP !== currentIP) {
+    // IP address change detection - more lenient for multi-device users
+    if (metadata.initialIP !== currentIP && !ALLOW_IP_CHANGES) {
+      // Only flag as suspicious if IP changes are not allowed
       suspiciousActivity = true;
-      riskScore += 5;
+      riskScore += 2; // Reduced from 5 to 2 for less aggressive detection
       reasons.push('IP address changed');
     }
     
-    // User agent change detection
+    // User agent change detection - more lenient for multi-device users
     if (metadata.initialUserAgent !== currentUserAgent) {
+      // Only flag minor risk for user agent changes (different devices have different agents)
       suspiciousActivity = true;
-      riskScore += 3;
+      riskScore += 1; // Reduced from 3 to 1 for multi-device support
       reasons.push('User agent changed');
     }
     
@@ -117,8 +121,8 @@ export const sessionSecurity = async (req: Request, res: Response, next: NextFun
         metadata: { reasons, sessionAge, idleTime }
       });
       
-      // Terminate session if risk is too high
-      if (riskScore >= 8) {
+      // Terminate session only if risk is very high (raised threshold for multi-device support)
+      if (riskScore >= 10) { // Increased from 8 to 10
         req.logout(() => {
           req.session?.destroy(() => {
             res.status(401).json({
@@ -154,25 +158,45 @@ export const manageConcurrentSessions = async (req: Request, res: Response, next
         // Get user's active sessions
         const activeSessions = await storage.getUserActiveSessions(userId);
         
-        // If at session limit, revoke oldest session
+        // Only revoke sessions if significantly over the limit (grace period for multi-device)
         if (activeSessions.length >= MAX_CONCURRENT_SESSIONS) {
-          const oldestSession = activeSessions
-            .sort((a, b) => new Date(a.lastActivity).getTime() - new Date(b.lastActivity).getTime())[0];
+          // Filter out the current session to avoid self-revocation
+          const otherSessions = activeSessions.filter(s => s.sid !== req.sessionID);
           
-          await storage.revokeUserSession(oldestSession.sid, 'concurrent_limit_exceeded');
-          
-          // Log session revocation
-          await storage.createAuthAuditLog({
-            userId,
-            action: 'session_expired',
-            ipAddress: req.ip || 'unknown',
-            userAgent: req.get('User-Agent'),
-            success: true,
-            failureReason: 'Concurrent session limit exceeded',
-            sessionId: oldestSession.sid,
-            riskScore: 2,
-            metadata: { reason: 'concurrent_limit' }
-          });
+          if (otherSessions.length >= MAX_CONCURRENT_SESSIONS) {
+            // Only revoke if we still have too many after excluding current session
+            const sessionsToRevoke = otherSessions
+              .sort((a, b) => new Date(a.lastActivity).getTime() - new Date(b.lastActivity).getTime())
+              .slice(0, otherSessions.length - MAX_CONCURRENT_SESSIONS + 1); // Revoke just enough to stay under limit
+            
+            // Revoke only the necessary sessions
+            for (const session of sessionsToRevoke) {
+              try {
+                await storage.revokeUserSession(session.sid, 'concurrent_limit_exceeded');
+                
+                // Log session revocation with more context
+                await storage.createAuthAuditLog({
+                  userId,
+                  action: 'session_expired',
+                  ipAddress: req.ip || 'unknown',
+                  userAgent: req.get('User-Agent'),
+                  success: true,
+                  failureReason: `Concurrent session limit (${MAX_CONCURRENT_SESSIONS}) exceeded`,
+                  sessionId: session.sid,
+                  riskScore: 1, // Reduced from 2 to 1 as this is normal behavior
+                  metadata: { 
+                    reason: 'concurrent_limit',
+                    totalSessions: activeSessions.length,
+                    maxAllowed: MAX_CONCURRENT_SESSIONS,
+                    revokedSessionId: session.sid
+                  }
+                });
+              } catch (revokeError) {
+                console.error(`Failed to revoke session ${session.sid}:`, revokeError);
+                // Continue with other revocations even if one fails
+              }
+            }
+          }
         }
         
         // Update current session activity
@@ -184,6 +208,22 @@ export const manageConcurrentSessions = async (req: Request, res: Response, next
         
       } catch (error) {
         console.error('Error managing concurrent sessions:', error);
+        // Log the error but don't block the request
+        try {
+          await storage.createAuthAuditLog({
+            userId,
+            action: 'session_management_error',
+            ipAddress: req.ip || 'unknown',
+            userAgent: req.get('User-Agent'),
+            success: false,
+            failureReason: 'Session management error',
+            sessionId: req.sessionID,
+            riskScore: 0,
+            metadata: { error: error instanceof Error ? error.message : 'Unknown error' }
+          });
+        } catch (logError) {
+          console.error('Failed to log session management error:', logError);
+        }
         // Don't block the request for session management errors
       }
     }

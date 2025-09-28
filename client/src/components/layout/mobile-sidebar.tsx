@@ -32,12 +32,12 @@ export function MobileSidebar() {
   return (
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="sm" className="lg:hidden" data-testid="button-mobile-sidebar">
+        <Button variant="ghost" size="sm" className="md:hidden" data-testid="button-mobile-sidebar">
           <Menu className="h-6 w-6" />
           <span className="sr-only">Open navigation menu</span>
         </Button>
       </SheetTrigger>
-      <SheetContent side="left" className="p-0 w-64">
+      <SheetContent side="left" className="p-0 w-64 sm:w-72">
         <nav 
           className="sidebar-nav h-full bg-sidebar border-r border-sidebar-border overflow-y-auto"
           role="navigation"

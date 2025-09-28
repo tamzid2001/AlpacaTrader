@@ -145,13 +145,13 @@ export function ProductivityDashboard() {
   return (
     <div className="h-full bg-[#f6f8fc] dark:bg-gray-900">
       {/* Header */}
-      <div className="bg-white dark:bg-gray-800 border-b border-[#e1e5ea] dark:border-gray-700 px-8 py-8">
+      <div className="bg-white dark:bg-gray-800 border-b border-[#e1e5ea] dark:border-gray-700 px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-4xl font-bold text-[#323338] dark:text-gray-100 mb-2" data-testid="page-title">
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#323338] dark:text-gray-100 mb-2" data-testid="page-title">
               Main workspace
             </h1>
-            <p className="text-[#676879] dark:text-gray-400 text-lg">
+            <p className="text-[#676879] dark:text-gray-400 text-base sm:text-lg">
               Work management • Manage all your work in one place
             </p>
           </div>
@@ -167,7 +167,7 @@ export function ProductivityDashboard() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mt-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mt-6 sm:mt-8">
           <div className="bg-white rounded-xl p-6 border border-[#e1e5ea] shadow-sm">
             <div className="flex items-center space-x-4">
               <div className="w-12 h-12 bg-[#0073ea] bg-opacity-10 rounded-lg flex items-center justify-center">
@@ -227,7 +227,7 @@ export function ProductivityDashboard() {
       </div>
 
       {/* Filters and Controls */}
-      <div className="px-8 py-6 bg-white dark:bg-gray-800 border-b border-[#e1e5ea] dark:border-gray-700">
+      <div className="px-4 sm:px-6 lg:px-8 py-4 sm:py-6 bg-white dark:bg-gray-800 border-b border-[#e1e5ea] dark:border-gray-700">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             {/* Search */}
@@ -237,14 +237,14 @@ export function ProductivityDashboard() {
                 placeholder="Search for boards, items, or anything..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-12 pr-4 py-3 w-80 border-[#c4c4c4] rounded-lg text-[#323338] placeholder:text-[#9699a6] bg-white focus:border-[#0073ea] focus:ring-2 focus:ring-[#0073ea] focus:ring-opacity-20"
+                className="pl-12 pr-4 py-3 w-full sm:w-80 border-[#c4c4c4] rounded-lg text-[#323338] placeholder:text-[#9699a6] bg-white focus:border-[#0073ea] focus:ring-2 focus:ring-[#0073ea] focus:ring-opacity-20"
                 data-testid="input-search"
               />
             </div>
 
             {/* Type Filter */}
             <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="w-52 py-3 border-[#c4c4c4] rounded-lg text-[#323338] bg-white hover:border-[#0073ea] transition-colors" data-testid="select-filter-type">
+              <SelectTrigger className="w-full sm:w-52 py-3 border-[#c4c4c4] rounded-lg text-[#323338] bg-white hover:border-[#0073ea] transition-colors" data-testid="select-filter-type">
                 <Filter className="w-4 h-4 mr-2 text-[#676879]" />
                 <SelectValue placeholder="All board types" />
               </SelectTrigger>
@@ -283,7 +283,7 @@ export function ProductivityDashboard() {
       </div>
 
       {/* Boards Content */}
-      <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
         {filteredBoards.length === 0 ? (
           <div className="text-center py-20">
             <div className="w-24 h-24 mx-auto bg-[#f6f8fc] rounded-full flex items-center justify-center mb-6">
@@ -310,7 +310,7 @@ export function ProductivityDashboard() {
             )}
           </div>
         ) : (
-          <div className={view === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" : "space-y-3"}>
+          <div className={view === "grid" ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6" : "space-y-3"}>
             {filteredBoards.map((board: ProductivityBoard) => (
               <div 
                 key={board.id} 

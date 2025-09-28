@@ -29,7 +29,7 @@ export default function Header() {
         role="banner"
         aria-label="Main navigation"
       >
-      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-14 md:h-16">
           <div className="flex items-center space-x-2 md:space-x-4">
             {isAuthenticated && <MobileSidebar />}
@@ -39,8 +39,8 @@ export default function Header() {
                 alt="MarketDifferentials Logo"
                 className="w-6 h-6 md:w-8 md:h-8 rounded-lg"
               />
-              <span className="text-lg md:text-xl font-bold text-foreground hidden xs:block">PropFarming Pro</span>
-              <span className="text-lg md:text-xl font-bold text-foreground block xs:hidden">PropFarming</span>
+              <span className="text-lg md:text-xl font-bold text-foreground hidden sm:block">PropFarming Pro</span>
+              <span className="text-lg md:text-xl font-bold text-foreground block sm:hidden">PF Pro</span>
             </Link>
           </div>
           
