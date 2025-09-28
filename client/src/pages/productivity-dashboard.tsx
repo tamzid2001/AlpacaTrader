@@ -143,109 +143,113 @@ export function ProductivityDashboard() {
   }
 
   return (
-    <div className="h-full bg-gray-50 dark:bg-gray-900">
+    <div className="h-full bg-[#f6f8fc] dark:bg-gray-900">
       {/* Header */}
-      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-6">
+      <div className="bg-white dark:bg-gray-800 border-b border-[#e1e5ea] dark:border-gray-700 px-8 py-8">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100" data-testid="page-title">
-              Productivity Dashboard
+            <h1 className="text-4xl font-bold text-[#323338] dark:text-gray-100 mb-2" data-testid="page-title">
+              Main workspace
             </h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-1">
-              Manage your productivity boards and track your progress
+            <p className="text-[#676879] dark:text-gray-400 text-lg">
+              Work management • Manage all your work in one place
             </p>
           </div>
 
-          <Button onClick={() => setShowCreateDialog(true)} data-testid="button-create-board">
-            <Plus className="w-4 h-4 mr-2" />
-            Create Board
+          <Button 
+            onClick={() => setShowCreateDialog(true)} 
+            className="bg-[#0073ea] hover:bg-[#0060c2] text-white font-medium px-6 py-3 rounded-lg border-0 shadow-sm transition-colors"
+            data-testid="button-create-board"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            New board
           </Button>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center space-x-2">
-                <Grid className="w-5 h-5 text-blue-500" />
-                <div>
-                  <div className="text-2xl font-bold" data-testid="stat-total-boards">
-                    {stats.totalBoards || 0}
-                  </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Total Boards</div>
-                </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mt-8">
+          <div className="bg-white rounded-xl p-6 border border-[#e1e5ea] shadow-sm">
+            <div className="flex items-center space-x-4">
+              <div className="w-12 h-12 bg-[#0073ea] bg-opacity-10 rounded-lg flex items-center justify-center">
+                <Grid className="w-6 h-6 text-[#0073ea]" />
               </div>
-            </CardContent>
-          </Card>
+              <div>
+                <div className="text-3xl font-bold text-[#323338]" data-testid="stat-total-boards">
+                  {stats.totalBoards || 0}
+                </div>
+                <div className="text-sm text-[#676879] font-medium">Boards</div>
+              </div>
+            </div>
+          </div>
 
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center space-x-2">
-                <List className="w-5 h-5 text-green-500" />
-                <div>
-                  <div className="text-2xl font-bold" data-testid="stat-total-items">
-                    {stats.totalItems || 0}
-                  </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Total Items</div>
-                </div>
+          <div className="bg-white rounded-xl p-6 border border-[#e1e5ea] shadow-sm">
+            <div className="flex items-center space-x-4">
+              <div className="w-12 h-12 bg-[#00c875] bg-opacity-10 rounded-lg flex items-center justify-center">
+                <List className="w-6 h-6 text-[#00c875]" />
               </div>
-            </CardContent>
-          </Card>
+              <div>
+                <div className="text-3xl font-bold text-[#323338]" data-testid="stat-total-items">
+                  {stats.totalItems || 0}
+                </div>
+                <div className="text-sm text-[#676879] font-medium">Items</div>
+              </div>
+            </div>
+          </div>
 
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center space-x-2">
-                <Calendar className="w-5 h-5 text-orange-500" />
-                <div>
-                  <div className="text-2xl font-bold" data-testid="stat-due-items">
-                    {stats.itemsDueThisWeek || 0}
-                  </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Due This Week</div>
-                </div>
+          <div className="bg-white rounded-xl p-6 border border-[#e1e5ea] shadow-sm">
+            <div className="flex items-center space-x-4">
+              <div className="w-12 h-12 bg-[#ff9500] bg-opacity-10 rounded-lg flex items-center justify-center">
+                <Calendar className="w-6 h-6 text-[#ff9500]" />
               </div>
-            </CardContent>
-          </Card>
+              <div>
+                <div className="text-3xl font-bold text-[#323338]" data-testid="stat-due-items">
+                  {stats.itemsDueThisWeek || 0}
+                </div>
+                <div className="text-sm text-[#676879] font-medium">Due this week</div>
+              </div>
+            </div>
+          </div>
 
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center space-x-2">
-                <BarChart3 className="w-5 h-5 text-purple-500" />
-                <div>
-                  <div className="text-2xl font-bold" data-testid="stat-completion-rate">
-                    {stats.completionRate || 0}%
-                  </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Completion Rate</div>
-                </div>
+          <div className="bg-white rounded-xl p-6 border border-[#e1e5ea] shadow-sm">
+            <div className="flex items-center space-x-4">
+              <div className="w-12 h-12 bg-[#784bd1] bg-opacity-10 rounded-lg flex items-center justify-center">
+                <BarChart3 className="w-6 h-6 text-[#784bd1]" />
               </div>
-            </CardContent>
-          </Card>
+              <div>
+                <div className="text-3xl font-bold text-[#323338]" data-testid="stat-completion-rate">
+                  {stats.completionRate || 0}%
+                </div>
+                <div className="text-sm text-[#676879] font-medium">Completed</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Filters and Controls */}
-      <div className="px-6 py-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+      <div className="px-8 py-6 bg-white dark:bg-gray-800 border-b border-[#e1e5ea] dark:border-gray-700">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             {/* Search */}
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-[#676879] w-5 h-5" />
               <Input
-                placeholder="Search boards..."
+                placeholder="Search for boards, items, or anything..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 w-64"
+                className="pl-12 pr-4 py-3 w-80 border-[#c4c4c4] rounded-lg text-[#323338] placeholder:text-[#9699a6] bg-white focus:border-[#0073ea] focus:ring-2 focus:ring-[#0073ea] focus:ring-opacity-20"
                 data-testid="input-search"
               />
             </div>
 
             {/* Type Filter */}
             <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="w-48" data-testid="select-filter-type">
-                <Filter className="w-4 h-4 mr-2" />
-                <SelectValue />
+              <SelectTrigger className="w-52 py-3 border-[#c4c4c4] rounded-lg text-[#323338] bg-white hover:border-[#0073ea] transition-colors" data-testid="select-filter-type">
+                <Filter className="w-4 h-4 mr-2 text-[#676879]" />
+                <SelectValue placeholder="All board types" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="all">All board types</SelectItem>
                 <SelectItem value="tasks">Tasks</SelectItem>
                 <SelectItem value="anomalies">Anomalies</SelectItem>
                 <SelectItem value="patterns">Patterns</SelectItem>
@@ -255,19 +259,21 @@ export function ProductivityDashboard() {
           </div>
 
           {/* View Toggle */}
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-1 bg-[#f6f8fc] rounded-lg p-1">
             <Button
-              variant={view === "grid" ? "default" : "outline"}
+              variant={view === "grid" ? "default" : "ghost"}
               size="sm"
               onClick={() => setView("grid")}
+              className={view === "grid" ? "bg-white shadow-sm text-[#323338] hover:bg-white" : "text-[#676879] hover:text-[#323338] hover:bg-white"}
               data-testid="button-grid-view"
             >
               <Grid className="w-4 h-4" />
             </Button>
             <Button
-              variant={view === "list" ? "default" : "outline"}
+              variant={view === "list" ? "default" : "ghost"}
               size="sm"
               onClick={() => setView("list")}
+              className={view === "list" ? "bg-white shadow-sm text-[#323338] hover:bg-white" : "text-[#676879] hover:text-[#323338] hover:bg-white"}
               data-testid="button-list-view"
             >
               <List className="w-4 h-4" />
@@ -277,109 +283,127 @@ export function ProductivityDashboard() {
       </div>
 
       {/* Boards Content */}
-      <div className="p-6">
+      <div className="p-8">
         {filteredBoards.length === 0 ? (
-          <div className="text-center py-12">
-            <Grid className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-            <h3 className="text-xl font-medium text-gray-900 dark:text-gray-100 mb-2">
+          <div className="text-center py-20">
+            <div className="w-24 h-24 mx-auto bg-[#f6f8fc] rounded-full flex items-center justify-center mb-6">
+              <Grid className="w-12 h-12 text-[#c4c4c4]" />
+            </div>
+            <h3 className="text-2xl font-semibold text-[#323338] dark:text-gray-100 mb-3">
               {boards.length === 0 ? "No boards yet" : "No boards found"}
             </h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">
+            <p className="text-[#676879] dark:text-gray-400 mb-8 text-lg">
               {boards.length === 0 
-                ? "Create your first productivity board to get started" 
+                ? "Create your first board to get started organizing your work" 
                 : "Try adjusting your search or filter criteria"
               }
             </p>
             {boards.length === 0 && (
-              <Button onClick={() => setShowCreateDialog(true)} data-testid="button-create-first-board">
-                <Plus className="w-4 h-4 mr-2" />
-                Create Your First Board
+              <Button 
+                onClick={() => setShowCreateDialog(true)} 
+                className="bg-[#0073ea] hover:bg-[#0060c2] text-white font-medium px-8 py-4 rounded-lg border-0 text-lg"
+                data-testid="button-create-first-board"
+              >
+                <Plus className="w-5 h-5 mr-3" />
+                Create your first board
               </Button>
             )}
           </div>
         ) : (
-          <div className={view === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" : "space-y-4"}>
+          <div className={view === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" : "space-y-3"}>
             {filteredBoards.map((board: ProductivityBoard) => (
-              <Card 
+              <div 
                 key={board.id} 
-                className={`hover:shadow-lg transition-shadow cursor-pointer ${view === "list" ? "flex" : ""}`}
+                className={`bg-white rounded-xl border border-[#e1e5ea] hover:shadow-lg transition-all duration-200 cursor-pointer group ${view === "list" ? "flex items-center p-4" : ""}`}
                 data-testid={`board-card-${board.id}`}
               >
-                <Link href={`/productivity/boards/${board.id}`} className="block">
-                  <CardHeader className={view === "list" ? "flex-1" : ""}>
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center space-x-3">
-                        <div 
-                          className="w-4 h-4 rounded"
-                          style={{ backgroundColor: board.color }}
-                        />
-                        <div>
-                          <CardTitle className="text-lg" data-testid={`board-title-${board.id}`}>
-                            {board.title}
-                          </CardTitle>
-                          {board.description && (
-                            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">
-                              {board.description}
-                            </p>
+                <Link href={`/productivity/boards/${board.id}`} className="block w-full">
+                  <div className={view === "list" ? "flex items-center justify-between flex-1" : "p-6"}>
+                    <div className="flex items-center space-x-4">
+                      <div 
+                        className="w-6 h-6 rounded-lg flex-shrink-0"
+                        style={{ backgroundColor: board.color }}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-lg font-semibold text-[#323338] group-hover:text-[#0073ea] transition-colors truncate" data-testid={`board-title-${board.id}`}>
+                          {board.title}
+                        </h3>
+                        {board.description && view === "grid" && (
+                          <p className="text-sm text-[#676879] mt-2 line-clamp-2">
+                            {board.description}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {view === "grid" && (
+                      <div className="mt-6 flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-[#f6f8fc] text-[#676879] border border-[#e1e5ea]" data-testid={`board-type-${board.id}`}>
+                            {boardTypeLabels[board.boardType as keyof typeof boardTypeLabels]}
+                          </span>
+                          {board.isPublic && (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-[#e8f4fd] text-[#0073ea] border border-[#c7e5ff]">
+                              <Users className="w-3 h-3 mr-1" />
+                              Shared
+                            </span>
                           )}
                         </div>
+                        <div className="text-xs text-[#9699a6]" data-testid={`board-date-${board.id}`}>
+                          {formatDate(board.updatedAt)}
+                        </div>
                       </div>
+                    )}
 
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => e.preventDefault()}
-                            data-testid={`board-menu-${board.id}`}
-                          >
-                            <MoreHorizontal className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem asChild>
-                            <Link href={`/productivity/boards/${board.id}`}>
+                    {view === "list" && (
+                      <div className="flex items-center space-x-4 ml-auto">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-[#f6f8fc] text-[#676879] border border-[#e1e5ea]" data-testid={`board-type-${board.id}`}>
+                          {boardTypeLabels[board.boardType as keyof typeof boardTypeLabels]}
+                        </span>
+                        <div className="text-sm text-[#9699a6]" data-testid={`board-date-${board.id}`}>
+                          {formatDate(board.updatedAt)}
+                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => e.preventDefault()}
+                              className="text-[#676879] hover:text-[#323338] hover:bg-[#f6f8fc]"
+                              data-testid={`board-menu-${board.id}`}
+                            >
+                              <MoreHorizontal className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem 
+                              onClick={(e) => {
+                                e.preventDefault();
+                                window.location.href = `/productivity/boards/${board.id}`;
+                              }}
+                            >
                               <Edit className="w-4 h-4 mr-2" />
                               Open Board
-                            </Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem 
-                            className="text-red-600"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              handleDeleteBoard(board.id, board.title);
-                            }}
-                            data-testid={`delete-board-${board.id}`}
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </CardHeader>
-                </Link>
-                
-                <CardContent className={view === "list" ? "flex items-center space-x-4" : ""}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <Badge variant="outline" data-testid={`board-type-${board.id}`}>
-                        {boardTypeLabels[board.boardType as keyof typeof boardTypeLabels]}
-                      </Badge>
-                      {board.isPublic && (
-                        <Badge variant="secondary">
-                          <Users className="w-3 h-3 mr-1" />
-                          Public
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="text-xs text-gray-500" data-testid={`board-date-${board.id}`}>
-                      {formatDate(board.updatedAt)}
-                    </div>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem 
+                              className="text-red-600"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handleDeleteBoard(board.id, board.title);
+                              }}
+                              data-testid={`delete-board-${board.id}`}
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    )}
                   </div>
-                </CardContent>
-              </Card>
+                </Link>
+              </div>
             ))}
           </div>
         )}

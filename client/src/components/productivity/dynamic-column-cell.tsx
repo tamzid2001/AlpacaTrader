@@ -71,11 +71,15 @@ export function DynamicColumnCell({ column, value, metadata, itemId }: DynamicCo
       case 'text':
         return (
           <div 
-            className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 px-2 py-1 rounded min-h-[24px]"
+            className="cursor-pointer hover:bg-[#f8f9ff] px-3 py-2 rounded-lg min-h-[36px] flex items-center transition-colors border border-transparent hover:border-[#e1e5ea]"
             onClick={() => setIsEditing(true)}
             data-testid={`text-cell-${itemId}-${column.id}`}
           >
-            {value || <span className="text-gray-400">Click to add text</span>}
+            {value ? (
+              <span className="text-[#323338] font-medium">{value}</span>
+            ) : (
+              <span className="text-[#9699a6] italic">Add text</span>
+            )}
           </div>
         );
 
@@ -83,12 +87,14 @@ export function DynamicColumnCell({ column, value, metadata, itemId }: DynamicCo
         return (
           <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
             <PopoverTrigger asChild>
-              <Button variant="ghost" className="p-2 h-auto justify-start text-left font-normal">
-                <Calendar className="w-4 h-4 mr-2" />
-                {value ? format(new Date(value), 'MMM dd, yyyy') : 'Select date'}
-              </Button>
+              <div className="inline-flex items-center space-x-2 px-3 py-2 rounded-lg cursor-pointer hover:bg-[#f8f9ff] transition-colors border border-transparent hover:border-[#e1e5ea] min-h-[36px]">
+                <Calendar className="w-4 h-4 text-[#676879]" />
+                <span className={value ? "text-[#323338] font-medium" : "text-[#9699a6] italic"}>
+                  {value ? format(new Date(value), 'MMM dd, yyyy') : 'Set date'}
+                </span>
+              </div>
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
+            <PopoverContent className="w-auto p-0 border border-[#e1e5ea] shadow-lg" align="start">
               <CalendarComponent
                 mode="single"
                 selected={value ? new Date(value) : undefined}
@@ -106,33 +112,41 @@ export function DynamicColumnCell({ column, value, metadata, itemId }: DynamicCo
 
       case 'status':
         const statusOptions = column.settings?.options || [
-          { value: 'not_started', label: 'Not Started', color: '#6B7280' },
-          { value: 'in_progress', label: 'In Progress', color: '#3B82F6' },
-          { value: 'completed', label: 'Completed', color: '#10B981' },
-          { value: 'blocked', label: 'Blocked', color: '#EF4444' },
+          { value: 'not_started', label: 'Not Started', color: '#c4c4c4' },
+          { value: 'in_progress', label: 'In Progress', color: '#fdcb6e' },
+          { value: 'completed', label: 'Completed', color: '#00c875' },
+          { value: 'blocked', label: 'Blocked', color: '#e74c3c' },
         ];
         
         const currentStatus = statusOptions.find(opt => opt.value === value);
         
         return (
           <Select value={value} onValueChange={(newValue) => updateValueMutation.mutate({ newValue })}>
-            <SelectTrigger className="w-full border-none shadow-none p-1">
+            <SelectTrigger className="w-full border-none shadow-none p-0 h-auto hover:bg-[#f8f9ff] rounded-lg">
               <SelectValue>
                 {currentStatus ? (
-                  <Badge style={{ backgroundColor: currentStatus.color }} className="text-white">
+                  <div 
+                    className="inline-flex items-center px-3 py-2 rounded-lg text-white text-sm font-medium capitalize min-w-[90px] justify-center"
+                    style={{ backgroundColor: currentStatus.color }}
+                  >
                     {currentStatus.label}
-                  </Badge>
+                  </div>
                 ) : (
-                  <span className="text-gray-400">Select status</span>
+                  <div className="inline-flex items-center px-3 py-2 rounded-lg text-[#9699a6] bg-[#f6f8fc] border border-dashed border-[#c4c4c4] min-w-[90px] justify-center text-sm italic">
+                    Set status
+                  </div>
                 )}
               </SelectValue>
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="border border-[#e1e5ea] shadow-lg">
               {statusOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  <Badge style={{ backgroundColor: option.color }} className="text-white">
+                <SelectItem key={option.value} value={option.value} className="focus:bg-[#f6f8fc]">
+                  <div 
+                    className="inline-flex items-center px-3 py-1.5 rounded-lg text-white text-sm font-medium capitalize min-w-[90px] justify-center"
+                    style={{ backgroundColor: option.color }}
+                  >
                     {option.label}
-                  </Badge>
+                  </div>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -141,33 +155,41 @@ export function DynamicColumnCell({ column, value, metadata, itemId }: DynamicCo
 
       case 'priority':
         const priorityOptions = [
-          { value: 'low', label: 'Low', color: '#10B981' },
-          { value: 'medium', label: 'Medium', color: '#F59E0B' },
-          { value: 'high', label: 'High', color: '#F97316' },
-          { value: 'urgent', label: 'Urgent', color: '#EF4444' },
+          { value: 'low', label: 'Low', color: '#00c875' },
+          { value: 'medium', label: 'Medium', color: '#fdcb6e' },
+          { value: 'high', label: 'High', color: '#ff9500' },
+          { value: 'urgent', label: 'Urgent', color: '#e74c3c' },
         ];
         
         const currentPriority = priorityOptions.find(opt => opt.value === value);
         
         return (
           <Select value={value} onValueChange={(newValue) => updateValueMutation.mutate({ newValue })}>
-            <SelectTrigger className="w-full border-none shadow-none p-1">
+            <SelectTrigger className="w-full border-none shadow-none p-0 h-auto hover:bg-[#f8f9ff] rounded-lg">
               <SelectValue>
                 {currentPriority ? (
-                  <Badge style={{ backgroundColor: currentPriority.color }} className="text-white">
+                  <div 
+                    className="inline-flex items-center px-3 py-2 rounded-lg text-white text-sm font-medium capitalize min-w-[80px] justify-center"
+                    style={{ backgroundColor: currentPriority.color }}
+                  >
                     {currentPriority.label}
-                  </Badge>
+                  </div>
                 ) : (
-                  <span className="text-gray-400">Select priority</span>
+                  <div className="inline-flex items-center px-3 py-2 rounded-lg text-[#9699a6] bg-[#f6f8fc] border border-dashed border-[#c4c4c4] min-w-[80px] justify-center text-sm italic">
+                    Set priority
+                  </div>
                 )}
               </SelectValue>
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="border border-[#e1e5ea] shadow-lg">
               {priorityOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  <Badge style={{ backgroundColor: option.color }} className="text-white">
+                <SelectItem key={option.value} value={option.value} className="focus:bg-[#f6f8fc]">
+                  <div 
+                    className="inline-flex items-center px-3 py-1.5 rounded-lg text-white text-sm font-medium capitalize min-w-[80px] justify-center"
+                    style={{ backgroundColor: option.color }}
+                  >
                     {option.label}
-                  </Badge>
+                  </div>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -177,31 +199,37 @@ export function DynamicColumnCell({ column, value, metadata, itemId }: DynamicCo
       case 'numbers':
         return (
           <div 
-            className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 px-2 py-1 rounded min-h-[24px]"
+            className="cursor-pointer hover:bg-[#f8f9ff] px-3 py-2 rounded-lg min-h-[36px] flex items-center transition-colors border border-transparent hover:border-[#e1e5ea]"
             onClick={() => setIsEditing(true)}
           >
-            {value || <span className="text-gray-400">0</span>}
+            {value ? (
+              <span className="text-[#323338] font-medium font-mono">{value}</span>
+            ) : (
+              <span className="text-[#9699a6] italic">Add number</span>
+            )}
           </div>
         );
 
       case 'people':
         return (
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 px-3 py-2 rounded-lg hover:bg-[#f8f9ff] transition-colors border border-transparent hover:border-[#e1e5ea] min-h-[36px] cursor-pointer">
             {value ? (
               <>
-                <Avatar className="w-6 h-6">
+                <Avatar className="w-7 h-7 border-2 border-white shadow-sm">
                   <AvatarImage src={`/api/users/${value}/avatar`} />
-                  <AvatarFallback className="text-xs">
+                  <AvatarFallback className="text-xs bg-[#0073ea] text-white font-medium">
                     {value.substring(0, 2).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
-                <span className="text-sm">{value}</span>
+                <span className="text-sm text-[#323338] font-medium">{value}</span>
               </>
             ) : (
-              <Button variant="ghost" size="sm" className="text-gray-400">
-                <User className="w-4 h-4 mr-1" />
-                Assign
-              </Button>
+              <>
+                <div className="w-7 h-7 rounded-full border-2 border-dashed border-[#c4c4c4] flex items-center justify-center">
+                  <User className="w-3 h-3 text-[#c4c4c4]" />
+                </div>
+                <span className="text-sm text-[#9699a6] italic">Assign person</span>
+              </>
             )}
           </div>
         );
@@ -292,20 +320,30 @@ export function DynamicColumnCell({ column, value, metadata, itemId }: DynamicCo
       case 'text':
       case 'numbers':
         return (
-          <div className="flex items-center space-x-1">
+          <div className="flex items-center space-x-2">
             <Input
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              className="text-sm h-8"
+              className="text-sm h-9 border-[#0073ea] focus:border-[#0073ea] focus:ring-2 focus:ring-[#0073ea] focus:ring-opacity-20 text-[#323338]"
               type={column.type === 'numbers' ? 'number' : 'text'}
               autoFocus
             />
-            <Button size="sm" variant="ghost" onClick={handleSave}>
-              <Check className="w-3 h-3" />
+            <Button 
+              size="sm" 
+              variant="ghost" 
+              onClick={handleSave}
+              className="h-9 w-9 p-0 hover:bg-[#e8f4fd] text-[#0073ea]"
+            >
+              <Check className="w-4 h-4" />
             </Button>
-            <Button size="sm" variant="ghost" onClick={handleCancel}>
-              <X className="w-3 h-3" />
+            <Button 
+              size="sm" 
+              variant="ghost" 
+              onClick={handleCancel}
+              className="h-9 w-9 p-0 hover:bg-[#ffe5e5] text-[#e74c3c]"
+            >
+              <X className="w-4 h-4" />
             </Button>
           </div>
         );
