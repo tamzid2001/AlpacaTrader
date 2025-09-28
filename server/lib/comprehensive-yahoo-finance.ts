@@ -391,7 +391,7 @@ export class ComprehensiveYahooFinanceService {
       marketState: price?.marketState || 'UNKNOWN',
       currency: price?.currency || 'USD',
       exchangeName: price?.exchangeName || '',
-      exchangeTimezone: price?.exchangeTimezone || '',
+      exchangeTimezone: price?.exchangeTimezoneName || price?.exchangeTimezoneShortName || '',
       lastUpdate: new Date().toISOString()
     };
   }
@@ -411,16 +411,16 @@ export class ComprehensiveYahooFinanceService {
 
       return {
         recentEarnings: earningsHistory.slice(0, 4).map((item: any) => ({
-          date: item.quarter?.fmt || '',
-          reportedEPS: item.epsActual?.raw,
-          estimatedEPS: item.epsEstimate?.raw,
-          surprise: item.epsDifference?.raw,
-          surprisePercent: item.surprisePercent?.raw
+          date: item.quarter || '',
+          reportedEPS: item.epsActual,
+          estimatedEPS: item.epsEstimate,
+          surprise: item.epsDifference,
+          surprisePercent: item.surprisePercent
         })),
         upcomingEarnings: calendarEvents?.earnings ? [{
-          date: calendarEvents.earnings.earningsDate?.[0]?.fmt || '',
-          estimatedEPS: calendarEvents.earnings.earningsAverage?.raw,
-          estimatedRevenue: calendarEvents.earnings.revenueAverage?.raw
+          date: calendarEvents.earnings.earningsDate?.[0] ? new Date(calendarEvents.earnings.earningsDate[0]).toISOString() : '',
+          estimatedEPS: calendarEvents.earnings.earningsAverage,
+          estimatedRevenue: calendarEvents.earnings.revenueAverage
         }] : [],
         earningsHistory: earningsHistory.map((item: any) => ({
           quarter: item.quarter?.fmt || '',
@@ -528,10 +528,10 @@ export class ComprehensiveYahooFinanceService {
 
       return {
         valuationMetrics: {
-          peRatio: summaryDetail?.trailingPE || keyStats?.trailingPE,
+          peRatio: summaryDetail?.trailingPE,
           pegRatio: keyStats?.pegRatio,
           priceToBook: keyStats?.priceToBook,
-          priceToSales: keyStats?.priceToSalesTrailing12Months,
+          priceToSales: keyStats?.priceToSales,
           enterpriseValue: keyStats?.enterpriseValue,
           evToRevenue: keyStats?.enterpriseToRevenue,
           evToEbitda: keyStats?.enterpriseToEbitda
@@ -548,9 +548,9 @@ export class ComprehensiveYahooFinanceService {
         dividendInfo: {
           dividendYield: summaryDetail?.dividendYield,
           dividendRate: summaryDetail?.dividendRate,
-          payoutRatio: keyStats?.payoutRatio,
-          exDividendDate: keyStats?.exDividendDate?.fmt,
-          lastDividendDate: keyStats?.lastDividendDate?.fmt
+          payoutRatio: keyStats?.payoutRatio || summaryDetail?.payoutRatio,
+          exDividendDate: keyStats?.exDividendDate ? new Date(keyStats.exDividendDate).toISOString() : undefined,
+          lastDividendDate: keyStats?.lastDividendDate ? new Date(keyStats.lastDividendDate).toISOString() : undefined
         },
         shareInfo: {
           sharesOutstanding: keyStats?.sharesOutstanding,
@@ -631,7 +631,7 @@ export class ComprehensiveYahooFinanceService {
    */
   async getOptionsData(symbol: string): Promise<OptionsData> {
     try {
-      const options = await yahooFinance.options(symbol);
+      const options = await yahooFinance.options(symbol, {});
       
       if (!options || !options.options || options.options.length === 0) {
         return this.getEmptyOptionsData();
@@ -640,8 +640,8 @@ export class ComprehensiveYahooFinanceService {
       const firstExpiration = options.options[0];
       
       return {
-        expirationDates: options.expirationDates?.map((date: number) => 
-          new Date(date * 1000).toISOString().split('T')[0]
+        expirationDates: options.expirationDates?.map((date: Date) => 
+          new Date(date).toISOString().split('T')[0]
         ) || [],
         calls: (firstExpiration.calls || []).map((call: any) => ({
           contractSymbol: call.contractSymbol || '',
@@ -734,14 +734,14 @@ export class ComprehensiveYahooFinanceService {
 
       return {
         earnings: events?.earnings?.earningsDate ? [{
-          date: events.earnings.earningsDate[0]?.fmt || '',
-          estimate: events.earnings.earningsAverage?.raw,
+          date: events.earnings.earningsDate[0] ? new Date(events.earnings.earningsDate[0]).toISOString() : '',
+          estimate: events.earnings.earningsAverage,
           confirmed: true
         }] : [],
-        dividends: events?.dividends ? events.dividends.map((div: any) => ({
-          exDate: div.exDividendDate?.fmt || '',
-          payDate: div.paymentDate?.fmt || '',
-          amount: div.dividendRate?.raw || 0
+        dividends: events?.dividendHistory ? events.dividendHistory.map((div: any) => ({
+          exDate: div.exDividendDate ? new Date(div.exDividendDate).toISOString() : '',
+          payDate: div.paymentDate ? new Date(div.paymentDate).toISOString() : '',
+          amount: div.dividendRate || 0
         })) : [],
         splits: [],
         events: []

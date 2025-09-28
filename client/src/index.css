@@ -91,8 +91,68 @@
   transition: transform 0.3s ease-in-out;
 }
 
+/* Mobile-specific responsive utilities */
 @media (max-width: 768px) {
   .sidebar-nav.closed {
     transform: translateX(-100%);
+  }
+  
+  /* Ensure no horizontal scrolling on mobile */
+  body {
+    overflow-x: hidden;
+  }
+  
+  /* Mobile-friendly tap targets */
+  button, .btn, [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Mobile-optimized text sizes */
+  .mobile-text-sm {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+  
+  .mobile-text-base {
+    font-size: 1rem;
+    line-height: 1.5rem;
+  }
+}
+
+/* Responsive breakpoint utilities */
+@media (min-width: 768px) {
+  .md\:transform-none {
+    transform: none;
+  }
+}
+
+/* Touch-friendly interactions */
+@media (hover: none) and (pointer: coarse) {
+  .hover\:bg-accent:hover {
+    background-color: transparent;
+  }
+  
+  .touch-friendly {
+    padding: 0.75rem;
+    margin: 0.25rem;
+  }
+}
+
+/* Smooth mobile transitions */
+.mobile-transition {
+  transition: all 0.2s ease-in-out;
+}
+
+/* Mobile-optimized spacing */
+.mobile-spacing {
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+@media (min-width: 640px) {
+  .mobile-spacing {
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
   }
 }

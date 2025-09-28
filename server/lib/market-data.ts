@@ -1,11 +1,18 @@
-import yahooFinance, { HistoricalOptions } from 'yahoo-finance2';
+import yahooFinance from 'yahoo-finance2';
 import { stringify } from 'csv-stringify/sync';
 import { format, subDays, subWeeks, subMonths, parseISO } from 'date-fns';
 import archiver from 'archiver';
 import { PassThrough } from 'stream';
 
 // Market data intervals supported by yahoo-finance2
-export type MarketDataInterval = '1d' | '1w' | '1mo';
+export type MarketDataInterval = '1d' | '1wk' | '1mo';
+
+// HistoricalOptions interface for yahoo-finance2
+export interface HistoricalOptions {
+  period1: string;
+  period2: string;
+  interval: MarketDataInterval;
+}
 
 // Market data response interface
 export interface MarketDataRecord {
@@ -65,7 +72,7 @@ export interface BatchDownloadResponse {
 }
 
 export class MarketDataService {
-  private readonly supportedIntervals: MarketDataInterval[] = ['1d', '1w', '1mo'];
+  private readonly supportedIntervals: MarketDataInterval[] = ['1d', '1wk', '1mo'];
   private readonly maxSymbolsPerBatch = 50;
   private readonly maxDateRangeDays = 365 * 5; // 5 years max
 
@@ -97,7 +104,7 @@ export class MarketDataService {
       }
 
       // Transform data to our format
-      const data: MarketDataRecord[] = result.map(record => ({
+      const data: MarketDataRecord[] = result.map((record: any) => ({
         date: format(record.date, 'yyyy-MM-dd'),
         open: Number(record.open.toFixed(2)),
         high: Number(record.high.toFixed(2)),
@@ -152,7 +159,7 @@ export class MarketDataService {
         volume: price.regularMarketVolume || 0,
         avgVolume: summaryDetail?.averageVolume || 0,
         peRatio: summaryDetail?.trailingPE,
-        eps: summaryDetail?.trailingEps,
+        eps: summaryDetail?.epsTrailingTwelveMonths || summaryDetail?.trailingEps,
         dividendYield: summaryDetail?.dividendYield ? Number((summaryDetail.dividendYield * 100).toFixed(2)) : undefined,
         fiftyTwoWeekHigh: Number(summaryDetail?.fiftyTwoWeekHigh?.toFixed(2)) || 0,
         fiftyTwoWeekLow: Number(summaryDetail?.fiftyTwoWeekLow?.toFixed(2)) || 0,
@@ -233,7 +240,7 @@ export class MarketDataService {
       throw new Error('No data to create batch download');
     }
 
-    const archive = archiver('zip', { level: 9 });
+    const archive = archiver('zip', { zlib: { level: 9 } });
     const buffers: Buffer[] = [];
     
     const passThrough = new PassThrough();

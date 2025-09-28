@@ -16,6 +16,7 @@ export function MobileSidebar() {
     { href: "/dashboard", icon: "LayoutDashboard", label: "Dashboard" },
     { href: "/market-data", icon: "TrendingUp", label: "Market Data" },
     { href: "/anomaly-detection", icon: "BarChart3", label: "Anomaly Detection" },
+    { href: "/productivity", icon: "CheckSquare", label: "Productivity" },
     { href: "/my-shared-results", icon: "Share2", label: "My Shared Results" },
   ];
 

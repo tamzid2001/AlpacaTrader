@@ -29,22 +29,23 @@ export default function Header() {
         role="banner"
         aria-label="Main navigation"
       >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
-          <div className="flex items-center space-x-4">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-14 md:h-16">
+          <div className="flex items-center space-x-2 md:space-x-4">
             {isAuthenticated && <MobileSidebar />}
-            <Link href="/" className="flex items-center space-x-2" data-testid="link-home">
+            <Link href="/" className="flex items-center space-x-1 md:space-x-2" data-testid="link-home">
               <img 
                 src="/favicon.png" 
                 alt="MarketDifferentials Logo"
-                className="w-8 h-8 rounded-lg"
+                className="w-6 h-6 md:w-8 md:h-8 rounded-lg"
               />
-              <span className="text-xl font-bold text-foreground">PropFarming Pro</span>
+              <span className="text-lg md:text-xl font-bold text-foreground hidden xs:block">PropFarming Pro</span>
+              <span className="text-lg md:text-xl font-bold text-foreground block xs:hidden">PropFarming</span>
             </Link>
           </div>
           
           <nav 
-            className="hidden md:flex items-center space-x-8"
+            className="hidden md:flex items-center space-x-4 lg:space-x-8"
             role="navigation"
             aria-label="Primary navigation"
             id="navigation"
@@ -88,20 +89,22 @@ export default function Header() {
               </Button>
             ) : isAuthenticated ? (
               user?.isApproved ? (
-                <div className="flex items-center space-x-4">
-                  <Link href="/dashboard">
+                <div className="flex items-center space-x-1 md:space-x-4">
+                  <Link href="/dashboard" className="hidden md:block">
                     <Button data-testid="button-dashboard">Dashboard</Button>
                   </Link>
                   {user?.role === "admin" && (
                     <Link href="/admin">
                       <Button 
                         variant="outline"
-                        className="flex items-center gap-2 bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-950 dark:to-orange-950 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900 transition-all duration-200"
+                        size="sm"
+                        className="flex items-center gap-1 md:gap-2 bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-950 dark:to-orange-950 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900 transition-all duration-200 px-2 md:px-4"
                         data-testid="button-admin-panel"
                         aria-label="Access admin panel for system management"
                       >
-                        <Shield className="h-4 w-4" aria-hidden="true" />
-                        Admin Panel
+                        <Shield className="h-3 w-3 md:h-4 md:w-4" aria-hidden="true" />
+                        <span className="hidden sm:inline">Admin Panel</span>
+                        <span className="sm:hidden">Admin</span>
                       </Button>
                     </Link>
                   )}
@@ -114,7 +117,7 @@ export default function Header() {
                         data-testid="button-user-menu"
                         aria-label="Open user menu"
                       >
-                        <Avatar className="w-8 h-8">
+                        <Avatar className="w-7 h-7 md:w-8 md:h-8">
                           <AvatarImage 
                             src={user?.profileImageUrl || undefined} 
                             alt={`${user?.firstName || user?.email || 'User'} profile picture`} 
@@ -160,11 +163,13 @@ export default function Header() {
             ) : (
               <a href="/api/login">
                 <Button 
-                  size="lg"
+                  size="sm"
+                  className="md:text-base px-3 md:px-6 py-2 md:py-3"
                   data-testid="button-login"
                   aria-label="Sign in with Google, GitHub, or Replit to get started"
                 >
-                  Get Started
+                  <span className="hidden sm:inline">Get Started</span>
+                  <span className="sm:hidden">Login</span>
                 </Button>
               </a>
             )}

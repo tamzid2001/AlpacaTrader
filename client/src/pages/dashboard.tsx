@@ -153,15 +153,15 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="w-full max-w-7xl mx-auto space-y-6 md:space-y-8" data-testid="dashboard-main">
+    <div className="w-full max-w-7xl mx-auto space-y-4 sm:space-y-6 md:space-y-8" data-testid="dashboard-main">
       {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 md:gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-foreground" data-testid="text-welcome">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground" data-testid="text-welcome">
             Welcome back, {user?.firstName || user?.email?.split('@')[0] || 'Student'}!
           </h1>
-          <div className="flex items-center space-x-3">
-            <p className="text-muted-foreground" data-testid="text-subtitle">
+          <div className="flex flex-col sm:flex-row sm:items-center space-y-1 sm:space-y-0 sm:space-x-3">
+            <p className="text-sm md:text-base text-muted-foreground" data-testid="text-subtitle">
               Continue your learning journey
             </p>
             {user?.isPremiumApproved && (
@@ -169,7 +169,7 @@ export default function Dashboard() {
             )}
           </div>
         </div>
-        <div className="flex items-center space-x-4">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
           <Button 
             variant="outline" 
             size="icon" 

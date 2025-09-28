@@ -2605,7 +2605,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const uploadPath = `course-materials/${courseId || lessonId}/${type}/${timestamp}_${sanitizedFilename}`;
           
           // Upload to object storage
-          const uploadResult = await objectStorage.uploadFile(uploadPath, file.buffer, file.mimetype);
+          const uploadResult = await objectStorage.uploadCourseMaterial(courseId || lessonId, type, sanitizedFilename, file.buffer);
           
           if (!uploadResult) {
             throw new Error(`Failed to upload file: ${file.originalname}`);
@@ -2704,7 +2704,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const sanitizedFilename = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
       const uploadPath = `course-materials/${courseId || lessonId}/${type}/${timestamp}_${sanitizedFilename}`;
       
-      const downloadUrl = await objectStorage.uploadFile(uploadPath, req.file.buffer, req.file.mimetype);
+      const uploadResult = await objectStorage.uploadCourseMaterial(courseId || lessonId, type, sanitizedFilename, req.file.buffer);
+      
+      if (!uploadResult.ok) {
+        throw new Error(`Failed to upload file: ${uploadResult.error}`);
+      }
 
       const material = await storage.createMaterial({
         courseId: courseId || null,
@@ -2749,8 +2753,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Increment download count
       await storage.incrementDownloadCount(req.params.id);
 
-      // Generate signed download URL
-      const downloadUrl = await objectStorage.getSignedDownloadURL(material.objectStoragePath);
+      // Generate download URL - for now return a placeholder as getSignedDownloadURL doesn't exist
+      // TODO: Implement proper signed URL generation or serve files directly
+      const downloadUrl = `/api/materials/${material.id}/download`;
       res.json({ downloadUrl });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -2883,8 +2888,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "File must be a video" });
       }
 
-      const uploadPath = `course-videos/${req.params.lessonId}/${req.file.originalname}`;
-      const videoUrl = await objectStorage.uploadFile(uploadPath, req.file.buffer, req.file.mimetype);
+      const sanitizedFilename = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const uploadResult = await objectStorage.uploadCourseMaterial(req.params.lessonId, 'videos', sanitizedFilename, req.file.buffer);
+      
+      if (!uploadResult.ok) {
+        throw new Error(`Failed to upload video: ${uploadResult.error}`);
+      }
 
       // Update lesson with video URL and metadata
       const lesson = await storage.updateLesson(req.params.lessonId, {
@@ -3928,6 +3937,348 @@ export async function registerRoutes(app: Express): Promise<Server> {
         error: error.message,
         ticker: req.params.ticker 
       });
+    }
+  });
+
+  // ===================
+  // MOBILE MARKET DATA API ENDPOINTS
+  // ===================
+
+  // Get mobile dashboard data (indices, crypto, commodities) in one call
+  app.get('/api/mobile/market-dashboard', async (req, res) => {
+    try {
+      console.log('📱 Fetching mobile market dashboard data...');
+      
+      // Market indices symbols
+      const indices = [
+        { symbol: '^GSPC', name: 'S&P 500' },
+        { symbol: '^IXIC', name: 'NASDAQ' },
+        { symbol: '^DJI', name: 'DOW JONES' },
+        { symbol: '^RUT', name: 'RUSSELL 2000' }
+      ];
+      
+      // Cryptocurrency symbols (using Yahoo Finance crypto symbols)
+      const cryptos = [
+        { symbol: 'BTC-USD', name: 'Bitcoin', shortName: 'BTC' },
+        { symbol: 'ETH-USD', name: 'Ethereum', shortName: 'ETH' },
+        { symbol: 'ADA-USD', name: 'Cardano', shortName: 'ADA' }
+      ];
+      
+      // Commodities symbols
+      const commodities = [
+        { symbol: 'GC=F', name: 'Gold', shortName: 'GOLD', unit: '/oz' },
+        { symbol: 'CL=F', name: 'Crude Oil', shortName: 'OIL', unit: '/bbl' },
+        { symbol: 'SI=F', name: 'Silver', shortName: 'SILVER', unit: '/oz' }
+      ];
+
+      // Fetch all data in parallel
+      const [indicesData, cryptoData, commodityData] = await Promise.all([
+        Promise.all(indices.map(async (index) => {
+          try {
+            const quote = await marketDataService.getCurrentQuote(index.symbol);
+            return {
+              name: index.name,
+              symbol: index.symbol,
+              value: quote.price,
+              change: quote.change,
+              changePercent: quote.changePercent,
+              color: quote.changePercent >= 0 ? '#10b981' : '#ef4444'
+            };
+          } catch (error: any) {
+            console.error(`Error fetching ${index.symbol}:`, error.message);
+            return {
+              name: index.name,
+              symbol: index.symbol,
+              value: 0,
+              change: 0,
+              changePercent: 0,
+              color: '#6b7280',
+              error: error.message
+            };
+          }
+        })),
+        Promise.all(cryptos.map(async (crypto) => {
+          try {
+            const quote = await marketDataService.getCurrentQuote(crypto.symbol);
+            return {
+              symbol: crypto.shortName,
+              name: crypto.name,
+              price: quote.price,
+              change: quote.change,
+              changePercent: quote.changePercent
+            };
+          } catch (error: any) {
+            console.error(`Error fetching ${crypto.symbol}:`, error.message);
+            return {
+              symbol: crypto.shortName,
+              name: crypto.name,
+              price: 0,
+              change: 0,
+              changePercent: 0,
+              error: error.message
+            };
+          }
+        })),
+        Promise.all(commodities.map(async (commodity) => {
+          try {
+            const quote = await marketDataService.getCurrentQuote(commodity.symbol);
+            return {
+              symbol: commodity.shortName,
+              name: commodity.name,
+              price: quote.price,
+              change: quote.change,
+              changePercent: quote.changePercent,
+              unit: commodity.unit
+            };
+          } catch (error: any) {
+            console.error(`Error fetching ${commodity.symbol}:`, error.message);
+            return {
+              symbol: commodity.shortName,
+              name: commodity.name,
+              price: 0,
+              change: 0,
+              changePercent: 0,
+              unit: commodity.unit,
+              error: error.message
+            };
+          }
+        }))
+      ]);
+
+      res.json({
+        marketIndices: indicesData,
+        cryptoData: cryptoData,
+        commodities: commodityData,
+        lastUpdated: new Date().toISOString()
+      });
+
+    } catch (error: any) {
+      console.error('❌ Error fetching mobile market dashboard:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get mobile stocks data (popular stocks with mini charts)
+  app.get('/api/mobile/stocks', async (req, res) => {
+    try {
+      console.log('📱 Fetching mobile stocks data...');
+      
+      const popularStocks = [
+        'AAPL', 'GOOGL', 'TSLA', 'NVDA', 'MSFT', 'AMZN'
+      ];
+
+      const stocksData = await Promise.all(popularStocks.map(async (symbol) => {
+        try {
+          // Get current quote
+          const quote = await marketDataService.getCurrentQuote(symbol);
+          
+          // Get short historical data for mini chart (last 7 days)
+          const endDate = new Date().toISOString().split('T')[0];
+          const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+          
+          const historicalData = await marketDataService.getHistoricalData(
+            symbol, startDate, endDate, '1d'
+          );
+
+          // Extract chart data (closing prices)
+          const chartData = historicalData.data.map(record => record.close);
+          
+          return {
+            symbol,
+            name: quote.companyName,
+            price: quote.price,
+            change: quote.change,
+            changePercent: quote.changePercent,
+            volume: quote.volume,
+            marketCap: quote.marketCap,
+            pe: quote.peRatio,
+            chartData
+          };
+        } catch (error: any) {
+          console.error(`Error fetching stock data for ${symbol}:`, error.message);
+          return {
+            symbol,
+            name: symbol,
+            price: 0,
+            change: 0,
+            changePercent: 0,
+            volume: 0,
+            marketCap: 0,
+            pe: 0,
+            chartData: [0, 0, 0, 0, 0, 0, 0],
+            error: error.message
+          };
+        }
+      }));
+
+      res.json({
+        stocks: stocksData,
+        lastUpdated: new Date().toISOString()
+      });
+
+    } catch (error: any) {
+      console.error('❌ Error fetching mobile stocks data:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get SageMaker Canvas format CSV for a symbol
+  app.get('/api/mobile/sagemaker-csv/:symbol', async (req, res) => {
+    try {
+      const { symbol } = req.params;
+      const { startDate, endDate, frequency = 'daily', dataType = 'closing' } = req.query;
+      
+      console.log(`📱 Generating SageMaker CSV for ${symbol}...`);
+      
+      if (!symbol) {
+        return res.status(400).json({ error: 'Symbol is required' });
+      }
+
+      if (!startDate || !endDate) {
+        return res.status(400).json({ error: 'Start date and end date are required' });
+      }
+
+      // Map frequency to Yahoo Finance interval
+      const intervalMap = {
+        'daily': '1d',
+        'weekly': '1w', 
+        'monthly': '1mo'
+      } as const;
+
+      const interval = intervalMap[frequency as keyof typeof intervalMap] || '1d';
+      
+      // Get historical data
+      const historicalData = await marketDataService.getHistoricalData(
+        symbol, 
+        startDate as string, 
+        endDate as string, 
+        interval
+      );
+
+      // Convert to SageMaker Canvas format
+      let csvData: string;
+      const itemId = symbol.toLowerCase();
+      
+      if (dataType === 'closing') {
+        // Closing prices only format
+        const header = 'Item_Id,Date,Price\n';
+        const rows = historicalData.data.map(record => 
+          `${itemId},${record.date},${record.close}`
+        ).join('\n');
+        csvData = header + rows;
+      } else {
+        // Full OHLC format
+        const includeVolume = dataType === 'ohlcv';
+        const header = includeVolume 
+          ? 'Item_Id,Date,Open,High,Low,Close,Volume\n'
+          : 'Item_Id,Date,Open,High,Low,Close\n';
+        
+        const rows = historicalData.data.map(record => 
+          includeVolume 
+            ? `${itemId},${record.date},${record.open},${record.high},${record.low},${record.close},${record.volume}`
+            : `${itemId},${record.date},${record.open},${record.high},${record.low},${record.close}`
+        ).join('\n');
+        csvData = header + rows;
+      }
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="${symbol}_${startDate}_${endDate}_sagemaker.csv"`);
+      res.send(csvData);
+
+    } catch (error: any) {
+      console.error(`❌ Error generating SageMaker CSV for ${req.params.symbol}:`, error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get quantile visualization data from uploaded CSV
+  app.get('/api/mobile/quantiles/:uploadId', async (req, res) => {
+    try {
+      const { uploadId } = req.params;
+      
+      console.log(`📊 Fetching quantile data for upload ${uploadId}...`);
+      
+      // Get the CSV upload record
+      const upload = await storage.getCsvUpload(uploadId);
+      if (!upload) {
+        return res.status(404).json({ error: 'Upload not found' });
+      }
+
+      // Download and parse CSV data from object storage
+      const csvResult = await objectStorage.downloadCSVByPath(upload.objectStoragePath);
+      
+      if (!csvResult.ok || !csvResult.data) {
+        return res.status(500).json({ error: csvResult.error || 'Failed to download CSV data' });
+      }
+      
+      const csvData = csvResult.data;
+      
+      if (!csvData) {
+        return res.status(404).json({ error: 'CSV data not found' });
+      }
+
+      const parsedData = await parseCsvFileServerSide(Buffer.from(csvData));
+      const { data: rows } = parsedData;
+      
+      if (rows.length === 0) {
+        return res.status(400).json({ error: 'No data found in CSV' });
+      }
+
+      // Find quantile columns (P10, P50, P90, etc.)
+      const firstRow = rows[0];
+      const headers = Object.keys(firstRow).filter(h => h !== '_rowIndex');
+      
+      const quantileColumns = headers.filter(header => {
+        const match = header.toLowerCase().match(/^p(\d+)$/);
+        if (match) {
+          const num = parseInt(match[1]);
+          return num >= 1 && num <= 99;
+        }
+        return false;
+      });
+
+      // Find date column
+      const dateColumns = headers.filter(header => 
+        header.toLowerCase().includes('date') || 
+        header.toLowerCase().includes('time') ||
+        header.toLowerCase() === 'ds'
+      );
+      const dateColumn = dateColumns[0] || null;
+
+      // Prepare chart data
+      const chartData = rows.map((row, index) => {
+        const dataPoint: any = { index };
+        
+        // Add date if available
+        if (dateColumn && row[dateColumn]) {
+          dataPoint.date = row[dateColumn];
+        }
+        
+        // Add quantile values
+        quantileColumns.forEach(col => {
+          const value = parseFloat(row[col]);
+          if (!isNaN(value)) {
+            dataPoint[col] = value;
+          }
+        });
+        
+        return dataPoint;
+      }).filter(point => 
+        quantileColumns.some(col => typeof point[col] === 'number')
+      );
+
+      res.json({
+        quantileColumns,
+        dateColumn,
+        chartData,
+        totalRows: chartData.length,
+        filename: upload.filename,
+        lastUpdated: new Date().toISOString()
+      });
+
+    } catch (error: any) {
+      console.error(`❌ Error fetching quantile data for upload ${req.params.uploadId}:`, error.message);
+      res.status(500).json({ error: error.message });
     }
   });
 
@@ -4975,13 +5326,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "File path is required" });
       }
 
-      // Upload to Object Storage
-      const result = await objectStorage.uploadFile(path, file.buffer, {
+      // Upload to Object Storage - use uploadUserData for user files
+      const result = await objectStorage.uploadUserData(userId, `files/${path}`, {
+        filename: file.originalname,
+        contentType: file.mimetype,
+        data: file.buffer
+      });
+      
+      if (!result.ok) {
+        return res.status(500).json({ error: result.error || "Upload failed" });
+      }
+      
+      const uploadMetadata = {
         userId,
         originalName: file.originalname,
         contentType: file.mimetype,
         ...JSON.parse(metadata || '{}')
-      });
+      };
 
       if (!result.ok) {
         return res.status(500).json({ error: result.error });
@@ -5002,14 +5363,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const filePath = req.params.path;
 
-      // Check access permissions
-      const hasAccess = await objectStorage.checkUserAccess(userId, filePath);
-      if (!hasAccess.ok) {
+      // Check access permissions - simplified access check
+      // TODO: Implement proper access control logic
+      if (!filePath.startsWith(`users/${userId}/`)) {
         return res.status(403).json({ error: "Access denied" });
       }
 
       // Download from Object Storage
-      const result = await objectStorage.downloadFile(filePath);
+      const result = await objectStorage.downloadBytes(filePath);
 
       if (!result.ok) {
         return res.status(404).json({ error: "File not found" });
@@ -5029,9 +5390,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const filePath = req.params.path;
 
-      // Check access permissions
-      const hasAccess = await objectStorage.checkUserAccess(userId, filePath);
-      if (!hasAccess.ok) {
+      // Check access permissions - simplified access check
+      // TODO: Implement proper access control logic
+      if (!filePath.startsWith(`users/${userId}/`)) {
         return res.status(403).json({ error: "Access denied" });
       }
 
@@ -5818,7 +6179,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Download the certificate file
-      const downloadResult = await objectStorage.downloadFile(certificate.path);
+      const downloadResult = await objectStorage.downloadBytes(certificate.path);
+      
+      if (!downloadResult.ok || !downloadResult.data) {
+        return res.status(500).json({ error: downloadResult.error || 'Failed to download certificate' });
+      }
 
       if (!downloadResult.ok || !downloadResult.data) {
         return res.status(404).json({ error: "Certificate file not found" });

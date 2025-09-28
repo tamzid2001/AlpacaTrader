@@ -36,11 +36,11 @@ import { NotFoundFallback } from "@/components/error-boundary/NotFoundFallback";
 // Layout wrapper for authenticated pages
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row">
+    <div className="min-h-screen flex flex-col md:flex-row">
       <Sidebar />
-      <div className="flex-1 flex flex-col lg:ml-64">
+      <div className="flex-1 flex flex-col md:ml-64">
         <Header />
-        <main className="flex-1 p-4 md:p-6 lg:p-8" id="main-content" tabIndex={-1}>
+        <main className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8" id="main-content" tabIndex={-1}>
           {children}
         </main>
         <Footer />

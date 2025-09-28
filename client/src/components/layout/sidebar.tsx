@@ -28,7 +28,7 @@ export default function Sidebar() {
 
   return (
     <nav 
-      className="sidebar-nav hidden lg:block w-64 bg-sidebar border-r border-sidebar-border fixed h-full z-30 overflow-y-auto"
+      className="sidebar-nav hidden md:block w-64 bg-sidebar border-r border-sidebar-border fixed h-full z-30 overflow-y-auto"
       role="navigation"
       aria-label="Main sidebar navigation"
     >

@@ -34,7 +34,7 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="market-data"
+        name="market"
         options={{
           title: 'Market Data',
           tabBarIcon: ({ color, size }) => (
