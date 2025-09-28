@@ -26,7 +26,7 @@ export class ObjectStorageService {
       const timestamp = Date.now();
       const path = `users/${userId}/csv/${sanitizedFileName}_${timestamp}.csv`;
       
-      await this.client.uploadBytes(this.bucketName, path, content);
+      await this.client.uploadFromBytes(this.bucketName, path, content);
       
       console.log(`CSV uploaded successfully: ${path}`);
       return { 
@@ -49,7 +49,7 @@ export class ObjectStorageService {
   async downloadCSV(userId: string, fileName: string): Promise<{ok: boolean, data?: Buffer, error?: string}> {
     try {
       const path = `users/${userId}/csv/${fileName}`;
-      const data = await this.client.downloadBytes(this.bucketName, path);
+      const data = await this.client.downloadAsBytes(this.bucketName, path);
       
       return { 
         ok: true, 
@@ -69,7 +69,7 @@ export class ObjectStorageService {
    */
   async downloadCSVByPath(path: string): Promise<{ok: boolean, data?: Buffer, error?: string}> {
     try {
-      const data = await this.client.downloadBytes(this.bucketName, path);
+      const data = await this.client.downloadAsBytes(this.bucketName, path);
       
       return { 
         ok: true, 
@@ -96,7 +96,7 @@ export class ObjectStorageService {
       const path = `users/${userId}/data/${dataType}.json`;
       const jsonContent = JSON.stringify(content, null, 2);
       
-      await this.client.uploadText(this.bucketName, path, jsonContent);
+      await this.client.uploadFromText(this.bucketName, path, jsonContent);
       
       console.log(`User data uploaded: ${path}`);
       return { 
@@ -118,7 +118,7 @@ export class ObjectStorageService {
   async downloadUserData(userId: string, dataType: string): Promise<{ok: boolean, data?: any, error?: string}> {
     try {
       const path = `users/${userId}/data/${dataType}.json`;
-      const text = await this.client.downloadText(this.bucketName, path);
+      const text = await this.client.downloadAsText(this.bucketName, path);
       const data = JSON.parse(text);
       
       return { 
@@ -141,7 +141,7 @@ export class ObjectStorageService {
     try {
       const path = `users/${userId}/profile/avatar.${fileExtension}`;
       
-      await this.client.uploadBytes(this.bucketName, path, content);
+      await this.client.uploadFromBytes(this.bucketName, path, content);
       
       console.log(`Profile image uploaded: ${path}`);
       return { 
@@ -169,7 +169,7 @@ export class ObjectStorageService {
       const sanitizedFileName = this.sanitizeFileName(fileName);
       const path = `courses/${courseId}/${materialType}/${sanitizedFileName}`;
       
-      await this.client.uploadBytes(this.bucketName, path, content);
+      await this.client.uploadFromBytes(this.bucketName, path, content);
       
       console.log(`Course material uploaded: ${path}`);
       return { 
@@ -191,7 +191,7 @@ export class ObjectStorageService {
   async downloadCourseMaterial(courseId: string, materialType: string, fileName: string): Promise<{ok: boolean, data?: Buffer, error?: string}> {
     try {
       const path = `courses/${courseId}/${materialType}/${fileName}`;
-      const data = await this.client.downloadBytes(this.bucketName, path);
+      const data = await this.client.downloadAsBytes(this.bucketName, path);
       
       return { 
         ok: true, 
@@ -217,7 +217,7 @@ export class ObjectStorageService {
     try {
       const path = `assets/${assetPath}`;
       
-      await this.client.uploadBytes(this.bucketName, path, content);
+      await this.client.uploadFromBytes(this.bucketName, path, content);
       
       console.log(`Asset uploaded: ${path}`);
       return { 
@@ -239,7 +239,7 @@ export class ObjectStorageService {
   async downloadAsset(assetPath: string): Promise<{ok: boolean, data?: Buffer, error?: string}> {
     try {
       const path = `assets/${assetPath}`;
-      const data = await this.client.downloadBytes(this.bucketName, path);
+      const data = await this.client.downloadAsBytes(this.bucketName, path);
       
       return { 
         ok: true, 
@@ -275,7 +275,7 @@ export class ObjectStorageService {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const path = `assets/icons/${category}/${iconId}_${timestamp}.${format}`;
       
-      await this.client.uploadBytes(this.bucketName, path, content);
+      await this.client.uploadFromBytes(this.bucketName, path, content);
 
       // Store icon metadata
       const metadataPath = `assets/icons/${category}/${iconId}_${timestamp}.metadata.json`;
@@ -318,7 +318,7 @@ export class ObjectStorageService {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const path = `assets/charts/${chartType}/${chartId}_${timestamp}.${format}`;
       
-      await this.client.uploadBytes(this.bucketName, path, content);
+      await this.client.uploadFromBytes(this.bucketName, path, content);
 
       // Store chart metadata
       const metadataPath = `assets/charts/${chartType}/${chartId}_${timestamp}.metadata.json`;
@@ -360,7 +360,7 @@ export class ObjectStorageService {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const path = `assets/reports/${reportType}/${reportId}_${timestamp}.${format}`;
       
-      await this.client.uploadBytes(this.bucketName, path, content);
+      await this.client.uploadFromBytes(this.bucketName, path, content);
 
       // Store report metadata
       const metadataPath = `assets/reports/${reportType}/${reportId}_${timestamp}.metadata.json`;
@@ -401,7 +401,7 @@ export class ObjectStorageService {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const path = `system/backups/${backupType}/${backupId}_${version}_${timestamp}.zip`;
       
-      await this.client.uploadBytes(this.bucketName, path, content);
+      await this.client.uploadFromBytes(this.bucketName, path, content);
 
       // Store backup metadata
       const metadataPath = `system/backups/${backupType}/${backupId}_${version}_${timestamp}.metadata.json`;
@@ -442,7 +442,7 @@ export class ObjectStorageService {
       const sanitizedPath = this.sanitizeFileName(assetPath);
       const path = `assets/${category}/${version}/${sanitizedPath}`;
       
-      await this.client.uploadBytes(this.bucketName, path, content);
+      await this.client.uploadFromBytes(this.bucketName, path, content);
 
       // Store asset metadata
       const metadataPath = `assets/${category}/${version}/${sanitizedPath}.metadata.json`;
@@ -501,7 +501,7 @@ export class ObjectStorageService {
         if (options?.includeMetadata) {
           try {
             const metadataPath = `${file}.metadata.json`;
-            const metadataContent = await this.client.downloadText(this.bucketName, metadataPath);
+            const metadataContent = await this.client.downloadAsText(this.bucketName, metadataPath);
             metadata = JSON.parse(metadataContent);
           } catch {
             // Metadata is optional
@@ -536,7 +536,7 @@ export class ObjectStorageService {
       let metadata: any = {};
       try {
         const metadataPath = `${assetPath}.metadata.json`;
-        const metadataContent = await this.client.downloadText(this.bucketName, metadataPath);
+        const metadataContent = await this.client.downloadAsText(this.bucketName, metadataPath);
         metadata = JSON.parse(metadataContent);
       } catch {
         // Metadata is optional
@@ -827,7 +827,7 @@ export class ObjectStorageService {
       
       const path = `${basePath}/${version}_${sanitizedName}`;
 
-      await this.client.uploadBytes(this.bucketName, path, content);
+      await this.client.uploadFromBytes(this.bucketName, path, content);
 
       // Store metadata if provided
       if (options?.metadata || options?.originalName || options?.contentType) {
@@ -895,7 +895,7 @@ export class ObjectStorageService {
       let metadata: any = {};
       try {
         const metadataPath = `${materialPath}.metadata.json`;
-        const metadataContent = await this.client.downloadText(this.bucketName, metadataPath);
+        const metadataContent = await this.client.downloadAsText(this.bucketName, metadataPath);
         metadata = JSON.parse(metadataContent);
       } catch {
         // Metadata is optional
@@ -941,7 +941,7 @@ export class ObjectStorageService {
         let metadata: any = {};
         try {
           const metadataPath = `${file}.metadata.json`;
-          const metadataContent = await this.client.downloadText(this.bucketName, metadataPath);
+          const metadataContent = await this.client.downloadAsText(this.bucketName, metadataPath);
           metadata = JSON.parse(metadataContent);
         } catch {
           // Metadata is optional
@@ -1113,7 +1113,7 @@ export class ObjectStorageService {
         // Get metadata
         try {
           const metadataPath = `${file}.metadata.json`;
-          const metadataContent = await this.client.downloadText(this.bucketName, metadataPath);
+          const metadataContent = await this.client.downloadAsText(this.bucketName, metadataPath);
           const metadata = JSON.parse(metadataContent);
 
           certificates.push({
